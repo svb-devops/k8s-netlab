@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - K8S NetLab</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'k8s-blue': '#326CE5',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen flex items-center justify-center">
+    <div class="bg-white rounded-lg shadow-xl p-8 max-w-md w-full mx-4">
+        <!-- Logo & Title -->
+        <div class="text-center mb-8">
+            <svg class="w-16 h-16 text-k8s-blue mx-auto mb-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+            <h1 class="text-3xl font-bold text-gray-900">K8S NetLab</h1>
+            <p class="text-gray-600 mt-2">Kubernetes 网络学习实验平台</p>
+        </div>
+
+        <!-- Tab Switcher -->
+        <div class="flex border-b border-gray-200 mb-6">
+            <button id="tab-login" class="flex-1 py-3 text-center font-medium border-b-2 border-k8s-blue text-k8s-blue transition">
+                登录
+            </button>
+            <button id="tab-register" class="flex-1 py-3 text-center font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 transition">
+                注册
+            </button>
+        </div>
+
+        <!-- Login Form -->
+        <form id="login-form" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">用户名</label>
+                <input type="text" id="login-username" required
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-k8s-blue focus:border-transparent"
+                       placeholder="输入用户名">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">密码</label>
+                <input type="password" id="login-password" required
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-k8s-blue focus:border-transparent"
+                       placeholder="输入密码">
+            </div>
+
+            <button type="submit"
+                    class="w-full bg-k8s-blue hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200">
+                登录
+            </button>
+        </form>
+
+        <!-- Register Form (Hidden by default) -->
+        <form id="register-form" class="space-y-4 hidden">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">用户名</label>
+                <input type="text" id="register-username" required pattern="[a-zA-Z0-9_-]{3,20}"
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-k8s-blue focus:border-transparent"
+                       placeholder="3-20个字符，仅字母数字">
+                <p class="text-xs text-gray-500 mt-1">只能包含字母、数字、下划线和连字符</p>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">密码</label>
+                <input type="password" id="register-password" required minlength="6"
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-k8s-blue focus:border-transparent"
+                       placeholder="至少6个字符">
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">确认密码</label>
+                <input type="password" id="register-password-confirm" required
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-k8s-blue focus:border-transparent"
+                       placeholder="再次输入密码">
+            </div>
+
+            <button type="submit"
+                    class="w-full bg-k8s-blue hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200">
+                注册
+            </button>
+        </form>
+
+        <!-- Message Display -->
+        <div id="message" class="mt-4 hidden">
+            <div class="p-3 rounded-lg" id="message-content"></div>
+        </div>
+    </div>
+
+    <script src="/js/auth.js"></script>
+</body>
+</html>

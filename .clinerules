@@ -1,0 +1,169 @@
+# K8S NetLab Development Rules v2.0
+# Last Updated: 2026-02-20
+
+## RULE 1-5: Core Development Standards
+See k8s-netlab-development-SKILL.md for full details (uploaded to context).
+
+---
+
+## CRITICAL: Project Analysis & Requirements Management
+
+### Real Case Study: 70% → 35% Similarity Miscalculation
+
+**What Happened:**
+- Initial estimate: 70% similarity with reference videos
+- Actual: 30-35% similarity
+- Cause: Analysis based on incomplete information (brief description only)
+- Impact: Wrong positioning strategy, wrong improvement priorities
+
+**Timeline:**
+- Day 1-5: Based on brief description → assumed 70% → wrong strategy
+- Day 6: Received complete transcripts → systematic comparison → 30-35% actual
+
+**The 5 Root Causes:**
+1. Started analysis without complete information
+2. Made assumptions instead of requesting data
+3. Gave confident numbers without stating confidence level
+4. Confirmation bias (sought similarities, ignored differences)
+5. No structured comparison framework
+
+---
+
+## 5 Core Principles (MUST FOLLOW)
+
+### 1. Slow is Fast
+- Never rush to answer with incomplete information
+- Accurate answer late > incorrect answer quickly
+
+### 2. Admit Uncertainty
+- When information insufficient, say so explicitly
+- "I don't know" is not weakness; pretending to know is
+
+### 3. Quantify Uncertainty
+- NEVER: "Similarity is 70%"
+- ALWAYS: "Based on X, estimate 50-70% (confidence: 60%)"
+- Always give range + confidence level + basis
+
+### 4. Welcome Counter-Evidence
+- Actively seek reasons why you might be wrong
+- Don't only look for supporting evidence
+- Ask "Why might I be wrong about this?"
+
+### 5. Rapid Correction
+- When new information arrives: update immediately
+- Never stubbornly defend a wrong estimate
+- Acknowledge the correction, explain the change
+
+---
+
+## Pre-Analysis Checklist (MANDATORY)
+
+Before any analysis, comparison, or decision:
+
+```
+Information Completeness:
+  [ ] Complete feature list (not descriptions)
+  [ ] Target audience clearly defined
+  [ ] Technical implementation details clear
+  [ ] Success criteria established
+
+Decision Point:
+  If ANY critical item is missing:
+    ✗ Do NOT proceed with analysis
+    ✓ List what's missing
+    ✓ Request complete information
+    ✓ OR clearly mark "Preliminary - Low Confidence - Not for Decisions"
+```
+
+---
+
+## Standard Output Format
+
+Every analysis MUST include:
+
+```
+**Info Status:** [Complete / Incomplete - missing: X, Y]
+**Analysis Type:** [Final / Preliminary]
+**Confidence:** [X%]
+**Estimate:** [X-Y%] (range, NOT point value)
+
+**Key Assumptions:**
+1. [Assumption] - If wrong: [impact]
+2. [Assumption] - If wrong: [impact]
+
+**Missing Information (if any):**
+- [What's needed for higher accuracy]
+
+**Next Steps:**
+- If need higher confidence: [list required info]
+- OR: Proceed with stated assumptions and risks
+```
+
+---
+
+## Communication Standards
+
+✓ CORRECT:
+- "Based on [source], I estimate Y-Z% (confidence W%)"
+- "I need [specific info] to provide accurate assessment"
+- "Current status: Preliminary analysis, not suitable for decisions"
+- "New information changes my estimate from X to Y because..."
+
+✗ INCORRECT:
+- "It's definitely X%"
+- "I'm certain that..."
+- "Obviously..."
+- [Any analysis without confidence level]
+- [Defending a wrong estimate after new info arrives]
+
+---
+
+## When Uncertain — Stop and State
+
+```
+"Information incomplete. Cannot provide reliable analysis.
+
+Missing:
+- [Item 1]
+- [Item 2]
+
+Current preliminary estimate: X-Y% (confidence: very low, ~30%)
+This estimate should NOT be used for decisions.
+
+To proceed accurately, please provide: [specific list]"
+```
+
+---
+
+## Scenario Applications
+
+### Scenario 1: Project Comparison
+✗ Wrong: "This project is 70% similar to X"
+✓ Right: "Based on [limited info], preliminary estimate 40-70% (confidence 50%).
+          Need [full feature list, target audience] for accurate assessment."
+
+### Scenario 2: Technology Selection
+✗ Wrong: "We should use Technology X because..."  [based on assumptions]
+✓ Right: "Based on available info:
+          - Option A: [pros/cons] (confidence 60%)
+          - Option B: [pros/cons] (confidence 50%)
+          Key assumption: [state it]
+          Recommend POC to validate before deciding."
+
+### Scenario 3: Requirements Analysis
+✗ Wrong: "User needs Feature X, I'll start building"  [no complete requirements]
+✓ Right: "Requirements check:
+          Confirmed: [list]
+          Unconfirmed: [list]
+          Key assumptions: [list]
+          Recommend: Confirm [items] before development."
+
+---
+
+## Full Reference
+
+**Skill Document:** k8s-netlab-development-SKILL.md
+**Analysis Section:** Lines 651-1141
+**Version:** 2.0 (2026-02-20)
+
+**Remember: Your judgment quality directly determines project success.**

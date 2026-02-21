@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>K8S NetLab - Kubernetes 网络实验平台</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Tailwind Config -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'k8s-blue': '#326CE5',
+                        'k8s-dark': '#1E293B',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Custom Styles -->
+    <style>
+        .terminal-container {
+            background: #1e1e1e;
+            border-radius: 0.5rem;
+            overflow: hidden;
+        }
+
+        .status-dot {
+            width: 0.5rem;
+            height: 0.5rem;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-running {
+            background-color: #10b981;
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        .status-stopped {
+            background-color: #6b7280;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .loading {
+            border: 3px solid #f3f4f6;
+            border-top: 3px solid #326CE5;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+
+    <!-- xterm.js CDN -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.js"></script>
+
+    <!-- marked.js - Markdown renderer -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+
+    <!-- highlight.js - Code syntax highlighting -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css" />
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+
+    <!-- Doc panel styles -->
+    <style>
+        /* Markdown content rendering */
+        .doc-content h1 { font-size: 1.4rem; font-weight: 700; margin: 1rem 0 0.5rem; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.4rem; }
+        .doc-content h2 { font-size: 1.15rem; font-weight: 700; margin: 1.2rem 0 0.4rem; color: #1f2937; }
+        .doc-content h3 { font-size: 1rem; font-weight: 600; margin: 1rem 0 0.3rem; color: #374151; }
+        .doc-content h4 { font-size: 0.9rem; font-weight: 600; margin: 0.75rem 0 0.25rem; color: #4b5563; }
+        .doc-content p { margin: 0.4rem 0; color: #374151; line-height: 1.65; }
+        .doc-content ul { margin: 0.4rem 0 0.4rem 1.25rem; list-style-type: disc; }
+        .doc-content ol { margin: 0.4rem 0 0.4rem 1.25rem; list-style-type: decimal; }
+        .doc-content li { margin: 0.2rem 0; color: #374151; line-height: 1.6; }
+        .doc-content li > ul, .doc-content li > ol { margin-top: 0.2rem; }
+        .doc-content code:not(pre code) {
+            background: #f3f4f6;
+            padding: 0.1em 0.35em;
+            border-radius: 0.25rem;
+            font-size: 0.82rem;
+            color: #c0392b;
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+        }
+        .doc-content pre {
+            background: #0d1117;
+            border-radius: 0.5rem;
+            margin: 0.6rem 0;
+            overflow: hidden;
+            position: relative;
+        }
+        .doc-content pre code {
+            padding: 0.85rem 1rem;
+            display: block;
+            overflow-x: auto;
+            font-size: 0.78rem;
+            line-height: 1.55;
+            background: transparent;
+            color: #e6edf3;
+        }
+        .doc-content blockquote {
+            border-left: 3px solid #326CE5;
+            padding: 0.4rem 0.75rem;
+            margin: 0.6rem 0;
+            background: #eff6ff;
+            border-radius: 0 0.25rem 0.25rem 0;
+            color: #374151;
+        }
+        .doc-content table { width: 100%; border-collapse: collapse; margin: 0.6rem 0; font-size: 0.82rem; }
+        .doc-content th { background: #f3f4f6; border: 1px solid #d1d5db; padding: 0.4rem 0.6rem; text-align: left; font-weight: 600; }
+        .doc-content td { border: 1px solid #d1d5db; padding: 0.4rem 0.6rem; }
+        .doc-content hr { border: none; border-top: 1px solid #e5e7eb; margin: 0.8rem 0; }
+        .doc-content strong { font-weight: 600; color: #111827; }
+        .doc-content a { color: #326CE5; text-decoration: underline; }
+
+        /* Copy button inside code blocks */
+        .copy-btn {
+            position: absolute;
+            top: 0.4rem;
+            right: 0.4rem;
+            background: rgba(255,255,255,0.12);
+            color: #adbac7;
+            border: 1px solid rgba(255,255,255,0.18);
+            border-radius: 0.25rem;
+            padding: 0.2rem 0.55rem;
+            font-size: 0.72rem;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+            font-family: system-ui, sans-serif;
+            line-height: 1.4;
+        }
+        .copy-btn:hover { background: rgba(255,255,255,0.22); color: #fff; }
+
+        /* Lab section layout */
+        .lab-panel { height: calc(100vh - 200px); min-height: 520px; }
+
+        /* Step navigation pills */
+        .step-pill {
+            display: inline-flex; align-items: center; gap: 3px;
+            padding: 2px 8px 2px 5px; border-radius: 9999px;
+            font-size: 0.68rem; font-weight: 500; cursor: pointer;
+            border: 1px solid #d1d5db; background: #fff; color: #6b7280;
+            transition: all 0.15s; white-space: nowrap; user-select: none; line-height: 1.6;
+        }
+        .step-pill:hover { border-color: #326CE5; color: #326CE5; }
+        .step-pill.sp-active { background: #326CE5; border-color: #326CE5; color: #fff; }
+        .step-pill.sp-done { background: #ecfdf5; border-color: #10b981; color: #059669; }
+        .step-pill.sp-done.sp-active { background: #059669; border-color: #047857; color: #fff; }
+        .step-pill input[type="checkbox"] {
+            width: 10px; height: 10px; flex-shrink: 0;
+            pointer-events: none; accent-color: #10b981;
+        }
+
+        /* Responsive: stack panels vertically on mobile */
+        @media (max-width: 768px) {
+            .lab-split-body { flex-direction: column !important; }
+            .lab-doc-panel {
+                width: 100% !important; height: 45%;
+                border-right: none !important; border-bottom: 1px solid #e5e7eb;
+            }
+            .lab-terminal-panel { width: 100% !important; height: 55%; }
+            .lab-panel { height: calc(100vh - 140px); min-height: 480px; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Header -->
+    <header class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <svg class="w-10 h-10 text-k8s-blue" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                    </svg>
+                    <div>
+                        <h1 class="text-2xl font-bold text-gray-900">K8S NetLab</h1>
+                        <p class="text-sm text-gray-500">Kubernetes 网络学习实验平台</p>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-4">
+                    <div id="health-indicator" class="flex items-center space-x-2">
+                        <span class="status-dot status-stopped"></span>
+                        <span class="text-sm text-gray-600">检查中...</span>
+                    </div>
+
+                    <div id="user-info" class="flex items-center space-x-2">
+                        <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                        </svg>
+                        <span id="username-display" class="text-sm font-medium text-gray-700"></span>
+                    </div>
+
+                    <button id="btn-create-vm"
+                            class="bg-k8s-blue hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition duration-200 flex items-center space-x-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                        </svg>
+                        <span>创建实验环境</span>
+                    </button>
+
+                    <button id="btn-logout"
+                            class="text-gray-600 hover:text-gray-900 px-3 py-2 rounded-lg hover:bg-gray-100 transition duration-200">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Status Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <!-- Card: Active VMs -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-600">活跃环境</p>
+                        <p id="stat-active-vms" class="text-3xl font-bold text-gray-900 mt-2">0</p>
+                    </div>
+                    <div class="bg-green-100 rounded-full p-3">
+                        <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card: Total VMs -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-600">总环境数</p>
+                        <p id="stat-total-vms" class="text-3xl font-bold text-gray-900 mt-2">0</p>
+                    </div>
+                    <div class="bg-blue-100 rounded-full p-3">
+                        <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card: System Status -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-sm font-medium text-gray-600">系统状态</p>
+                        <p id="stat-system-status" class="text-lg font-semibold text-gray-900 mt-2">正常</p>
+                    </div>
+                    <div class="bg-purple-100 rounded-full p-3">
+                        <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VM List -->
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-semibold text-gray-900">实验环境列表</h2>
+                    <button id="btn-refresh" class="text-sm text-k8s-blue hover:text-blue-700 font-medium flex items-center space-x-1">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        </svg>
+                        <span>刷新</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- VM Table -->
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">VM ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">名称</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">状态</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">资源</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">运行时间</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="vm-list" class="bg-white divide-y divide-gray-200">
+                        <!-- VM rows will be inserted here -->
+                        <tr id="vm-list-empty">
+                            <td colspan="6" class="px-6 py-12 text-center text-gray-500">
+                                <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+                                </svg>
+                                <p class="mt-2">暂无实验环境</p>
+                                <p class="text-sm text-gray-400 mt-1">点击上方"创建实验环境"按钮开始</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Lab Section: split panel (docs left 40% | terminal right 60%) -->
+        <!-- Shown when a VM terminal is connected -->
+        <div id="terminal-section" class="mt-8 hidden">
+            <div class="bg-white rounded-lg shadow overflow-hidden lab-panel flex flex-col">
+                <!-- Panel Header -->
+                <div class="flex-shrink-0 px-4 py-2 bg-gray-800 flex items-center justify-between border-b border-gray-700">
+                    <span class="text-sm font-medium text-gray-300">实验学习台</span>
+                    <div class="flex items-center space-x-3">
+                        <span id="terminal-vm-label" class="text-xs text-gray-500"></span>
+                        <button id="btn-disconnect-terminal"
+                                class="text-xs text-gray-400 hover:text-red-400 transition duration-150">
+                            断开连接
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Split Panel Body -->
+                <div class="flex flex-1 overflow-hidden lab-split-body">
+
+                    <!-- Left Panel: Experiment Documentation (40%) -->
+                    <div class="flex flex-col border-r border-gray-200 lab-doc-panel" style="width: 40%; min-width: 0;">
+
+                        <!-- Experiment Selector -->
+                        <div class="flex-shrink-0 flex items-center px-3 py-2 bg-gray-50 border-b border-gray-200 space-x-2">
+                            <svg class="w-4 h-4 text-k8s-blue flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                            </svg>
+                            <select id="experiment-select"
+                                    class="flex-1 text-sm bg-transparent text-gray-700 focus:outline-none cursor-pointer border-none">
+                                <option value="">-- 选择实验文档 --</option>
+                            </select>
+                            <span id="doc-loading-indicator" class="hidden">
+                                <div class="loading" style="width:14px;height:14px;border-width:2px;"></div>
+                            </span>
+                        </div>
+
+                        <!-- Experiment Info Bar (shown after selection) -->
+                        <div id="doc-info-bar" class="hidden flex-shrink-0 px-3 py-1.5 bg-blue-50 border-b border-blue-100 flex items-center space-x-3 text-xs text-blue-700">
+                            <span id="doc-info-difficulty"></span>
+                            <span class="text-blue-300">|</span>
+                            <span id="doc-info-duration"></span>
+                        </div>
+
+                        <!-- Step Navigation (shown when experiment has step headings) -->
+                        <div id="step-nav" class="hidden flex-shrink-0 border-b border-gray-200 bg-gray-50">
+                            <div class="px-3 pt-2 pb-1">
+                                <div class="flex items-center justify-between mb-1">
+                                    <span class="text-xs font-medium text-gray-500">实验步骤</span>
+                                    <span id="step-progress-text" class="text-xs text-gray-500">0/0 完成</span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-1">
+                                    <div id="step-progress-bar"
+                                         class="bg-k8s-blue h-1 rounded-full transition-all duration-300"
+                                         style="width:0%"></div>
+                                </div>
+                            </div>
+                            <div id="step-pills" class="flex flex-wrap gap-1 px-3 pb-2 max-h-16 overflow-y-auto"></div>
+                        </div>
+
+                        <!-- Markdown Content Area -->
+                        <div id="doc-content" class="doc-content flex-1 overflow-y-auto p-4 text-sm">
+                            <div class="flex flex-col items-center justify-center h-full text-gray-400 space-y-3">
+                                <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                        d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+                                </svg>
+                                <p class="text-sm">从上方选择实验文档开始学习</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Panel: Terminal (60%) -->
+                    <div class="flex flex-col lab-terminal-panel" style="width: 60%; min-width: 0;">
+
+                        <!-- Terminal Title Bar (macOS style) -->
+                        <div class="flex-shrink-0 flex items-center px-3 py-2 bg-gray-900 border-b border-gray-700">
+                            <div class="flex space-x-1.5 mr-3">
+                                <div class="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+                                <div class="w-2.5 h-2.5 rounded-full bg-yellow-500"></div>
+                                <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+                            </div>
+                            <span class="text-xs text-gray-500">bash — k8s-netlab</span>
+                        </div>
+
+                        <!-- xterm.js Terminal -->
+                        <div class="terminal-container flex-1 overflow-hidden">
+                            <div id="terminal" class="h-full"></div>
+                        </div>
+                    </div>
+
+                </div><!-- end Split Panel Body -->
+            </div><!-- end lab-panel -->
+        </div><!-- end terminal-section -->
+    </main>
+
+    <!-- Loading Modal -->
+    <div id="loading-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+        <div class="bg-white rounded-lg p-8 max-w-sm mx-4">
+            <div class="flex flex-col items-center">
+                <div class="loading mb-4"></div>
+                <p id="loading-text" class="text-gray-700 font-medium">处理中...</p>
+                <p id="loading-subtext" class="text-sm text-gray-500 mt-2 text-center">请稍候</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/js/api.js"></script>
+    <script src="/js/terminal.js"></script>
+    <script src="/js/docs.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>

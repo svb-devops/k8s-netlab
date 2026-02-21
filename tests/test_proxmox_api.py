@@ -1,0 +1,109 @@
+"""
+Tests for backend/proxmox_api.py
+
+All Proxmox calls are mocked - no real server needed.
+"""
+
+import pytest
+from unittest.mock import patch, MagicMock
+
+
+@pytest.fixture(autouse=True)
+def _patch_config(monkeypatch):
+    """Patch config values directly - avoids module caching issues."""
+    from backend import config
+    monkeypatch.setattr(config, "PROXMOX_HOST", "10.0.0.1")
+    monkeypatch.setattr(config, "PROXMOX_PORT", 8006)
+    monkeypatch.setattr(config, "PROXMOX_USER", "root@pam")
+    monkeypatch.setattr(config, "PROXMOX_PASSWORD", "testpass")
+    monkeypatch.setattr(config, "PROXMOX_VERIFY_SSL", False)
+    monkeypatch.setattr(config, "PROXMOX_NODE", "pve")
+
+
+class TestConnectProxmox:
+    """Tests for connect_proxmox()"""
+
+    @patch("backend.proxmox_api.ProxmoxAPI")
+    def test_successful_connection(self, mock_pve_cls):
+        """Returns ProxmoxAPI instance on successful connection."""
+        mock_instance = MagicMock()
+        mock_instance.version.get.return_value = {"version": "8.1.3"}
+        mock_pve_cls.return_value = mock_instance
+
+        from backend.proxmox_api import connect_proxmox
+        result = connect_proxmox()
+
+        assert result is mock_instance
+        mock_pve_cls.assert_called_once_with(
+            "10.0.0.1",
+            port=8006,
+            user="root@pam",
+            password="testpass",
+            verify_ssl=False,
+        )
+        mock_instance.version.get.assert_called_once()
+
+    @patch("backend.proxmox_api.ProxmoxAPI")
+    def test_connection_failure_raises(self, mock_pve_cls):
+        """Raises ConnectionError when Proxmox is unreachable."""
+        mock_pve_cls.side_effect = Exception("Connection refused")
+
+        from backend.proxmox_api import connect_proxmox
+        with pytest.raises(ConnectionError, match="Cannot connect to Proxmox"):
+            connect_proxmox()
+
+    @patch("backend.proxmox_api.ProxmoxAPI")
+    def test_validation_failure_raises(self, mock_pve_cls):
+        """Raises ConnectionError when API validation fails."""
+        mock_instance = MagicMock()
+        mock_instance.version.get.side_effect = Exception("401 Unauthorized")
+        mock_pve_cls.return_value = mock_instance
+
+        from backend.proxmox_api import connect_proxmox
+        with pytest.raises(ConnectionError, match="API validation failed"):
+            connect_proxmox()
+
+
+class TestGetNodeStatus:
+    """Tests for get_node_status()"""
+
+    @patch("backend.proxmox_api.connect_proxmox")
+    def test_success(self, mock_connect):
+        """Returns success dict with node status data."""
+        mock_proxmox = MagicMock()
+        mock_proxmox.nodes("pve").status.get.return_value = {
+            "cpu": 0.15,
+            "memory": {"used": 4096, "total": 81920},
+        }
+        mock_connect.return_value = mock_proxmox
+
+        from backend.proxmox_api import get_node_status
+        result = get_node_status()
+
+        assert result["success"] is True
+        assert result["data"] is not None
+        assert result["error"] is None
+
+    @patch("backend.proxmox_api.connect_proxmox")
+    def test_connection_error(self, mock_connect):
+        """Returns failure dict when connection fails."""
+        mock_connect.side_effect = ConnectionError("unreachable")
+
+        from backend.proxmox_api import get_node_status
+        result = get_node_status()
+
+        assert result["success"] is False
+        assert result["data"] is None
+        assert "unreachable" in result["error"]
+
+    @patch("backend.proxmox_api.connect_proxmox")
+    def test_unexpected_error(self, mock_connect):
+        """Returns failure dict on unexpected exceptions."""
+        mock_connect.side_effect = RuntimeError("something broke")
+
+        from backend.proxmox_api import get_node_status
+        result = get_node_status()
+
+        assert result["success"] is False
+        assert result["data"] is None
+        assert "something broke" in result["error"]

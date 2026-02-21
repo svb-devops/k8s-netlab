@@ -1,0 +1,425 @@
+"""
+K8S NetLab - FastAPI Routes
+
+RESTful API endpoints for VM management.
+All routes use vm_manager functions and return standardized JSON responses.
+"""
+
+import logging
+from typing import Dict, Any, List, Optional
+
+from fastapi import APIRouter, HTTPException, Path, Query, status, Depends
+from pydantic import BaseModel, Field
+
+from backend import config
+from backend.vm_manager import create_vm, delete_vm, start_vm, list_vms
+from backend.proxmox_api import connect_proxmox
+from backend.vm_tracker import vm_tracker
+from backend.auth_deps import get_current_user
+
+logger = logging.getLogger(__name__)
+
+# Create API router
+router = APIRouter(prefix="/api", tags=["vms"])
+
+
+# ============================================================
+# Request/Response Models
+# ============================================================
+
+class CreateVMRequest(BaseModel):
+    """Request model for VM creation."""
+
+    vm_id: Optional[int] = Field(
+        None,
+        description="VM ID (100-999999). If not provided, will auto-assign.",
+        ge=100,
+        le=999999
+    )
+    template_id: int = Field(
+        default=100,
+        description="Template VM ID to clone from",
+        ge=100,
+        le=999999
+    )
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "vm_id": 500,
+                "template_id": 100
+            }
+        }
+
+
+class VMResponse(BaseModel):
+    """Response model for VM operations."""
+
+    success: bool
+    data: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "success": True,
+                "data": {
+                    "vm_id": 500,
+                    "name": "k8s-lab-500",
+                    "cores": 4,
+                    "memory_mb": 8192
+                },
+                "error": None
+            }
+        }
+
+
+class VMListResponse(BaseModel):
+    """Response model for VM list."""
+
+    success: bool
+    data: Optional[List[Dict[str, Any]]] = None
+    error: Optional[str] = None
+
+
+# ============================================================
+# Helper Functions
+# ============================================================
+
+def _find_available_vm_id() -> int:
+    """
+    Find the next available VM ID for auto-assignment.
+
+    Scans VM IDs from 500-599 and returns the first available ID.
+
+    Returns:
+        int: Available VM ID (500-599)
+
+    Raises:
+        HTTPException: If no available IDs found
+    """
+    result = list_vms()
+    if not result['success']:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list VMs: {result['error']}"
+        )
+
+    existing_ids = {vm['vmid'] for vm in result['data']}
+
+    # Search for available ID in range 500-599
+    for vm_id in range(500, 600):
+        if vm_id not in existing_ids:
+            return vm_id
+
+    raise HTTPException(
+        status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
+        detail="No available VM IDs in range 500-599"
+    )
+
+
+# ============================================================
+# API Routes
+# ============================================================
+
+@router.post(
+    "/vms/create",
+    response_model=VMResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new VM",
+    description="Clone a template and create a new VM with configured resources"
+)
+async def api_create_vm(
+    request: CreateVMRequest,
+    current_user: str = Depends(get_current_user)
+) -> VMResponse:
+    """
+    Create a new VM by cloning a template.
+
+    Args:
+        request: VM creation parameters (vm_id optional, template_id required)
+        current_user: Current authenticated user (injected by auth dependency)
+
+    Returns:
+        VMResponse with created VM details
+
+    Raises:
+        HTTPException: If creation fails or not authenticated
+    """
+    try:
+        # Auto-assign VM ID if not provided
+        vm_id = request.vm_id if request.vm_id else _find_available_vm_id()
+
+        logger.info(f"API: User '{current_user}' creating VM {vm_id} from template {request.template_id}")
+
+        # Create VM using vm_manager
+        result = create_vm(vm_id=vm_id, template_id=request.template_id)
+
+        if result['success']:
+            logger.info(f"API: VM {vm_id} created successfully by '{current_user}'")
+            # Track VM for auto-cleanup with owner
+            vm_tracker.track_vm(vm_id, owner=current_user)
+            return VMResponse(**result)
+        else:
+            logger.error(f"API: VM creation failed: {result['error']}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result['error']
+            )
+
+    except ValueError as e:
+        logger.error(f"API: Invalid input: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.critical(f"API: Unexpected error creating VM: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error: {str(e)}"
+        )
+
+
+@router.delete(
+    "/vms/{vm_id}",
+    response_model=VMResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Delete a VM",
+    description="Stop and delete a VM"
+)
+async def api_delete_vm(
+    vm_id: int = Path(..., ge=100, le=999999, description="VM ID to delete"),
+    force: bool = Query(True, description="Force-stop VM before deletion"),
+    current_user: str = Depends(get_current_user)
+) -> VMResponse:
+    """
+    Delete a VM.
+
+    Args:
+        vm_id: ID of the VM to delete
+        force: If True, force-stop the VM before deletion
+        current_user: Current authenticated user (injected by auth dependency)
+
+    Returns:
+        VMResponse with deletion status
+
+    Raises:
+        HTTPException: If deletion fails, not authenticated, or not owner
+    """
+    try:
+        # Check if user owns this VM
+        if not vm_tracker.is_owner(vm_id, current_user):
+            owner = vm_tracker.get_vm_owner(vm_id)
+            logger.warning(f"API: User '{current_user}' tried to delete VM {vm_id} owned by '{owner}'")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"You don't have permission to delete this VM (owned by {owner})"
+            )
+
+        logger.info(f"API: User '{current_user}' deleting VM {vm_id} (force={force})")
+
+        # Delete VM using vm_manager
+        result = delete_vm(vm_id=vm_id, force=force)
+
+        if result['success']:
+            logger.info(f"API: VM {vm_id} deleted successfully")
+            # Untrack VM
+            vm_tracker.untrack_vm(vm_id)
+            return VMResponse(**result)
+        else:
+            logger.error(f"API: VM deletion failed: {result['error']}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result['error']
+            )
+
+    except ValueError as e:
+        logger.error(f"API: Invalid VM ID: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.critical(f"API: Unexpected error deleting VM {vm_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error: {str(e)}"
+        )
+
+
+@router.get(
+    "/vms",
+    response_model=VMListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="List all VMs",
+    description="Get a list of all VMs on the Proxmox node"
+)
+async def api_list_vms(
+    current_user: str = Depends(get_current_user)
+) -> VMListResponse:
+    """
+    List user's VMs.
+
+    Returns:
+        VMListResponse with list of current user's VMs
+
+    Raises:
+        HTTPException: If listing fails or not authenticated
+    """
+    try:
+        logger.info(f"API: Listing VMs for user '{current_user}'")
+
+        # List all VMs using vm_manager
+        result = list_vms()
+
+        if result['success']:
+            # Filter VMs to only show user's VMs
+            all_vms = result['data']
+            user_vm_ids = set(vm_tracker.get_user_vms(current_user))
+
+            # Auto-claim orphaned VMs (VMs without owner)
+            # This handles pre-existing VMs or VMs created outside the system
+            for vm in all_vms:
+                vm_id = vm['vmid']
+
+                # Skip template VMs
+                if vm.get('template'):
+                    continue
+
+                # If VM has no owner, assign it to current user
+                owner = vm_tracker.get_vm_owner(vm_id)
+                if owner is None:
+                    logger.info(f"Auto-claiming orphaned VM {vm_id} for user '{current_user}'")
+                    vm_tracker.track_vm(vm_id, owner=current_user)
+                    user_vm_ids.add(vm_id)
+
+            # Only include VMs owned by current user
+            user_vms = [vm for vm in all_vms if vm['vmid'] in user_vm_ids]
+
+            logger.info(f"API: Found {len(user_vms)} VMs for user '{current_user}' (total: {len(all_vms)})")
+
+            return VMListResponse(
+                success=True,
+                data=user_vms,
+                error=None
+            )
+        else:
+            logger.error(f"API: VM listing failed: {result['error']}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=result['error']
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.critical(f"API: Unexpected error listing VMs: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected error: {str(e)}"
+        )
+
+
+@router.get(
+    "/vms/{vm_id}/status",
+    response_model=VMResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get VM status",
+    description="Get the current status of a specific VM"
+)
+async def api_get_vm_status(
+    vm_id: int = Path(..., ge=100, le=999999, description="VM ID")
+) -> VMResponse:
+    """
+    Get VM status.
+
+    Args:
+        vm_id: ID of the VM
+
+    Returns:
+        VMResponse with VM status details
+
+    Raises:
+        HTTPException: If VM not found or status retrieval fails
+    """
+    try:
+        logger.info(f"API: Getting status for VM {vm_id}")
+
+        # Connect to Proxmox and get VM status
+        proxmox = connect_proxmox()
+        node = proxmox.nodes(config.PROXMOX_NODE)
+
+        # Get VM current status
+        status_data = node.qemu(vm_id).status.current.get()
+
+        logger.info(f"API: VM {vm_id} status retrieved: {status_data.get('status')}")
+
+        return VMResponse(
+            success=True,
+            data={
+                "vm_id": vm_id,
+                "status": status_data.get("status"),
+                "uptime": status_data.get("uptime", 0),
+                "cpu": status_data.get("cpu", 0),
+                "mem": status_data.get("mem", 0),
+                "maxmem": status_data.get("maxmem", 0),
+                "cpus": status_data.get("cpus", 0),
+                "name": status_data.get("name", ""),
+            },
+            error=None
+        )
+
+    except Exception as e:
+        logger.error(f"API: Failed to get VM {vm_id} status: {e}")
+
+        # Check if VM doesn't exist
+        if "does not exist" in str(e).lower() or "not found" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"VM {vm_id} not found"
+            )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get VM status: {str(e)}"
+        )
+
+
+@router.get(
+    "/health",
+    status_code=status.HTTP_200_OK,
+    summary="Health check",
+    description="Check if the API and Proxmox connection are healthy"
+)
+async def api_health_check() -> Dict[str, Any]:
+    """
+    Health check endpoint.
+
+    Returns:
+        dict: Health status with Proxmox connection info
+    """
+    try:
+        # Test Proxmox connection
+        proxmox = connect_proxmox()
+        version_info = proxmox.version.get()
+
+        return {
+            "status": "healthy",
+            "proxmox": {
+                "connected": True,
+                "version": version_info.get("version"),
+                "host": config.PROXMOX_HOST,
+                "node": config.PROXMOX_NODE
+            }
+        }
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {
+            "status": "unhealthy",
+            "error": str(e)
+        }
