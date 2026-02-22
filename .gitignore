@@ -49,5 +49,8 @@ Thumbs.db
 # Proxmox credentials
 proxmox_credentials.*
 
+# Local security config (contains real IPs — never commit)
+.security-config
+
 # Any other .env files
 *.env
