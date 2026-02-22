@@ -83,7 +83,7 @@ VM_SSH_USER: str = os.getenv("VM_SSH_USER", "k8s_lab")
 VM_SSH_PASSWORD: str = _get_required_env("VM_SSH_PASSWORD")
 
 # --- VM Configuration ---
-VM_TEMPLATE_ID: int = _get_env_int("VM_TEMPLATE_ID", 9000)
+VM_TEMPLATE_ID: int = _get_env_int("VM_TEMPLATE_ID", 100)
 VM_CORES: int = _get_env_int("VM_CORES", 4)
 VM_MEMORY_MB: int = _get_env_int("VM_MEMORY_MB", 8192)
 VM_SESSION_TIMEOUT_MIN: int = _get_env_int("VM_SESSION_TIMEOUT_MIN", 30)
@@ -93,5 +93,12 @@ APP_HOST: str = os.getenv("APP_HOST", "0.0.0.0")
 APP_PORT: int = _get_env_int("APP_PORT", 8000)
 APP_DEBUG: bool = _get_env_bool("APP_DEBUG", False)
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+
+# --- Network Isolation Configuration ---
+VM_NETWORK: str = os.getenv("VM_NETWORK", "172.16.100.0/24")
+VM_GATEWAY: str = os.getenv("VM_GATEWAY", "172.16.100.1")
+VM_BRIDGE: str = os.getenv("VM_BRIDGE", "vmbr1")
+VM_IP_START: int = _get_env_int("VM_IP_START", 10)
+VM_IP_END: int = _get_env_int("VM_IP_END", 254)
 
 logger.info("Configuration loaded successfully")

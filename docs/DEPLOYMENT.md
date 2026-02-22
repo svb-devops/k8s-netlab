@@ -226,3 +226,93 @@ echo "Host: $PROXMOX_HOST, User: $PROXMOX_USER"
 - GitHub Issues: [项目地址]/issues
 - 快速入门: [docs/QUICK-START.md](QUICK-START.md)
 - 实验文档: [docs/experiments/](experiments/)
+
+---
+
+## 网络隔离
+
+### 安全架构
+
+K8S NetLab 使用独立网段 (`172.16.100.0/24`) 运行实验 VM，与家庭网络 (`10.0.0.0/24`) 完全隔离。
+
+**网络拓扑：**
+
+```
+互联网
+  |
+家庭路由器 (10.0.0.1)
+  |
+  +-- 家庭 WiFi 网段 (10.0.0.0/24)
+  |     |-- 手机、电脑、IoT 设备
+  |     |
+  |     +-- PVE 宿主机 (10.0.0.110)
+  |           |
+  |           +-- vmbr0 (管理网络, 10.0.0.110/24)
+  |           |
+  |           +-- vmbr1 (隔离网桥, 172.16.100.1/24)
+  |                 |
+  |                 +-- K8S NetLab VMs (172.16.100.10-254, DHCP)
+  |                       |
+  |                       +-- ✅ 可访问外网 (via NAT)
+  |                       +-- ❌ 不可访问家庭网络
+```
+
+**防火墙规则（iptables FORWARD 链）：**
+
+| 规则 | 源             | 目标            | 动作   |
+|------|----------------|-----------------|--------|
+| 1    | vmbr1 → vmbr1  | any             | ACCEPT |
+| 2    | 172.16.100.0/24 | 10.0.0.0/24    | DROP   |
+| 3    | 10.0.0.0/24    | 172.16.100.0/24 | DROP   |
+| 4    | vmbr1 → vmbr0  | any             | ACCEPT |
+| 5    | vmbr0 → vmbr1  | ESTABLISHED     | ACCEPT |
+
+**NAT：** `172.16.100.0/24 → MASQUERADE`（VM 通过 PVE 宿主机出口访问外网）
+
+### PVE 配置
+
+**vmbr1（/etc/network/interfaces）：**
+
+```
+auto vmbr1
+iface vmbr1 inet static
+    address 172.16.100.1/24
+    bridge-ports none
+    bridge-stp off
+    bridge-fd 0
+```
+
+**DHCP 服务（/etc/dnsmasq.d/vmbr1-dhcp.conf）：**
+
+- 地址池：`172.16.100.10` – `172.16.100.254`
+- 租约：12小时
+- DNS：`8.8.8.8`, `8.8.4.4`
+
+### 验证隔离效果
+
+在任意实验 VM 内运行：
+
+```bash
+# ✅ 应该通（外网访问）
+ping -c 3 8.8.8.8
+
+# ❌ 应该不通（家庭网络隔离）
+ping -c 3 10.0.0.1
+
+# ✅ 应该通（网关）
+ping -c 3 172.16.100.1
+```
+
+第2个 ping 超时无响应，说明隔离配置正确。
+
+### 环境变量
+
+在 `.env` 中配置：
+
+```env
+VM_NETWORK=172.16.100.0/24
+VM_GATEWAY=172.16.100.1
+VM_BRIDGE=vmbr1
+VM_IP_START=10
+VM_IP_END=254
+```

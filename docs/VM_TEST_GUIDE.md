@@ -438,7 +438,7 @@ crictl pull nginx:latest
 
 测试时间: YYYY-MM-DD HH:MM
 VM ID: XXX
-VM IP: 10.0.0.XXX
+VM IP: 172.16.100.XXX
 
 ## K3s集群状态
 - kubectl版本: v1.28.x ✅

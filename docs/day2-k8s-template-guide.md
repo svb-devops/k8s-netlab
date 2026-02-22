@@ -156,7 +156,7 @@ sleep 60
 qm guest cmd 100 network-get-interfaces
 
 # 或者通过 Proxmox 界面查看
-# 预期 IP: 10.0.0.x (DHCP 分配)
+# 预期 IP: 172.16.100.x (DHCP 分配，隔离网段)
 ```
 
 **检查点 ✓**:
@@ -172,8 +172,8 @@ qm guest cmd 100 network-get-interfaces
 ### 3.1 SSH 连接到 VM
 
 ```bash
-# 获取 VM IP (假设是 10.0.0.150)
-VM_IP=$(qm guest cmd 100 network-get-interfaces | grep -oP '10\.0\.0\.\d+' | head -1)
+# 获取 VM IP (隔离网段 172.16.100.x)
+VM_IP=$(qm guest cmd 100 network-get-interfaces | grep -oP '172\.16\.100\.\d+' | head -1)
 
 # SSH 连接
 ssh root@$VM_IP
