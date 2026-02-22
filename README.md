@@ -1,5 +1,13 @@
 # K8S NetLab - Kubernetes 网络实验平台
 
+> **Security & Privacy Notice**
+>
+> This is an educational Kubernetes networking platform. Network diagrams
+> and configuration examples may reference private IP addresses (RFC 1918).
+> All sensitive credentials have been sanitized.
+>
+> Current codebase uses environment variables and placeholders for all
+> sensitive data. Pre-commit security checks prevent future leaks.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org)
