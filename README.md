@@ -74,6 +74,30 @@ VM_SSH_PASSWORD=your-vm-template-password
 
 详细部署说明见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
+### Git 提交安全检查（强制）
+
+本项目包含基础设施配置，**严禁**将以下信息提交到 Git：
+
+- 密码、API 密钥、Token
+- 真实 IP 地址（使用 `<HOST_IP>` 等占位符）
+- `.env` 配置文件、私钥文件
+- 网络拓扑细节（含真实地址）
+- 用户数据文件
+
+**安装自动检查 Hook（每次克隆后运行一次）：**
+
+```bash
+bash scripts/install-git-hooks.sh
+```
+
+安装后每次 `git commit` 前自动拦截敏感信息。手动检查：
+
+```bash
+bash scripts/pre-commit-security-check.sh
+```
+
+完整规范见 [docs/GIT-SECURITY-CHECKLIST.md](docs/GIT-SECURITY-CHECKLIST.md)（**所有贡献者必读**）
+
 ---
 
 ## 🚀 快速开始
