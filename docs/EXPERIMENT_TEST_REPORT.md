@@ -28,7 +28,7 @@
 **实际输出:**
 ```
 traefik-55db578d67-psdc8  1/1  Running
-traefik  LoadBalancer  10.43.80.17  10.0.0.9  80:31086/TCP,443:30267/TCP
+traefik  LoadBalancer  10.43.80.17  <LoadBalancer_ExternalIP>  80:31086/TCP,443:30267/TCP
 ```
 **结论:** Traefik运行正常，与文档预期一致
 
