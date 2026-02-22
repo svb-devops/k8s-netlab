@@ -1,5 +1,13 @@
 # K8S NetLab - Kubernetes 网络实验平台
 
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org)
+[![Platform](https://img.shields.io/badge/platform-linux-lightgrey.svg)](https://www.linux.org)
+[![GitHub stars](https://img.shields.io/github/stars/svb-devops/k8s-netlab.svg)](https://github.com/svb-devops/k8s-netlab/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/svb-devops/k8s-netlab.svg)](https://github.com/svb-devops/k8s-netlab/network)
+
+
 ## 🎉 现在可以使用！
 
 K8S NetLab v1.0 正式发布，最好用的 Kubernetes 网络实验平台。
