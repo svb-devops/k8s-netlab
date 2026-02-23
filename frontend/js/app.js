@@ -78,7 +78,7 @@ class K8SNetLabApp {
     updateHealthIndicator(isHealthy, text) {
         const indicator = this.elements.healthIndicator;
         const dot = indicator.querySelector('.status-dot');
-        const span = indicator.querySelector('span');
+        const span = indicator.querySelector('#health-status-text');
 
         if (isHealthy) {
             dot.classList.remove('status-stopped');
