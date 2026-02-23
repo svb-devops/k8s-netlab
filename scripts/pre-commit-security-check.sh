@@ -76,7 +76,7 @@ fi
 # 4. .env files
 # ----------------------------------------------------------
 echo "【4/8】检查.env配置文件..."
-ENV_FILES=$(git diff --cached --name-only | grep -E '(^|/)\.env($|\.)' || true)
+ENV_FILES=$(git diff --cached --name-only | grep -E '(^|/)\.env($|\.)' | grep -v '\.example$\|\.sample$\|\.template$' || true)
 if [ -n "$ENV_FILES" ]; then
     echo "❌ 发现.env文件: $ENV_FILES"
     ISSUES=$((ISSUES + 1))

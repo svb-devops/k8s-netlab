@@ -1,5 +1,48 @@
 # K8S NetLab 部署指南
 
+## 🚀 快速开始（10分钟）
+
+### 自动部署（推荐）
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/your-username/k8s-netlab.git
+cd k8s-netlab
+
+# 2. 运行自动部署脚本
+bash scripts/bootstrap.sh
+
+# 3. 访问
+# http://localhost:8000
+```
+
+脚本会自动：
+- ✅ 检查Python版本（需要3.10+）
+- ✅ 创建虚拟环境
+- ✅ 安装所有依赖
+- ✅ 引导创建配置文件
+- ✅ 启动服务
+
+### 手动部署
+
+如果需要逐步控制每个环节：
+
+```bash
+# 1. 安装依赖
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# 2. 配置
+cp .env.example .env
+nano .env  # 至少填写 PROXMOX_HOST / PROXMOX_PASSWORD / VM_SSH_PASSWORD
+
+# 3. 启动
+python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```
+
+---
+
 ## 环境要求
 
 ### 硬件要求
