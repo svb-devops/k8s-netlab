@@ -63,8 +63,8 @@ class K8SNetLabApp {
         const result = await api.healthCheck();
 
         if (result.status === 'healthy' && result.proxmox?.connected) {
-            const version = result.proxmox.version ?? '已连接';
-            this.updateHealthIndicator(true, `Proxmox v${version}`);
+            const version = result.proxmox.version ?? '';
+            this.updateHealthIndicator(true, version ? `Proxmox v${version}` : 'Proxmox 已连接');
             this.elements.statSystemStatus.textContent = '正常';
         } else {
             this.updateHealthIndicator(false, '连接失败');
