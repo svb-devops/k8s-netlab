@@ -5,6 +5,7 @@ Provides WebSocket-based SSH terminal access to VMs.
 """
 
 import asyncio
+import ipaddress
 import logging
 from typing import Optional
 
@@ -26,6 +27,7 @@ class SSHTerminal:
         self.vm_ip = vm_ip
         self.ssh_client: Optional[paramiko.SSHClient] = None
         self.channel: Optional[paramiko.Channel] = None
+        self.last_error: Optional[str] = None
 
     async def connect(self, username: str = None, password: str = None):
         """Connect to VM via SSH."""
@@ -60,7 +62,8 @@ class SSHTerminal:
             return True
 
         except Exception as e:
-            logger.error(f"SSH connection failed to VM {self.vm_id}: {e}")
+            logger.error(f"SSH connection failed to VM {self.vm_id} ({self.vm_ip}): {e}")
+            self.last_error = str(e)
             return False
 
     async def send(self, data: str):
@@ -92,24 +95,49 @@ class SSHTerminal:
 
 
 async def get_vm_ip(vm_id: int) -> Optional[str]:
-    """Get VM IP address from Proxmox."""
+    """
+    Get VM IP address from Proxmox QEMU agent.
+
+    Filters to return only IPs within the configured VM_NETWORK range
+    (e.g. 172.16.100.0/24), skipping k3s/flannel/CNI virtual interfaces
+    that would not be reachable from the host.
+    """
     try:
         proxmox = connect_proxmox()
         node = proxmox.nodes(config.PROXMOX_NODE)
 
-        # Get VM network interfaces
+        # Get VM network interfaces via QEMU guest agent
         interfaces = node.qemu(vm_id).agent.get("network-get-interfaces")
 
-        # Find first non-lo interface IP
+        # Build VM network object for filtering
+        try:
+            vm_network = ipaddress.ip_network(config.VM_NETWORK, strict=False)
+        except ValueError:
+            vm_network = None
+            logger.warning(f"Invalid VM_NETWORK config '{config.VM_NETWORK}', IP filtering disabled")
+
         for iface in interfaces.get("result", []):
             if iface.get("name") == "lo":
                 continue
 
             for ip_addr in iface.get("ip-addresses", []):
-                if ip_addr.get("ip-address-type") == "ipv4":
-                    ip = ip_addr.get("ip-address")
-                    if ip and not ip.startswith("127."):
-                        return ip
+                if ip_addr.get("ip-address-type") != "ipv4":
+                    continue
+                ip = ip_addr.get("ip-address")
+                if not ip:
+                    continue
+
+                # Prefer IPs within the configured VM network (skips flannel/CNI IPs)
+                if vm_network:
+                    try:
+                        if ipaddress.ip_address(ip) in vm_network:
+                            logger.info(f"VM {vm_id} IP found: {ip} (iface: {iface.get('name')})")
+                            return ip
+                    except ValueError:
+                        pass
+                elif not ip.startswith("127."):
+                    # Fallback when VM_NETWORK is not configured
+                    return ip
 
         return None
 
@@ -158,9 +186,10 @@ async def websocket_terminal(websocket: WebSocket, vm_id: int):
 
         # Connect to VM
         if not await terminal.connect():
+            error_detail = terminal.last_error or "未知错误"
             await websocket.send_json({
                 "type": "error",
-                "message": f"无法连接到 VM {vm_id}"
+                "message": f"SSH 连接失败 ({vm_ip}): {error_detail}"
             })
             await websocket.close()
             return
