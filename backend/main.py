@@ -74,7 +74,13 @@ async def auto_cleanup_task():
                             logger.info(f"Auto-cleanup: VM {vm_id} deleted successfully")
                             vm_tracker.untrack_vm(vm_id)
                         else:
-                            logger.error(f"Auto-cleanup: Failed to delete VM {vm_id}: {result['error']}")
+                            error = result['error'] or ""
+                            # VM no longer exists in Proxmox — stop tracking it
+                            if "does not exist" in error or "Configuration file" in error:
+                                logger.warning(f"Auto-cleanup: VM {vm_id} not found in Proxmox, removing from tracker")
+                                vm_tracker.untrack_vm(vm_id)
+                            else:
+                                logger.error(f"Auto-cleanup: Failed to delete VM {vm_id}: {error}")
 
                     except Exception as e:
                         logger.error(f"Auto-cleanup: Error deleting VM {vm_id}: {e}")
