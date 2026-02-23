@@ -163,7 +163,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For MVP, allow all origins
+    allow_origin_regex=".*",  # Echo specific origin (required when allow_credentials=True)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -339,13 +339,19 @@ class K8SNetLabApp {
     async checkAuth() {
         try {
             const response = await fetch('/api/auth/me', {
-                credentials: 'same-origin'  // Include cookies
+                credentials: 'include'
             });
 
-            if (!response.ok) {
-                // Not authenticated, redirect to login
+            // Only redirect to login on explicit auth failure (401/403)
+            if (response.status === 401 || response.status === 403) {
                 console.log('Not authenticated, redirecting to login...');
                 window.location.href = '/login.html';
+                return;
+            }
+
+            if (!response.ok) {
+                // Server error — don't redirect, user may still be authenticated
+                console.warn('Auth check returned server error:', response.status);
                 return;
             }
 
@@ -357,8 +363,8 @@ class K8SNetLabApp {
             }
 
         } catch (error) {
-            console.error('Auth check failed:', error);
-            window.location.href = '/login.html';
+            // Network error — don't redirect, backend may be temporarily unavailable
+            console.error('Auth check failed (network):', error);
         }
     }
 
