@@ -5,6 +5,7 @@ Provides WebSocket-based SSH terminal access to VMs.
 """
 
 import asyncio
+import base64
 import ipaddress
 import logging
 from typing import Optional
@@ -146,6 +147,35 @@ async def get_vm_ip(vm_id: int) -> Optional[str]:
         return None
 
 
+async def sync_vm_password(vm_id: int) -> bool:
+    """
+    Set the VM user's SSH password via QEMU guest agent so it matches
+    VM_SSH_PASSWORD in config, regardless of what was on the template.
+
+    Called after the QEMU agent is confirmed running (i.e. after get_vm_ip
+    succeeds).  Failure is non-fatal: SSH is still attempted with the
+    configured credentials.
+    """
+    try:
+        proxmox = connect_proxmox()
+        node = proxmox.nodes(config.PROXMOX_NODE)
+
+        # Proxmox API requires the password to be base64-encoded
+        encoded_pw = base64.b64encode(config.VM_SSH_PASSWORD.encode()).decode()
+
+        node.qemu(vm_id).agent.post(
+            "set-user-password",
+            username=config.VM_SSH_USER,
+            password=encoded_pw,
+        )
+        logger.info(f"VM {vm_id} SSH password synced via QEMU agent (user: {config.VM_SSH_USER})")
+        return True
+
+    except Exception as e:
+        logger.warning(f"VM {vm_id} QEMU agent password sync failed: {e}")
+        return False
+
+
 async def websocket_terminal(websocket: WebSocket, vm_id: int):
     """
     WebSocket terminal handler.
@@ -180,6 +210,10 @@ async def websocket_terminal(websocket: WebSocket, vm_id: int):
             })
             await websocket.close()
             return
+
+        # Sync SSH password via QEMU agent so credentials always match config
+        # (handles templates whose original password differs from VM_SSH_PASSWORD)
+        await sync_vm_password(vm_id)
 
         # Create SSH terminal
         terminal = SSHTerminal(vm_id, vm_ip)
