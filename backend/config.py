@@ -79,7 +79,7 @@ PROXMOX_VERIFY_SSL: bool = _get_env_bool("PROXMOX_VERIFY_SSL", False)
 PROXMOX_NODE: str = os.getenv("PROXMOX_NODE", "pve")
 
 # --- VM SSH Configuration ---
-VM_SSH_USER: str = os.getenv("VM_SSH_USER", "k8s_lab")
+VM_SSH_USER: str = os.getenv("VM_SSH_USER", "root")
 VM_SSH_PASSWORD: str = _get_required_env("VM_SSH_PASSWORD")
 
 # --- VM Configuration ---

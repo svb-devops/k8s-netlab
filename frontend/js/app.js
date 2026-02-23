@@ -63,7 +63,8 @@ class K8SNetLabApp {
         const result = await api.healthCheck();
 
         if (result.status === 'healthy' && result.proxmox?.connected) {
-            this.updateHealthIndicator(true, `Proxmox ${result.proxmox.version}`);
+            const version = result.proxmox.version ?? '已连接';
+            this.updateHealthIndicator(true, `Proxmox v${version}`);
             this.elements.statSystemStatus.textContent = '正常';
         } else {
             this.updateHealthIndicator(false, '连接失败');
@@ -217,7 +218,7 @@ class K8SNetLabApp {
         if (result.success) {
             this.showSuccess(
                 '创建成功！',
-                `VM ${result.data.vm_id} (${result.data.name}) 已创建并启动。\n资源: ${result.data.cores} 核 CPU, ${result.data.memory_mb} MB 内存`
+                `VM ${result.data.vm_id} (${result.data.name}) 已创建并启动。\n资源: ${result.data.cores} 核 CPU, ${result.data.memory_mb} MB 内存\n\n⏳ 网络就绪约需 1 分钟，终端连接时会自动等待。`
             );
             await this.refreshVMList();
         } else {

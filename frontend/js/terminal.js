@@ -70,6 +70,8 @@ class TerminalManager {
                 const msg = JSON.parse(event.data);
                 if (msg.type === 'error') {
                     this.terminal.write('\r\n\x1b[31m✗ 错误: ' + msg.message + '\x1b[0m\r\n');
+                } else if (msg.type === 'waiting') {
+                    this.terminal.write('\r\x1b[33m⏳ ' + msg.message + '\x1b[0m');
                 } else if (msg.type === 'connected') {
                     this.terminal.write('\r\n\x1b[32m✓ SSH 连接成功 (' + msg.vm_ip + ')\x1b[0m\r\n\r\n');
                 } else if (msg.type === 'disconnected') {

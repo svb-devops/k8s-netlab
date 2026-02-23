@@ -130,12 +130,25 @@ async def websocket_terminal(websocket: WebSocket, vm_id: int):
     terminal: Optional[SSHTerminal] = None
 
     try:
-        # Get VM IP
-        vm_ip = await get_vm_ip(vm_id)
+        # Get VM IP with retry (VM may still be booting)
+        MAX_IP_RETRIES = 12
+        IP_RETRY_INTERVAL = 5  # seconds between retries (12 * 5 = 60s total)
+        vm_ip = None
+        for attempt in range(MAX_IP_RETRIES):
+            vm_ip = await get_vm_ip(vm_id)
+            if vm_ip:
+                break
+            if attempt < MAX_IP_RETRIES - 1:
+                await websocket.send_json({
+                    "type": "waiting",
+                    "message": f"等待 VM 网络就绪... ({attempt + 1}/{MAX_IP_RETRIES})",
+                })
+                await asyncio.sleep(IP_RETRY_INTERVAL)
+
         if not vm_ip:
             await websocket.send_json({
                 "type": "error",
-                "message": f"无法获取 VM {vm_id} 的 IP 地址"
+                "message": f"无法获取 VM {vm_id} 的 IP 地址（已等待 {MAX_IP_RETRIES * IP_RETRY_INTERVAL}s）"
             })
             await websocket.close()
             return
