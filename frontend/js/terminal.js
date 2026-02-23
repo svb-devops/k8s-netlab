@@ -100,13 +100,6 @@ class TerminalManager {
         // Terminal input -> WebSocket
         this.terminal.onData((data) => {
             if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-                // Local echo for digit keys (48-57) to fix SSH echo issue
-                const charCode = data.charCodeAt(0);
-                if (charCode >= 48 && charCode <= 57 && data.length === 1) {
-                    // Digit key - echo locally
-                    this.terminal.write(data);
-                }
-
                 this.websocket.send(data);
             }
         });
