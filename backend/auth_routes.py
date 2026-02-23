@@ -7,10 +7,11 @@ User registration, login, and session management.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Response, Cookie, status
+from fastapi import APIRouter, HTTPException, Request, Response, Cookie, status
 from pydantic import BaseModel, Field
 
 from backend.auth import auth_manager
+from backend.rate_limiter import rate_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +95,7 @@ async def register(request: RegisterRequest) -> AuthResponse:
     response_model=AuthResponse,
     summary="Login"
 )
-async def login(request: LoginRequest, response: Response) -> AuthResponse:
+async def login(credentials: LoginRequest, response: Response, request: Request) -> AuthResponse:
     """
     Login with username and password.
 
@@ -108,15 +109,25 @@ async def login(request: LoginRequest, response: Response) -> AuthResponse:
         AuthResponse with login status
     """
     try:
+        # Rate limit: 5 login attempts per IP per 60 seconds
+        client_ip = request.client.host if request.client else "unknown"
+        if not rate_limiter.is_allowed(f"login:{client_ip}", max_requests=5, window_seconds=60):
+            wait = rate_limiter.retry_after(f"login:{client_ip}", window_seconds=60)
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"登录尝试过于频繁，请 {wait} 秒后重试",
+                headers={"Retry-After": str(wait)},
+            )
+
         # Verify credentials
-        if not auth_manager.verify_credentials(request.username, request.password):
+        if not auth_manager.verify_credentials(credentials.username, credentials.password):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid username or password"
             )
 
         # Create session
-        token = auth_manager.create_session(request.username)
+        token = auth_manager.create_session(credentials.username)
 
         # Set session cookie (httponly for security)
         response.set_cookie(
@@ -130,7 +141,7 @@ async def login(request: LoginRequest, response: Response) -> AuthResponse:
         return AuthResponse(
             success=True,
             message="Login successful",
-            username=request.username
+            username=credentials.username
         )
 
     except HTTPException:

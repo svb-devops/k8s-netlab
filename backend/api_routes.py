@@ -16,6 +16,7 @@ from backend.vm_manager import create_vm, delete_vm, start_vm, list_vms
 from backend.proxmox_api import connect_proxmox
 from backend.vm_tracker import vm_tracker
 from backend.auth_deps import get_current_user
+from backend.rate_limiter import rate_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +148,15 @@ async def api_create_vm(
         HTTPException: If creation fails or not authenticated
     """
     try:
+        # Rate limit: 3 VM creations per user per hour
+        if not rate_limiter.is_allowed(f"create_vm:{current_user}", max_requests=3, window_seconds=3600):
+            wait = rate_limiter.retry_after(f"create_vm:{current_user}", window_seconds=3600)
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"VM 创建过于频繁，请 {wait // 60} 分钟后重试",
+                headers={"Retry-After": str(wait)},
+            )
+
         # Auto-assign VM ID if not provided
         vm_id = request.vm_id if request.vm_id else _find_available_vm_id()
 
