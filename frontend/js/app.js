@@ -209,10 +209,21 @@ class K8SNetLabApp {
         const confirmed = confirm('确定要创建新的实验环境吗？\n\n这将需要约 1-2 分钟时间。');
         if (!confirmed) return;
 
-        this.showLoading('创建环境中...', '正在克隆模板并配置资源，预计需要 1-2 分钟');
+        // Show dynamic progress stages while waiting for VM creation
+        const stages = [
+            { delay: 0,    text: '正在克隆模板...', sub: '复制磁盘镜像，请稍候' },
+            { delay: 20000, text: '正在配置 VM...', sub: '设置 CPU、内存、网络' },
+            { delay: 50000, text: '正在启动系统...', sub: 'VM 启动中，即将完成' },
+            { delay: 80000, text: '等待服务就绪...', sub: '系统初始化中' },
+        ];
+        const stageTimers = stages.map(s =>
+            setTimeout(() => this.showLoading(s.text, s.sub), s.delay)
+        );
+        this.showLoading(stages[0].text, stages[0].sub);
 
         const result = await api.createVM();
 
+        stageTimers.forEach(t => clearTimeout(t));
         this.hideLoading();
 
         if (result.success) {
