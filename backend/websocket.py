@@ -163,12 +163,25 @@ async def sync_vm_password(vm_id: int) -> bool:
         proxmox = connect_proxmox()
         node = proxmox.nodes(config.PROXMOX_NODE)
 
+        # Set SSH password
         node.qemu(vm_id).agent.post(
             "set-user-password",
             username=config.VM_SSH_USER,
             password=config.VM_SSH_PASSWORD,
         )
         logger.info(f"VM {vm_id} SSH password synced via QEMU agent (user: {config.VM_SSH_USER})")
+
+        # If logging in as root, ensure password auth is permitted
+        # (cloud-init templates default to prohibit-password for root)
+        if config.VM_SSH_USER == "root":
+            r = node.qemu(vm_id).agent.post(
+                "exec",
+                command=["bash", "-c",
+                    "echo 'PermitRootLogin yes' > /etc/ssh/sshd_config.d/60-root-login.conf"
+                    " && systemctl restart ssh || service ssh restart"],
+            )
+            logger.info(f"VM {vm_id} PermitRootLogin enabled (pid={r.get('pid')})")
+
         return True
 
     except Exception as e:
