@@ -5,7 +5,6 @@ Provides WebSocket-based SSH terminal access to VMs.
 """
 
 import asyncio
-import base64
 import ipaddress
 import logging
 from typing import Optional
@@ -155,18 +154,19 @@ async def sync_vm_password(vm_id: int) -> bool:
     Called after the QEMU agent is confirmed running (i.e. after get_vm_ip
     succeeds).  Failure is non-fatal: SSH is still attempted with the
     configured credentials.
+
+    Note: Proxmox 8.x proxmoxer sets the password value as-is (no
+    base64 decoding on the server side despite what older API docs say).
+    Pass the raw password directly.
     """
     try:
         proxmox = connect_proxmox()
         node = proxmox.nodes(config.PROXMOX_NODE)
 
-        # Proxmox API requires the password to be base64-encoded
-        encoded_pw = base64.b64encode(config.VM_SSH_PASSWORD.encode()).decode()
-
         node.qemu(vm_id).agent.post(
             "set-user-password",
             username=config.VM_SSH_USER,
-            password=encoded_pw,
+            password=config.VM_SSH_PASSWORD,
         )
         logger.info(f"VM {vm_id} SSH password synced via QEMU agent (user: {config.VM_SSH_USER})")
         return True
