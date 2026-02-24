@@ -287,8 +287,8 @@ kubectl get events --sort-by=.metadata.creationTimestamp
 
 **解决:**
 ```bash
-# 检查CNI插件
-ls /etc/cni/net.d/
+# 检查CNI插件 (K3s路径)
+ls /var/lib/rancher/k3s/agent/etc/cni/net.d/
 
 # 查看Pod日志
 kubectl logs test-pod-1

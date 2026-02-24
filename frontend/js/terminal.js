@@ -66,23 +66,31 @@ class TerminalManager {
 
         this.websocket.onmessage = (event) => {
             try {
-                // Try parse JSON message
+                // Only treat as control message if it's a JSON object with a type field
                 const msg = JSON.parse(event.data);
-                if (msg.type === 'error') {
-                    this.terminal.write('\r\n\x1b[31m✗ 错误: ' + msg.message + '\x1b[0m\r\n');
-                } else if (msg.type === 'waiting') {
-                    this.terminal.write('\r\x1b[33m⏳ ' + msg.message + '\x1b[0m');
-                } else if (msg.type === 'connected') {
-                    this.terminal.write('\r\n\x1b[32m✓ SSH 连接成功 (' + msg.vm_ip + ')\x1b[0m\r\n\r\n');
-                } else if (msg.type === 'disconnected') {
-                    this.terminal.write('\r\n\x1b[33m✗ ' + msg.message + '\x1b[0m\r\n');
-                    // Close WebSocket connection
-                    if (this.websocket) {
-                        this.websocket.close();
+                if (msg && typeof msg === 'object' && msg.type) {
+                    if (msg.type === 'error') {
+                        this.terminal.write('\r\n\x1b[31m✗ 错误: ' + msg.message + '\x1b[0m\r\n');
+                    } else if (msg.type === 'waiting') {
+                        this.terminal.write('\r\x1b[33m⏳ ' + msg.message + '\x1b[0m');
+                    } else if (msg.type === 'connected') {
+                        this.terminal.write('\r\n\x1b[32m✓ SSH 连接成功 (' + msg.vm_ip + ')\x1b[0m\r\n\r\n');
+                    } else if (msg.type === 'disconnected') {
+                        this.terminal.write('\r\n\x1b[33m✗ ' + msg.message + '\x1b[0m\r\n');
+                        // Close WebSocket connection
+                        if (this.websocket) {
+                            this.websocket.close();
+                        }
+                    } else {
+                        // Unknown control message type, treat as terminal data
+                        this.terminal.write(event.data);
                     }
+                } else {
+                    // Valid JSON but not a control object (e.g. bare number like "1"), treat as terminal data
+                    this.terminal.write(event.data);
                 }
             } catch {
-                // Normal terminal data
+                // Not JSON - normal terminal data
                 this.terminal.write(event.data);
             }
         };

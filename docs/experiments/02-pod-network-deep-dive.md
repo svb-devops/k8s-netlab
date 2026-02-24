@@ -62,19 +62,20 @@ kubectl get pod -n kube-system
 
 ### Step 1: 查看CNI配置
 ```bash
-# 查看CNI配置目录
-ls -la /etc/cni/net.d/
+# 查看CNI配置目录 (K3s将CNI配置存放在自己的目录下)
+ls -la /var/lib/rancher/k3s/agent/etc/cni/net.d/
 
 # 查看CNI配置内容 (K3s使用Flannel)
-sudo cat /etc/cni/net.d/*.conflist 2>/dev/null || sudo cat /etc/cni/net.d/*.conf
+sudo cat /var/lib/rancher/k3s/agent/etc/cni/net.d/*.conflist 2>/dev/null || \
+  sudo cat /var/lib/rancher/k3s/agent/etc/cni/net.d/*.conf
 
 # 查看CNI插件二进制文件
-ls -la /opt/cni/bin/
+ls -la /var/lib/rancher/k3s/data/current/bin/
 ```
 
 **预期输出:**
 ```
-/etc/cni/net.d/:
+/var/lib/rancher/k3s/agent/etc/cni/net.d/:
 10-flannel.conflist
 
 {
