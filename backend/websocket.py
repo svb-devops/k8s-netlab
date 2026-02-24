@@ -191,13 +191,16 @@ async def sync_vm_password(vm_id: int) -> bool:
 
 async def websocket_terminal(websocket: WebSocket, vm_id: int):
     """
-    WebSocket terminal handler.
+    WebSocket terminal handler (SSH bridge).
+
+    Authentication and ownership checks are performed by the caller
+    (terminal_endpoint in main.py) before this function is called.
+    The WebSocket connection is already accepted when this is called.
 
     Args:
-        websocket: FastAPI WebSocket connection
+        websocket: FastAPI WebSocket connection (already accepted)
         vm_id: VM ID to connect to
     """
-    await websocket.accept()
     terminal: Optional[SSHTerminal] = None
 
     try:

@@ -83,9 +83,9 @@ VM_SSH_USER: str = os.getenv("VM_SSH_USER", "root")
 VM_SSH_PASSWORD: str = _get_required_env("VM_SSH_PASSWORD")
 
 # --- VM Configuration ---
-VM_TEMPLATE_ID: int = _get_env_int("VM_TEMPLATE_ID", 100)
-VM_CORES: int = _get_env_int("VM_CORES", 4)
-VM_MEMORY_MB: int = _get_env_int("VM_MEMORY_MB", 8192)
+VM_TEMPLATE_ID: int = _get_env_int("VM_TEMPLATE_ID", 9000)
+VM_CORES: int = _get_env_int("VM_CORES", 2)
+VM_MEMORY_MB: int = _get_env_int("VM_MEMORY_MB", 4096)
 VM_SESSION_TIMEOUT_MIN: int = _get_env_int("VM_SESSION_TIMEOUT_MIN", 30)
 
 # --- Application Configuration ---

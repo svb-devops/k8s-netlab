@@ -28,6 +28,7 @@ from backend.docs_routes import router as docs_router
 from backend.proxmox_api import connect_proxmox
 from backend.vm_tracker import vm_tracker
 from backend.vm_manager import delete_vm
+from backend.auth import auth_manager
 
 # Configure logging
 logging.basicConfig(
@@ -61,8 +62,8 @@ async def auto_cleanup_task():
 
                 for vm_id in expired_vms:
                     try:
-                        # Skip template VMs (ID 100 is the template)
-                        if vm_id == 100:
+                        # Skip template VM (read from config, not hardcoded)
+                        if vm_id == config.VM_TEMPLATE_ID:
                             logger.info(f"Auto-cleanup: Skipping template VM {vm_id}")
                             vm_tracker.untrack_vm(vm_id)  # Remove from tracking
                             continue
@@ -194,12 +195,79 @@ from backend.websocket import websocket_terminal
 @app.websocket("/ws/terminal/{vm_id}")
 async def terminal_endpoint(websocket: WebSocket, vm_id: int):
     """
-    WebSocket terminal endpoint.
+    WebSocket terminal endpoint with authentication and ownership checks.
+
+    Security layers:
+    1. Session token must be present in cookies
+    2. Session token must be valid and not expired
+    3. Requesting user must own the target VM
 
     Args:
         websocket: WebSocket connection
         vm_id: VM ID to connect to
     """
+    await websocket.accept()
+
+    # --- Layer 1: Require session token ---
+    session_token = websocket.cookies.get("session_token")
+    if not session_token:
+        logger.warning(
+            f"WebSocket terminal rejected: no session_token cookie "
+            f"(vm_id={vm_id}, client={websocket.client})"
+        )
+        await websocket.send_json({
+            "type": "error",
+            "message": "未登录，请先登录后再使用终端"
+        })
+        await websocket.close(code=1008)  # 1008 = Policy Violation
+        return
+
+    # --- Layer 2: Verify session is valid ---
+    username = auth_manager.verify_session(session_token)
+    if not username:
+        logger.warning(
+            f"WebSocket terminal rejected: invalid/expired session "
+            f"(vm_id={vm_id}, client={websocket.client})"
+        )
+        await websocket.send_json({
+            "type": "error",
+            "message": "登录已过期，请重新登录"
+        })
+        await websocket.close(code=1008)
+        return
+
+    # --- Layer 3: Verify VM ownership ---
+    vm_owner = vm_tracker.get_vm_owner(vm_id)
+    if vm_owner is None:
+        logger.warning(
+            f"WebSocket terminal rejected: VM {vm_id} not found in tracker "
+            f"(user={username}, client={websocket.client})"
+        )
+        await websocket.send_json({
+            "type": "error",
+            "message": f"VM {vm_id} 不存在或已被删除"
+        })
+        await websocket.close(code=1008)
+        return
+
+    if not vm_tracker.is_owner(vm_id, username):
+        logger.warning(
+            f"WebSocket terminal rejected: ownership check failed "
+            f"(vm_id={vm_id}, requesting_user={username}, owner={vm_owner}, "
+            f"client={websocket.client})"
+        )
+        await websocket.send_json({
+            "type": "error",
+            "message": "您无权访问此 VM 的终端"
+        })
+        await websocket.close(code=1008)
+        return
+
+    # --- All checks passed ---
+    logger.info(
+        f"WebSocket terminal authorized: user={username}, vm_id={vm_id}, "
+        f"client={websocket.client}"
+    )
     await websocket_terminal(websocket, vm_id)
 
 

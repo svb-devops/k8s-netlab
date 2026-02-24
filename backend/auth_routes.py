@@ -129,11 +129,12 @@ async def login(credentials: LoginRequest, response: Response, request: Request)
         # Create session
         token = auth_manager.create_session(credentials.username)
 
-        # Set session cookie (httponly for security)
+        # Set session cookie (httponly + secure for security)
         response.set_cookie(
             key="session_token",
             value=token,
             httponly=True,
+            secure=True,
             max_age=86400,  # 24 hours
             samesite="lax"
         )

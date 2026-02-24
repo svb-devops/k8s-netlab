@@ -38,7 +38,7 @@ class CreateVMRequest(BaseModel):
         le=999999
     )
     template_id: int = Field(
-        default=100,
+        default=config.VM_TEMPLATE_ID,
         description="Template VM ID to clone from",
         ge=100,
         le=999999
@@ -48,7 +48,7 @@ class CreateVMRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "vm_id": 500,
-                "template_id": 100
+                "template_id": 9000
             }
         }
 
