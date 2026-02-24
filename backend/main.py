@@ -118,10 +118,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         proxmox = connect_proxmox()
         version_info = proxmox.version.get()
 
+        auth_label = (
+            f"token ({config.PROXMOX_TOKEN_ID})"
+            if config._proxmox_auth_method == "token"
+            else f"password ({config.PROXMOX_USER})"
+        )
         logger.info(f"✓ Connected to Proxmox VE {version_info.get('version')}")
         logger.info(f"  Host: {config.PROXMOX_HOST}:{config.PROXMOX_PORT}")
         logger.info(f"  Node: {config.PROXMOX_NODE}")
-        logger.info(f"  User: {config.PROXMOX_USER}")
+        logger.info(f"  Auth: {auth_label}")
 
     except Exception as e:
         logger.error(f"✗ Proxmox connection failed: {e}")
@@ -170,10 +175,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=".*",  # Echo specific origin (required when allow_credentials=True)
+    allow_origins=config.ALLOWED_ORIGINS,  # Set via ALLOWED_ORIGINS env var (default: none)
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Cookie"],
 )
 
 # ============================================================

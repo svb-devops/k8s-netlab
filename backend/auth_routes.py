@@ -178,8 +178,14 @@ async def logout(
         if session_token:
             auth_manager.delete_session(session_token)
 
-        # Clear session cookie
-        response.delete_cookie(key="session_token")
+        # Clear session cookie — attributes must match the original set_cookie call
+        # so the browser properly removes the Secure+HttpOnly cookie.
+        response.delete_cookie(
+            key="session_token",
+            httponly=True,
+            secure=True,
+            samesite="lax",
+        )
 
         return AuthResponse(
             success=True,

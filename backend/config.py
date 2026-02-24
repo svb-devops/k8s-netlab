@@ -73,10 +73,28 @@ def _get_env_bool(key: str, default: bool) -> bool:
 # --- Proxmox Configuration ---
 PROXMOX_HOST: str = _get_required_env("PROXMOX_HOST")
 PROXMOX_PORT: int = _get_env_int("PROXMOX_PORT", 8006)
-PROXMOX_USER: str = _get_required_env("PROXMOX_USER")
-PROXMOX_PASSWORD: str = _get_required_env("PROXMOX_PASSWORD")
-PROXMOX_VERIFY_SSL: bool = _get_env_bool("PROXMOX_VERIFY_SSL", False)
 PROXMOX_NODE: str = os.getenv("PROXMOX_NODE", "pve")
+PROXMOX_VERIFY_SSL: bool = _get_env_bool("PROXMOX_VERIFY_SSL", False)
+
+# Token auth (recommended): PROXMOX_TOKEN_ID=user@realm!tokenname
+PROXMOX_TOKEN_ID: str = os.getenv("PROXMOX_TOKEN_ID", "")
+PROXMOX_TOKEN_SECRET: str = os.getenv("PROXMOX_TOKEN_SECRET", "")
+
+# Password auth (legacy fallback): required when token vars are absent
+PROXMOX_USER: str = os.getenv("PROXMOX_USER", "")
+PROXMOX_PASSWORD: str = os.getenv("PROXMOX_PASSWORD", "")
+
+# Validate: exactly one auth method must be configured
+if PROXMOX_TOKEN_ID and PROXMOX_TOKEN_SECRET:
+    _proxmox_auth_method = "token"
+elif PROXMOX_USER and PROXMOX_PASSWORD:
+    _proxmox_auth_method = "password"
+else:
+    raise RuntimeError(
+        "Proxmox authentication not configured. "
+        "Set PROXMOX_TOKEN_ID + PROXMOX_TOKEN_SECRET (recommended) "
+        "or PROXMOX_USER + PROXMOX_PASSWORD (legacy)."
+    )
 
 # --- VM SSH Configuration ---
 VM_SSH_USER: str = os.getenv("VM_SSH_USER", "root")
@@ -93,6 +111,13 @@ APP_HOST: str = os.getenv("APP_HOST", "0.0.0.0")
 APP_PORT: int = _get_env_int("APP_PORT", 8000)
 APP_DEBUG: bool = _get_env_bool("APP_DEBUG", False)
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+
+# --- CORS Configuration ---
+# Comma-separated list of allowed origins for cross-origin requests.
+# Leave empty (default) to block all cross-origin requests.
+# Example: ALLOWED_ORIGINS=https://lab.example.com,https://admin.example.com
+_origins_raw = os.getenv("ALLOWED_ORIGINS", "")
+ALLOWED_ORIGINS: list = [o.strip() for o in _origins_raw.split(",") if o.strip()]
 
 # --- Network Isolation Configuration ---
 VM_NETWORK: str = os.getenv("VM_NETWORK", "172.16.100.0/24")
