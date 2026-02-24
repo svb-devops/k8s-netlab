@@ -92,16 +92,24 @@ VM_SSH_PASSWORD=your-vm-template-password
 - 网络拓扑细节（含真实地址）
 - 用户数据文件
 
-**安装自动检查 Hook（每次克隆后运行一次）：**
+**安装双层自动检查 Hook（每次克隆后运行一次）：**
 
 ```bash
 bash scripts/install-git-hooks.sh
 ```
 
-安装后每次 `git commit` 前自动拦截敏感信息。手动检查：
+安装后提供双层自动拦截：
+
+| 触发时机 | Hook | 作用 |
+|---------|------|------|
+| `git commit` | pre-commit | 拦截含敏感信息的暂存区内容 |
+| `git push` | pre-push | 拦截推送中的敏感commits（防止 `--no-verify` 绕过） |
+
+手动检查：
 
 ```bash
-bash scripts/pre-commit-security-check.sh
+bash scripts/pre-commit-security-check.sh   # 检查暂存区
+bash scripts/pre-push-security-check.sh     # 检查待推送commits
 ```
 
 完整规范见 [docs/GIT-SECURITY-CHECKLIST.md](docs/GIT-SECURITY-CHECKLIST.md)（**所有贡献者必读**）

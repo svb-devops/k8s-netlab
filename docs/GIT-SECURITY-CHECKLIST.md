@@ -62,17 +62,33 @@ All 8 checks must pass before proceeding.
 - [ ] **Test data** — test files use synthetic data, no real user info
 - [ ] **Screenshots** — any images blurred or cropped if they contain real addresses
 
-### Phase 3 — Pre-Push Verification
+### Phase 3 — Pre-Push Verification (Automated)
+
+**This phase is now fully automated.** The `pre-push` Git hook runs on every
+`git push` and scans all commits being pushed.
+
+```
+git push
+  ↓
+pre-push hook triggers automatically
+  ↓
+bash scripts/pre-push-security-check.sh
+  ↓
+✅ All checks pass → push proceeds
+❌ Issue found    → push rejected with details
+```
+
+Manual trigger (to test without pushing):
 
 ```bash
-# Check the last 3 commits for sensitive patterns
-for commit in $(git log --oneline -3 | awk '{print $1}'); do
-    echo "Checking $commit..."
-    git show "$commit" | grep -E \
-        "(password|api_key|token)\s*=\s*[\"'][^\"']{8,}" \
-        && echo "❌ Sensitive data found in $commit" \
-        || echo "✅ $commit clean"
-done
+# Check the last 2 commits manually
+bash scripts/pre-push-security-check.sh HEAD~2 HEAD
+```
+
+**Hook not installed?** Run the installer:
+
+```bash
+bash scripts/install-git-hooks.sh
 ```
 
 ---
@@ -244,4 +260,45 @@ This checklist aligns with:
 
 ---
 
-*Version: 1.0 — 2026-02-22 | Mandatory for all contributors*
+---
+
+## Automated Protection — Dual-Layer Hooks
+
+As of 2026-02-23, both Git hooks are installed and active:
+
+| Hook | Trigger | Checks | Defense against |
+|------|---------|--------|-----------------|
+| `pre-commit` | `git commit` | Staged changes (8 checks) | Committing secrets |
+| `pre-push` | `git push` | All pushed commits (8 checks) | Pushing with `--no-verify` |
+
+### For new team members
+
+```bash
+git clone <repo>
+cd k8s-netlab
+bash scripts/install-git-hooks.sh   # installs both hooks
+```
+
+### Hook flow
+
+```
+git commit          git push
+     ↓                   ↓
+pre-commit hook     pre-push hook
+     ↓                   ↓
+8-point scan        8-point scan
+     ↓                   ↓
+✅ pass → ok        ✅ pass → ok
+❌ fail → blocked   ❌ fail → blocked
+```
+
+### Emergency bypass (strongly discouraged)
+
+```bash
+git push --no-verify   # bypasses pre-push only
+                       # must audit and fix immediately after
+```
+
+---
+
+*Version: 1.1 — 2026-02-23 | Mandatory for all contributors*
