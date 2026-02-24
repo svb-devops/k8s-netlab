@@ -119,6 +119,11 @@ LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 _origins_raw = os.getenv("ALLOWED_ORIGINS", "")
 ALLOWED_ORIGINS: list = [o.strip() for o in _origins_raw.split(",") if o.strip()]
 
+if ALLOWED_ORIGINS:
+    logger.info(f"CORS allowed origins: {ALLOWED_ORIGINS}")
+else:
+    logger.warning("CORS: ALLOWED_ORIGINS not set — all cross-origin requests will be blocked")
+
 # --- Network Isolation Configuration ---
 VM_NETWORK: str = os.getenv("VM_NETWORK", "172.16.100.0/24")
 VM_GATEWAY: str = os.getenv("VM_GATEWAY", "172.16.100.1")

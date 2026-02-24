@@ -172,14 +172,21 @@ app = FastAPI(
 # ============================================================
 # CORS Middleware
 # ============================================================
+# Only mount when ALLOWED_ORIGINS is explicitly configured.
+# When empty (default), no CORS headers are sent and all
+# cross-origin requests are rejected — the safest default.
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=config.ALLOWED_ORIGINS,  # Set via ALLOWED_ORIGINS env var (default: none)
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Cookie"],
-)
+if config.ALLOWED_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=config.ALLOWED_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Cookie"],
+    )
+    logger.info(f"CORS middleware enabled for: {config.ALLOWED_ORIGINS}")
+else:
+    logger.warning("CORS middleware NOT loaded — cross-origin requests blocked")
 
 # ============================================================
 # Include Routers

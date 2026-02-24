@@ -81,11 +81,112 @@ nano .env
 | 变量 | 说明 | 示例 |
 |------|------|------|
 | `PROXMOX_HOST` | Proxmox服务器地址 | `192.168.1.10` |
-| `PROXMOX_USER` | Proxmox用户名 | `root@pam` |
-| `PROXMOX_PASSWORD` | Proxmox密码 | （使用强密码） |
+| `PROXMOX_TOKEN_ID` | API Token（推荐）| `k8s-netlab@pve!netlab-token` |
+| `PROXMOX_TOKEN_SECRET` | Token Secret | `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx` |
 | `PROXMOX_NODE` | Proxmox节点名称 | `pve` |
-| `VM_SSH_USER` | VM SSH用户名 | `k8s_lab` |
+| `VM_SSH_USER` | VM SSH用户名 | `root` |
 | `VM_SSH_PASSWORD` | VM SSH密码 | （与模板保持一致） |
+| `ALLOWED_ORIGINS` | CORS允许的域名 | `https://lab.example.com` |
+
+> 若暂不使用 Token，可用旧密码认证作为过渡：
+> `PROXMOX_USER=root@pam` + `PROXMOX_PASSWORD=...`（不推荐生产使用）
+
+---
+
+## Proxmox 认证配置
+
+### 方式一：API Token（推荐，最小权限）⭐
+
+API Token 是生产部署的最佳实践，不暴露 root 密码，且可随时吊销。
+
+**在 PVE Shell 执行以下命令（一次性操作）：**
+
+```bash
+# 1. 创建专用服务账户
+pveum user add k8s-netlab@pve --comment "K8S NetLab Service Account"
+
+# 2. 创建最小权限角色
+pveum role add K8SNetLab -privs \
+  "VM.Audit VM.PowerMgmt VM.Clone VM.Allocate \
+   VM.Config.Disk VM.Config.CPU VM.Config.Memory VM.Config.Network \
+   Datastore.AllocateSpace"
+
+# 3. 将角色分配给专用用户
+pveum acl modify / -user k8s-netlab@pve -role K8SNetLab
+
+# 4. 生成 API Token（secret 只显示一次，立即保存）
+pveum user token add k8s-netlab@pve netlab-token --privsep 0
+```
+
+命令输出示例：
+```
+┌──────────────┬──────────────────────────────────────┐
+│ key          │ value                                │
+├──────────────┼──────────────────────────────────────┤
+│ full-tokenid │ k8s-netlab@pve!netlab-token          │
+│ value        │ xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx │
+└──────────────┴──────────────────────────────────────┘
+```
+
+**在 `.env` 中配置：**
+
+```bash
+PROXMOX_TOKEN_ID=k8s-netlab@pve!netlab-token
+PROXMOX_TOKEN_SECRET=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+# 无需 PROXMOX_USER / PROXMOX_PASSWORD
+```
+
+**验证 Token 生效：**
+
+重启服务后，查看启动日志中应出现：
+```
+Auth: token (k8s-netlab@pve!netlab-token)
+```
+
+### 方式二：用户名 + 密码（仅开发/过渡期）⚠️
+
+```bash
+PROXMOX_USER=root@pam
+PROXMOX_PASSWORD=your-password
+```
+
+> ⚠️ 生产环境不推荐：暴露 root 密码，权限过大，无法精确审计。
+
+---
+
+## CORS 配置
+
+CORS 控制哪些外部域名可以跨域调用 API。
+
+### 生产环境（需要设置）
+
+```bash
+# .env 中设置你的实际域名
+ALLOWED_ORIGINS=https://lab.example.com
+
+# 多域名（逗号分隔，无空格）
+ALLOWED_ORIGINS=https://lab.example.com,https://admin.example.com
+```
+
+### 开发环境
+
+```bash
+ALLOWED_ORIGINS=http://localhost:8000
+```
+
+### 不设置（默认）
+
+留空 = 拒绝所有跨域请求。适合通过 Nginx 反向代理且前后端同域的场景。
+
+```bash
+ALLOWED_ORIGINS=
+```
+
+**验证 CORS 生效：**
+
+重启服务后，启动日志会显示：
+- 已配置：`CORS allowed origins: ['https://lab.example.com']`
+- 未配置：`CORS: ALLOWED_ORIGINS not set — all cross-origin requests will be blocked`
 
 ### 3. 安装依赖
 
@@ -200,9 +301,9 @@ sudo nginx -t && sudo systemctl reload nginx
    - 限制 Proxmox API 的访问来源
 
 3. **Proxmox 安全**
-   - 为本项目创建专用用户（不要直接用 root）
-   - 限制用户权限范围
-   - 启用双因素认证
+   - 使用 API Token 认证（`PROXMOX_TOKEN_ID` / `PROXMOX_TOKEN_SECRET`），避免暴露 root 密码
+   - Token 对应专用用户 `k8s-netlab@pve`，仅分配 `K8SNetLab` 最小权限角色
+   - 生产环境禁止使用 `PROXMOX_USER=root@pam` + 密码方式
 
 4. **VM 模板安全**
    - 在 `.env` 中为 `VM_SSH_PASSWORD` 设置强密码
