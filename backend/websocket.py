@@ -262,7 +262,10 @@ async def websocket_terminal(websocket: WebSocket, vm_id: int):
                 pass
 
         async def forward_from_ssh():
-            """Forward SSH data to WebSocket."""
+            """Forward SSH data to WebSocket with adaptive polling."""
+            # Adaptive sleep: ramp up idle delay to reduce CPU when quiet,
+            # snap back to fast polling as soon as data arrives.
+            consecutive_empty = 0
             try:
                 while True:
                     # Check if SSH channel is still open
@@ -277,9 +280,14 @@ async def websocket_terminal(websocket: WebSocket, vm_id: int):
                     data = await terminal.receive()
                     if data:
                         await websocket.send_text(data)
+                        consecutive_empty = 0   # reset: data is flowing
+                        await asyncio.sleep(0.001)  # 1ms — stay responsive
                     else:
-                        # Only sleep if no data available to avoid high CPU
-                        await asyncio.sleep(0.001)  # 1ms instead of 10ms
+                        consecutive_empty += 1
+                        if consecutive_empty < 10:
+                            await asyncio.sleep(0.005)  # 5ms — brief idle
+                        else:
+                            await asyncio.sleep(0.010)  # 10ms — sustained idle
             except (WebSocketDisconnect, ConnectionClosed):
                 pass
             except Exception as e:

@@ -4,13 +4,14 @@ K8S NetLab - User Authentication
 Lightweight user authentication and session management.
 """
 
-import hashlib
 import json
 import logging
 import secrets
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Optional
+
+from backend.password_utils import hash_password, needs_upgrade, verify_password
 
 logger = logging.getLogger(__name__)
 
@@ -71,14 +72,9 @@ class AuthManager:
         except Exception as e:
             logger.error(f"Failed to save sessions: {e}")
 
-    @staticmethod
-    def _hash_password(password: str) -> str:
-        """Hash password with SHA-256."""
-        return hashlib.sha256(password.encode()).hexdigest()
-
     def register_user(self, username: str, password: str) -> bool:
         """
-        Register a new user.
+        Register a new user with bcrypt password hash.
 
         Args:
             username: Username (unique)
@@ -94,17 +90,20 @@ class AuthManager:
             return False
 
         users[username] = {
-            "password_hash": self._hash_password(password),
+            "password_hash": hash_password(password),
             "created_at": datetime.now().isoformat(),
         }
 
         self._save_users(users)
-        logger.info(f"User '{username}' registered successfully")
+        logger.info(f"User '{username}' registered successfully (bcrypt)")
         return True
 
     def verify_credentials(self, username: str, password: str) -> bool:
         """
-        Verify user credentials.
+        Verify user credentials. Supports bcrypt (new) and SHA-256 (legacy).
+
+        On successful login with a legacy SHA-256 hash the password is
+        automatically re-hashed with bcrypt so the user is silently migrated.
 
         Args:
             username: Username
@@ -118,8 +117,18 @@ class AuthManager:
         if username not in users:
             return False
 
-        password_hash = self._hash_password(password)
-        return users[username]["password_hash"] == password_hash
+        stored_hash = users[username]["password_hash"]
+
+        if not verify_password(password, stored_hash):
+            return False
+
+        # Auto-upgrade legacy SHA-256 hashes to bcrypt on successful login
+        if needs_upgrade(stored_hash):
+            users[username]["password_hash"] = hash_password(password)
+            self._save_users(users)
+            logger.info(f"Password for '{username}' upgraded to bcrypt")
+
+        return True
 
     def create_session(self, username: str) -> str:
         """

@@ -19,3 +19,6 @@ pydantic==2.5.0
 
 # Configuration
 python-dotenv==1.0.0
+
+# Password Hashing
+bcrypt>=4.0.0
