@@ -4,7 +4,6 @@ K8S NetLab - User Authentication
 Lightweight user authentication and session management.
 """
 
-import json
 import logging
 import secrets
 from datetime import datetime, timedelta
@@ -12,6 +11,7 @@ from pathlib import Path
 from typing import Dict, Optional
 
 from backend.password_utils import hash_password, needs_upgrade, verify_password
+from backend.storage_utils import safe_read_json, safe_update_json, safe_write_json
 
 logger = logging.getLogger(__name__)
 
@@ -33,44 +33,26 @@ class AuthManager:
         DATA_DIR.mkdir(exist_ok=True)
 
         if not USERS_FILE.exists():
-            USERS_FILE.write_text(json.dumps({}, indent=2))
+            safe_write_json(USERS_FILE, {})
 
         if not SESSIONS_FILE.exists():
-            SESSIONS_FILE.write_text(json.dumps({}, indent=2))
+            safe_write_json(SESSIONS_FILE, {})
 
     def _load_users(self) -> Dict:
         """Load users from file."""
-        try:
-            with open(USERS_FILE, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Failed to load users: {e}")
-            return {}
+        return safe_read_json(USERS_FILE, default={})
 
     def _save_users(self, users: Dict):
         """Save users to file."""
-        try:
-            with open(USERS_FILE, 'w') as f:
-                json.dump(users, f, indent=2)
-        except Exception as e:
-            logger.error(f"Failed to save users: {e}")
+        safe_write_json(USERS_FILE, users)
 
     def _load_sessions(self) -> Dict:
         """Load sessions from file."""
-        try:
-            with open(SESSIONS_FILE, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Failed to load sessions: {e}")
-            return {}
+        return safe_read_json(SESSIONS_FILE, default={})
 
     def _save_sessions(self, sessions: Dict):
         """Save sessions to file."""
-        try:
-            with open(SESSIONS_FILE, 'w') as f:
-                json.dump(sessions, f, indent=2)
-        except Exception as e:
-            logger.error(f"Failed to save sessions: {e}")
+        safe_write_json(SESSIONS_FILE, sessions)
 
     def register_user(self, username: str, password: str) -> bool:
         """
@@ -83,20 +65,26 @@ class AuthManager:
         Returns:
             True if successful, False if username exists
         """
-        users = self._load_users()
+        registered = False
 
-        if username in users:
+        def _add(users: Dict) -> Dict:
+            nonlocal registered
+            if username in users:
+                return users
+            users[username] = {
+                "password_hash": hash_password(password),
+                "created_at": datetime.now().isoformat(),
+            }
+            registered = True
+            return users
+
+        safe_update_json(USERS_FILE, _add)
+
+        if registered:
+            logger.info(f"User '{username}' registered successfully (bcrypt)")
+        else:
             logger.warning(f"Username '{username}' already exists")
-            return False
-
-        users[username] = {
-            "password_hash": hash_password(password),
-            "created_at": datetime.now().isoformat(),
-        }
-
-        self._save_users(users)
-        logger.info(f"User '{username}' registered successfully (bcrypt)")
-        return True
+        return registered
 
     def verify_credentials(self, username: str, password: str) -> bool:
         """
@@ -124,8 +112,11 @@ class AuthManager:
 
         # Auto-upgrade legacy SHA-256 hashes to bcrypt on successful login
         if needs_upgrade(stored_hash):
-            users[username]["password_hash"] = hash_password(password)
-            self._save_users(users)
+            def _upgrade(u: Dict) -> Dict:
+                if username in u:
+                    u[username]["password_hash"] = hash_password(password)
+                return u
+            safe_update_json(USERS_FILE, _upgrade)
             logger.info(f"Password for '{username}' upgraded to bcrypt")
 
         return True
@@ -140,23 +131,19 @@ class AuthManager:
         Returns:
             Session token
         """
-        # Generate secure random token
         token = secrets.token_urlsafe(32)
-
-        sessions = self._load_sessions()
-
-        # Session expires in 24 hours
         expires_at = (datetime.now() + timedelta(hours=24)).isoformat()
 
-        sessions[token] = {
-            "username": username,
-            "created_at": datetime.now().isoformat(),
-            "expires_at": expires_at,
-        }
+        def _add(sessions: Dict) -> Dict:
+            sessions[token] = {
+                "username": username,
+                "created_at": datetime.now().isoformat(),
+                "expires_at": expires_at,
+            }
+            return sessions
 
-        self._save_sessions(sessions)
+        safe_update_json(SESSIONS_FILE, _add)
         logger.info(f"Session created for user '{username}'")
-
         return token
 
     def verify_session(self, token: str) -> Optional[str]:
@@ -179,9 +166,10 @@ class AuthManager:
         # Check expiration
         expires_at = datetime.fromisoformat(session["expires_at"])
         if datetime.now() > expires_at:
-            # Session expired, remove it
-            del sessions[token]
-            self._save_sessions(sessions)
+            def _expire(s: Dict) -> Dict:
+                s.pop(token, None)
+                return s
+            safe_update_json(SESSIONS_FILE, _expire)
             logger.info(f"Session expired and removed: {token[:10]}...")
             return None
 
@@ -194,31 +182,38 @@ class AuthManager:
         Args:
             token: Session token
         """
-        sessions = self._load_sessions()
+        deleted_user = None
 
-        if token in sessions:
-            username = sessions[token]["username"]
-            del sessions[token]
-            self._save_sessions(sessions)
-            logger.info(f"Session deleted for user '{username}'")
+        def _delete(sessions: Dict) -> Dict:
+            nonlocal deleted_user
+            if token in sessions:
+                deleted_user = sessions[token]["username"]
+                del sessions[token]
+            return sessions
+
+        safe_update_json(SESSIONS_FILE, _delete)
+        if deleted_user:
+            logger.info(f"Session deleted for user '{deleted_user}'")
 
     def cleanup_expired_sessions(self):
         """Remove all expired sessions."""
-        sessions = self._load_sessions()
         now = datetime.now()
+        removed = 0
 
-        expired_tokens = []
-        for token, session in sessions.items():
-            expires_at = datetime.fromisoformat(session["expires_at"])
-            if now > expires_at:
-                expired_tokens.append(token)
+        def _cleanup(sessions: Dict) -> Dict:
+            nonlocal removed
+            expired = [
+                tok for tok, s in sessions.items()
+                if datetime.fromisoformat(s["expires_at"]) < now
+            ]
+            for tok in expired:
+                del sessions[tok]
+            removed = len(expired)
+            return sessions
 
-        for token in expired_tokens:
-            del sessions[token]
-
-        if expired_tokens:
-            self._save_sessions(sessions)
-            logger.info(f"Cleaned up {len(expired_tokens)} expired sessions")
+        safe_update_json(SESSIONS_FILE, _cleanup)
+        if removed:
+            logger.info(f"Cleaned up {removed} expired sessions")
 
 
 # Global auth manager instance
