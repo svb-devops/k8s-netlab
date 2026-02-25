@@ -286,7 +286,30 @@ kubectl rollout restart deployment coredns -n kube-system
 
 ---
 
-### 问题3: Headless Service解析异常
+### 问题3: API Server连接失败（connection refused）
+
+**原因:** VM刚启动，API server还在初始化中（正常启动延迟）
+
+**解决:** 等待1-2分钟后重试，或使用wait命令等待CoreDNS就绪：
+```bash
+# 等待CoreDNS Pod就绪
+kubectl wait --for=condition=Ready pod -n kube-system -l k8s-app=kube-dns --timeout=120s
+```
+
+---
+
+### 问题4: CoreDNS日志中有WARNING
+
+如果在CoreDNS日志中看到以下警告，**这是正常现象，不影响功能**：
+```
+[WARNING] No files matching import glob pattern: /etc/coredns/custom/*.override
+```
+
+**原因:** 没有自定义CoreDNS配置文件，使用默认配置，完全正常工作。
+
+---
+
+### 问题5: Headless Service解析异常
 
 **原因:** Pod选择器不匹配
 

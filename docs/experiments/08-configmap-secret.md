@@ -81,7 +81,7 @@ kubectl get pod -n kube-system
 kubectl get nodes
 # 应该显示: Ready
 
-kubectl version --short
+kubectl version --output=yaml
 # 应该正常返回版本信息
 ```
 
@@ -207,7 +207,6 @@ spec:
     envFrom:
     - configMapRef:
         name: app-config
-        prefix: CONFIG_
 EOF
 
 # 应用Pod
@@ -224,17 +223,15 @@ kubectl exec test-cm-env -- env | grep -E "APP_|CONFIG_"
 ```
 APP_NAME=MyApp
 APP_VERSION=1.0
-CONFIG_APP_NAME=MyApp
-CONFIG_APP_VERSION=1.0
-CONFIG_LOG_LEVEL=info
+LOG_LEVEL=info
 ```
 
 **验证点:** ✅ ConfigMap成功注入为环境变量
 
 **💡 知识点:**
 - env.valueFrom: 单个键注入
-- envFrom: 所有键注入
-- prefix: 添加前缀避免冲突
+- envFrom: 所有键注入（键名直接作为环境变量名）
+- 如需前缀，在ConfigMap的键名中直接包含前缀（如APP_NAME而非NAME）
 - 环境变量在Pod创建时固定
 - 更新ConfigMap后需重建Pod才能生效
 

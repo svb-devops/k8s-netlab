@@ -99,8 +99,9 @@ kubectl run attacker --image=busybox:1.28 -n netpol-test --command -- sleep 3600
 kubectl wait --for=condition=Ready pod attacker -n netpol-test --timeout=30s
 
 # 测试所有Pod到database的连接
-kubectl exec frontend -n netpol-test -- wget -qO- --timeout=2 http://$DB_IP
-kubectl exec backend -n netpol-test -- wget -qO- --timeout=2 http://$DB_IP
+# 注意: frontend/backend使用nginx镜像（有curl无wget），attacker使用busybox（有wget）
+kubectl exec frontend -n netpol-test -- curl -s --max-time 2 http://$DB_IP
+kubectl exec backend -n netpol-test -- curl -s --max-time 2 http://$DB_IP
 kubectl exec attacker -n netpol-test -- wget -qO- --timeout=2 http://$DB_IP
 ```
 
@@ -143,9 +144,9 @@ kubectl describe networkpolicy deny-all-to-database -n netpol-test
 
 ```bash
 # 测试所有连接（应该都失败）
-kubectl exec frontend -n netpol-test -- timeout 2 wget -qO- http://$DB_IP || echo "❌ BLOCKED"
-kubectl exec backend -n netpol-test -- timeout 2 wget -qO- http://$DB_IP || echo "❌ BLOCKED"
-kubectl exec attacker -n netpol-test -- timeout 2 wget -qO- http://$DB_IP || echo "❌ BLOCKED"
+kubectl exec frontend -n netpol-test -- curl -s --max-time 2 http://$DB_IP || echo "❌ BLOCKED"
+kubectl exec backend -n netpol-test -- curl -s --max-time 2 http://$DB_IP || echo "❌ BLOCKED"
+kubectl exec attacker -n netpol-test -- wget -qO- --timeout=2 http://$DB_IP || echo "❌ BLOCKED"
 ```
 
 **预期:** 所有连接都被阻止 ✓
@@ -198,13 +199,13 @@ kubectl get networkpolicy -n netpol-test
 
 ```bash
 # frontend测试（应该失败）
-kubectl exec frontend -n netpol-test -- timeout 2 wget -qO- http://$DB_IP || echo "❌ BLOCKED"
+kubectl exec frontend -n netpol-test -- curl -s --max-time 2 http://$DB_IP || echo "❌ BLOCKED"
 
 # backend测试（应该成功）
-kubectl exec backend -n netpol-test -- wget -qO- --timeout=2 http://$DB_IP && echo "✅ ALLOWED"
+kubectl exec backend -n netpol-test -- curl -s --max-time 2 http://$DB_IP && echo "✅ ALLOWED"
 
 # attacker测试（应该失败）
-kubectl exec attacker -n netpol-test -- timeout 2 wget -qO- http://$DB_IP || echo "❌ BLOCKED"
+kubectl exec attacker -n netpol-test -- wget -qO- --timeout=2 http://$DB_IP || echo "❌ BLOCKED"
 ```
 
 **预期:** ✅ 只有backend可以访问database
@@ -302,10 +303,10 @@ kubectl apply -f frontend-egress.yaml
 # 测试效果
 BACKEND_IP=$(kubectl get pod backend -n netpol-test -o jsonpath='{.status.podIP}')
 echo "Testing frontend → backend:"
-kubectl exec frontend -n netpol-test -- wget -qO- --timeout=2 http://$BACKEND_IP
+kubectl exec frontend -n netpol-test -- curl -s --max-time 2 http://$BACKEND_IP
 
 echo "Testing frontend → database:"
-kubectl exec frontend -n netpol-test -- timeout 2 wget -qO- http://$DB_IP || echo "❌ BLOCKED"
+kubectl exec frontend -n netpol-test -- curl -s --max-time 2 http://$DB_IP || echo "❌ BLOCKED"
 ```
 
 **预期输出:**
@@ -334,10 +335,10 @@ kubectl get networkpolicy -n netpol-test
 
 # 快速测试矩阵
 echo "=== Network Policy Test Matrix ==="
-kubectl exec frontend -n netpol-test -- timeout 2 wget -qO- http://$BACKEND_IP && echo "1. frontend→backend: ✅" || echo "1. frontend→backend: ❌"
-kubectl exec frontend -n netpol-test -- timeout 2 wget -qO- http://$DB_IP && echo "2. frontend→database: ✅" || echo "2. frontend→database: ❌"
-kubectl exec backend -n netpol-test -- timeout 2 wget -qO- http://$DB_IP && echo "3. backend→database: ✅" || echo "3. backend→database: ❌"
-kubectl exec attacker -n netpol-test -- timeout 2 wget -qO- http://$DB_IP && echo "4. attacker→database: ✅" || echo "4. attacker→database: ❌"
+kubectl exec frontend -n netpol-test -- curl -s --max-time 2 http://$BACKEND_IP && echo "1. frontend→backend: ✅" || echo "1. frontend→backend: ❌"
+kubectl exec frontend -n netpol-test -- curl -s --max-time 2 http://$DB_IP && echo "2. frontend→database: ✅" || echo "2. frontend→database: ❌"
+kubectl exec backend -n netpol-test -- curl -s --max-time 2 http://$DB_IP && echo "3. backend→database: ✅" || echo "3. backend→database: ❌"
+kubectl exec attacker -n netpol-test -- wget -qO- --timeout=2 http://$DB_IP && echo "4. attacker→database: ✅" || echo "4. attacker→database: ❌"
 ```
 
 **预期:** frontend→backend✅, backend→database✅, 其他全部❌
