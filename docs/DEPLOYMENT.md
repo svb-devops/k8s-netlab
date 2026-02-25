@@ -35,7 +35,7 @@ pip install -r requirements.txt
 
 # 2. 配置
 cp .env.example .env
-nano .env  # 至少填写 PROXMOX_HOST / PROXMOX_PASSWORD / VM_SSH_PASSWORD
+nano .env  # 至少填写 PROXMOX_HOST / PROXMOX_TOKEN_ID / PROXMOX_TOKEN_SECRET / VM_SSH_PASSWORD
 
 # 3. 启动
 python3 -m uvicorn backend.main:app --host 0.0.0.0 --port 8000

@@ -108,16 +108,30 @@ cp .env.example .env
 nano .env
 ```
 
-关键配置项：
+关键配置项（Token 认证，推荐）：
 ```env
 PROXMOX_HOST=your-proxmox-ip
-PROXMOX_USER=root@pam
-PROXMOX_PASSWORD=your-strong-password
 PROXMOX_NODE=pve
+PROXMOX_TOKEN_ID=k8s-netlab@pve!netlab-token
+PROXMOX_TOKEN_SECRET=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 VM_SSH_PASSWORD=your-vm-template-password
 ```
 
+> 若暂无 Token，可用密码认证过渡：`PROXMOX_USER=root@pam` + `PROXMOX_PASSWORD=...`（不推荐生产使用）
+
 > ⚠️ **安全提示**：`.env` 文件已在 `.gitignore` 中排除，永远不要将其提交到 Git。
+
+### CORS 配置
+
+默认禁止所有跨域请求。根据部署方式选择：
+
+| 场景 | 配置 |
+|------|------|
+| 前后端同域（Nginx 反代） | `ALLOWED_ORIGINS=`（留空） |
+| 前后端分离 | `ALLOWED_ORIGINS=https://lab.example.com` |
+| 多域名 | `ALLOWED_ORIGINS=https://a.com,https://b.com` |
+
+验证：重启服务后查看日志 `journalctl -u k8s-netlab | grep CORS`
 
 详细部署说明见 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
