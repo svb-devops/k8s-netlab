@@ -100,6 +100,10 @@ class K8SNetLabAPI {
         });
     }
 
+    async getQuota() {
+        return await this._fetch('/quota');
+    }
+
     /**
      * Utility: Format uptime in seconds to human-readable string
      */

@@ -15,6 +15,7 @@ class K8SNetLabApp {
             healthIndicator: document.getElementById('health-indicator'),
             statActiveVMs: document.getElementById('stat-active-vms'),
             statTotalVMs: document.getElementById('stat-total-vms'),
+            statQuota: document.getElementById('stat-quota'),
             statSystemStatus: document.getElementById('stat-system-status'),
             vmList: document.getElementById('vm-list'),
             vmListEmpty: document.getElementById('vm-list-empty'),
@@ -198,6 +199,22 @@ class K8SNetLabApp {
 
         this.elements.statActiveVMs.textContent = activeVMs;
         this.elements.statTotalVMs.textContent = totalVMs;
+
+        // Update quota display
+        api.getQuota().then(result => {
+            if (result.success && this.elements.statQuota) {
+                const q = result.data.user;
+                const sys = result.data.system;
+                this.elements.statQuota.textContent =
+                    `我的配额: ${q.current}/${q.max} | 系统: ${sys.current}/${sys.max}`;
+                // Warn when quota is full
+                const atLimit = q.available === 0;
+                this.elements.statQuota.className =
+                    atLimit
+                        ? 'text-xs text-red-500 mt-1 font-medium'
+                        : 'text-xs text-gray-400 mt-1';
+            }
+        }).catch(() => {});
     }
 
     /**

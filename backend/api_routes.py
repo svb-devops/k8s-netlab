@@ -148,6 +148,26 @@ async def api_create_vm(
         HTTPException: If creation fails or not authenticated
     """
     try:
+        # Quota check: per-user and system-wide limits
+        user_vm_count = len(vm_tracker.get_user_vms(current_user))
+        if user_vm_count >= config.MAX_VMS_PER_USER:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=(
+                    f"已达到每用户 VM 配额上限（{config.MAX_VMS_PER_USER} 个）。"
+                    f"当前已有 {user_vm_count} 个 VM，请先删除现有 VM 再创建新的。"
+                ),
+            )
+        total_vm_count = len(vm_tracker.get_all_tracked_vms())
+        if total_vm_count >= config.MAX_TOTAL_VMS:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    f"系统 VM 总数已达上限（{config.MAX_TOTAL_VMS} 个），"
+                    "请稍后再试或联系管理员。"
+                ),
+            )
+
         # Rate limit: 3 VM creations per user per hour
         if not rate_limiter.is_allowed(f"create_vm:{current_user}", max_requests=3, window_seconds=3600):
             wait = rate_limiter.retry_after(f"create_vm:{current_user}", window_seconds=3600)
@@ -433,3 +453,34 @@ async def api_health_check() -> Dict[str, Any]:
             "status": "unhealthy",
             "error": str(e)
         }
+
+
+@router.get(
+    "/quota",
+    status_code=status.HTTP_200_OK,
+    summary="Get VM quota",
+    description="Get current user's VM quota usage and system-wide limits"
+)
+async def api_get_quota(
+    current_user: str = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Return quota usage for the current user and the system.
+
+    Returns:
+        dict with user and system quota details
+    """
+    user_count = len(vm_tracker.get_user_vms(current_user))
+    total_count = len(vm_tracker.get_all_tracked_vms())
+    return {
+        "user": {
+            "current": user_count,
+            "max": config.MAX_VMS_PER_USER,
+            "available": max(0, config.MAX_VMS_PER_USER - user_count),
+        },
+        "system": {
+            "current": total_count,
+            "max": config.MAX_TOTAL_VMS,
+            "available": max(0, config.MAX_TOTAL_VMS - total_count),
+        },
+    }

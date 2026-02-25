@@ -131,4 +131,17 @@ VM_BRIDGE: str = os.getenv("VM_BRIDGE", "vmbr1")
 VM_IP_START: int = _get_env_int("VM_IP_START", 10)
 VM_IP_END: int = _get_env_int("VM_IP_END", 254)
 
+# --- VM Quota Configuration ---
+# Maximum number of VMs a single user can own simultaneously.
+# Default 1 (one VM per user). Increase for instructors/admins.
+MAX_VMS_PER_USER: int = _get_env_int("MAX_VMS_PER_USER", 1)
+
+# Maximum total VMs tracked system-wide (excludes the template).
+# Recommended: number of students + 2 spares.
+MAX_TOTAL_VMS: int = _get_env_int("MAX_TOTAL_VMS", 12)
+
+logger.info(
+    f"VM quota: per_user={MAX_VMS_PER_USER}, system_total={MAX_TOTAL_VMS}"
+)
+
 logger.info("Configuration loaded successfully")
