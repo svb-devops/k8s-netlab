@@ -182,7 +182,7 @@ if config.ALLOWED_ORIGINS:
         allow_origins=config.ALLOWED_ORIGINS,
         allow_credentials=True,
         allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Cookie"],
+        allow_headers=["Content-Type", "Cookie", "Authorization"],
     )
     logger.info(f"CORS middleware enabled for: {config.ALLOWED_ORIGINS}")
 else:

@@ -154,6 +154,40 @@ PROXMOX_PASSWORD=your-password
 
 ---
 
+## SSL 证书验证
+
+### 开发环境（自签名证书）
+
+```bash
+PROXMOX_VERIFY_SSL=false
+```
+
+### 生产环境（强烈推荐）
+
+```bash
+PROXMOX_VERIFY_SSL=true
+```
+
+⚠️ **生产环境安全建议：**
+
+1. **使用受信任 CA 证书**：从可信 CA 获取证书，或使用 Let's Encrypt
+2. **使用自签名证书**：需先将 CA 证书安装到系统信任链，再设置 `PROXMOX_VERIFY_SSL=true`
+3. **`VERIFY_SSL=false` 的风险**：禁用证书验证，可能遭受中间人攻击，仅用于隔离的开发环境
+
+**配置示例：**
+
+```bash
+# 生产环境（推荐）
+PROXMOX_HOST=pve.example.com
+PROXMOX_VERIFY_SSL=true
+
+# 开发环境（自签名证书）
+PROXMOX_HOST=10.0.0.110
+PROXMOX_VERIFY_SSL=false
+```
+
+---
+
 ## CORS 配置
 
 CORS 控制哪些外部域名可以跨域调用 API。
