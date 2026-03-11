@@ -189,22 +189,29 @@ async def sync_vm_password(vm_id: int) -> bool:
         return False
 
 
-async def wait_for_k3s(terminal: SSHTerminal, websocket: WebSocket, max_wait: int = 120) -> bool:
-    """Silently wait for K3s node to be Ready, sending friendly progress to the WebSocket."""
+async def wait_for_k3s(terminal: SSHTerminal, websocket: WebSocket, max_wait: int = 150) -> bool:
+    """Wait until K3s API is stable: core pods Running/Completed, confirmed twice."""
     loop = asyncio.get_event_loop()
+    consecutive_ok = 0
     for elapsed in range(0, max_wait, 5):
         try:
             _, stdout, _ = await loop.run_in_executor(
                 None,
                 lambda: terminal.ssh_client.exec_command(
-                    "kubectl get nodes --no-headers 2>/dev/null | grep -c ' Ready '",
+                    "kubectl get pods -n kube-system --no-headers 2>/dev/null"
+                    " | grep -cE '(Running|Completed)'",
                     timeout=5,
                 ),
             )
-            if int(stdout.read().decode().strip() or "0") > 0:
-                return True
+            running = int(stdout.read().decode().strip() or "0")
+            if running >= 3:
+                consecutive_ok += 1
+                if consecutive_ok >= 2:
+                    return True
+            else:
+                consecutive_ok = 0
         except Exception:
-            pass
+            consecutive_ok = 0
         await websocket.send_json({
             "type": "waiting",
             "message": f"等待 K3s 就绪... ({elapsed + 5}s / {max_wait}s)",
