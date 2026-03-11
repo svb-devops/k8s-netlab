@@ -99,7 +99,12 @@ def create_vm(vm_id: int, template_id: int) -> Dict[str, Any]:
         else:
             raise RuntimeError(f"Clone task did not complete within {max_wait}s")
 
-        # Step 2: Configure VM resources
+        # Step 2: Add VM to pool immediately (enables pool-scoped permissions)
+        slog.info("Adding VM to pool 'k8s-netlab'")
+        proxmox.pools("k8s-netlab").put(vms=str(vm_id))
+        slog.success(f"VM {vm_id} added to pool 'k8s-netlab'")
+
+        # Step 3: Configure VM resources
         slog.info("Configuring VM resources", {
             "cores": config.VM_CORES,
             "memory_mb": config.VM_MEMORY_MB,
@@ -110,7 +115,7 @@ def create_vm(vm_id: int, template_id: int) -> Dict[str, Any]:
         )
         slog.success(f"VM {vm_id} configured: {config.VM_CORES} cores, {config.VM_MEMORY_MB}MB RAM")
 
-        # Step 3: Start VM
+        # Step 4: Start VM
         slog.info("Starting VM")
         node.qemu(vm_id).status.start.post()
         slog.success(f"VM {vm_id} started")
