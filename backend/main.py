@@ -69,7 +69,10 @@ async def auto_cleanup_task():
                             continue
 
                         logger.info(f"Auto-cleanup: Deleting expired VM {vm_id}")
-                        result = delete_vm(vm_id=vm_id, force=True)
+                        loop = asyncio.get_event_loop()
+                        result = await loop.run_in_executor(
+                            None, lambda: delete_vm(vm_id=vm_id, force=True)
+                        )
 
                         if result['success']:
                             logger.info(f"Auto-cleanup: VM {vm_id} deleted successfully")
@@ -83,6 +86,9 @@ async def auto_cleanup_task():
                             else:
                                 logger.error(f"Auto-cleanup: Failed to delete VM {vm_id}: {error}")
 
+                    except asyncio.CancelledError:
+                        logger.info(f"Auto-cleanup: Cancelled while deleting VM {vm_id}")
+                        raise
                     except Exception as e:
                         logger.error(f"Auto-cleanup: Error deleting VM {vm_id}: {e}")
 
