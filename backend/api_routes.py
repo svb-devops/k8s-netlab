@@ -317,8 +317,8 @@ async def api_list_vms(
             for vm in all_vms:
                 vm_id = vm['vmid']
 
-                # Skip template VMs
-                if vm.get('template'):
+                # Skip template VMs and the configured template ID
+                if vm.get('template') or vm_id == config.VM_TEMPLATE_ID:
                     continue
 
                 # If VM has no owner, assign it to current user

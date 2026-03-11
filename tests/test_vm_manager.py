@@ -79,9 +79,13 @@ class TestCreateVm:
     """Tests for create_vm()"""
 
     def test_successful_creation(self, mock_proxmox):
-        """Full flow: clone -> configure -> start -> success."""
+        """Full flow: clone -> pool -> configure -> start -> success."""
         node = mock_proxmox.nodes("pve")
         node.qemu(9000).clone.post.return_value = "UPID:clone:task"
+        # Task polling must return 'stopped'/'OK' immediately or loop hangs
+        node.tasks("UPID:clone:task").status.get.return_value = {
+            "status": "stopped", "exitstatus": "OK"
+        }
 
         from backend.vm_manager import create_vm
         result = create_vm(vm_id=200, template_id=9000)
@@ -150,7 +154,10 @@ class TestDeleteVm:
         """Force-stops running VM then deletes."""
         node = mock_proxmox.nodes("pve")
         vm = node.qemu(200)
-        vm.status.current.get.return_value = {"status": "running"}
+        # First call: running (initial check); second call: stopped (wait loop)
+        vm.status.current.get.side_effect = [
+            {"status": "running"}, {"status": "stopped"}
+        ]
 
         from backend.vm_manager import delete_vm
         result = delete_vm(vm_id=200, force=True)
@@ -165,7 +172,9 @@ class TestDeleteVm:
         """Gracefully shuts down running VM then deletes."""
         node = mock_proxmox.nodes("pve")
         vm = node.qemu(300)
-        vm.status.current.get.return_value = {"status": "running"}
+        vm.status.current.get.side_effect = [
+            {"status": "running"}, {"status": "stopped"}
+        ]
 
         from backend.vm_manager import delete_vm
         result = delete_vm(vm_id=300, force=False)

@@ -14,10 +14,11 @@ def _patch_config(monkeypatch):
     from backend import config
     monkeypatch.setattr(config, "PROXMOX_HOST", "10.0.0.1")
     monkeypatch.setattr(config, "PROXMOX_PORT", 8006)
-    monkeypatch.setattr(config, "PROXMOX_USER", "root@pam")
-    monkeypatch.setattr(config, "PROXMOX_PASSWORD", "testpass")
+    monkeypatch.setattr(config, "PROXMOX_TOKEN_ID", "testuser@pve!mytoken")
+    monkeypatch.setattr(config, "PROXMOX_TOKEN_SECRET", "test-secret-uuid")
     monkeypatch.setattr(config, "PROXMOX_VERIFY_SSL", False)
     monkeypatch.setattr(config, "PROXMOX_NODE", "pve")
+    monkeypatch.setattr(config, "_proxmox_auth_method", "token")
 
 
 class TestConnectProxmox:
@@ -25,7 +26,7 @@ class TestConnectProxmox:
 
     @patch("backend.proxmox_api.ProxmoxAPI")
     def test_successful_connection(self, mock_pve_cls):
-        """Returns ProxmoxAPI instance on successful connection."""
+        """Returns ProxmoxAPI instance on successful token-auth connection."""
         mock_instance = MagicMock()
         mock_instance.version.get.return_value = {"version": "8.1.3"}
         mock_pve_cls.return_value = mock_instance
@@ -37,9 +38,11 @@ class TestConnectProxmox:
         mock_pve_cls.assert_called_once_with(
             "10.0.0.1",
             port=8006,
-            user="root@pam",
-            password="testpass",
+            user="testuser@pve",
+            token_name="mytoken",
+            token_value="test-secret-uuid",
             verify_ssl=False,
+            timeout=30,
         )
         mock_instance.version.get.assert_called_once()
 
