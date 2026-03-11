@@ -189,6 +189,30 @@ async def sync_vm_password(vm_id: int) -> bool:
         return False
 
 
+async def wait_for_k3s(terminal: SSHTerminal, websocket: WebSocket, max_wait: int = 120) -> bool:
+    """Silently wait for K3s node to be Ready, sending friendly progress to the WebSocket."""
+    loop = asyncio.get_event_loop()
+    for elapsed in range(0, max_wait, 5):
+        try:
+            _, stdout, _ = await loop.run_in_executor(
+                None,
+                lambda: terminal.ssh_client.exec_command(
+                    "kubectl get nodes --no-headers 2>/dev/null | grep -c ' Ready '",
+                    timeout=5,
+                ),
+            )
+            if int(stdout.read().decode().strip() or "0") > 0:
+                return True
+        except Exception:
+            pass
+        await websocket.send_json({
+            "type": "waiting",
+            "message": f"等待 K3s 就绪... ({elapsed + 5}s / {max_wait}s)",
+        })
+        await asyncio.sleep(5)
+    return False
+
+
 async def websocket_terminal(websocket: WebSocket, vm_id: int):
     """
     WebSocket terminal handler (SSH bridge).
@@ -243,6 +267,12 @@ async def websocket_terminal(websocket: WebSocket, vm_id: int):
             })
             await websocket.close()
             return
+
+        # Wait for K3s to be ready before handing over the shell
+        await websocket.send_json({"type": "waiting", "message": "等待 K3s 就绪，请稍候..."})
+        k3s_ready = await wait_for_k3s(terminal, websocket)
+        if not k3s_ready:
+            await websocket.send_json({"type": "waiting", "message": "⚠ K3s 未在 120s 内就绪，已开放终端，部分命令可能需要稍等"})
 
         # Send connection success message
         await websocket.send_json({
