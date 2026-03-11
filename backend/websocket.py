@@ -207,6 +207,7 @@ async def wait_for_k3s(terminal: SSHTerminal, websocket: WebSocket, max_wait: in
             if running >= 3:
                 consecutive_ok += 1
                 if consecutive_ok >= 2:
+                    await asyncio.sleep(10)  # brief cool-down before handing over shell
                     return True
             else:
                 consecutive_ok = 0
