@@ -57,6 +57,27 @@ class TestExpiry:
         assert 500 not in expired
 
 
+class TestGetAllVmsWithDetails:
+    def test_returns_owner_and_age(self, tracker):
+        old = (datetime.now() - timedelta(minutes=10)).isoformat()
+        tracker.track_vm(500, owner="alice", created_at=old)
+        tracker.track_vm(501, owner="bob")
+
+        details = tracker.get_all_vms_with_details()
+        assert len(details) == 2
+
+        vm500 = next(d for d in details if d["vm_id"] == 500)
+        assert vm500["owner"] == "alice"
+        assert vm500["age_minutes"] >= 10.0
+
+        vm501 = next(d for d in details if d["vm_id"] == 501)
+        assert vm501["owner"] == "bob"
+        assert vm501["age_minutes"] < 1.0
+
+    def test_empty_tracker_returns_empty_list(self, tracker):
+        assert tracker.get_all_vms_with_details() == []
+
+
 class TestTemplateSafety:
     def test_template_id_not_auto_claimable(self, tracker):
         """Template VM should never appear as user-owned via auto-claim."""

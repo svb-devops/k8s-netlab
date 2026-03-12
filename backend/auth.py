@@ -121,30 +121,80 @@ class AuthManager:
 
         return True
 
-    def create_session(self, username: str) -> str:
+    def create_session(self, username: str, login_ip: Optional[str] = None) -> str:
         """
         Create a new session for user.
 
         Args:
             username: Username
+            login_ip: Client IP address at login time (optional)
 
         Returns:
             Session token
         """
         token = secrets.token_urlsafe(32)
+        created_at = datetime.now().isoformat()
         expires_at = (datetime.now() + timedelta(hours=24)).isoformat()
 
         def _add(sessions: Dict) -> Dict:
             sessions[token] = {
                 "username": username,
-                "created_at": datetime.now().isoformat(),
+                "created_at": created_at,
                 "expires_at": expires_at,
+                "login_ip": login_ip,
             }
             return sessions
 
         safe_update_json(SESSIONS_FILE, _add)
-        logger.info(f"Session created for user '{username}'")
+        logger.info(f"Session created for user '{username}' from {login_ip or 'unknown'}")
         return token
+
+    def get_active_sessions(self) -> list:
+        """
+        Return all non-expired sessions with their metadata.
+
+        Returns:
+            List of session dicts (without the raw token).
+        """
+        sessions = self._load_sessions()
+        now = datetime.now()
+        return [
+            data
+            for data in sessions.values()
+            if datetime.fromisoformat(data["expires_at"]) > now
+        ]
+
+    def get_users_summary(self) -> Dict:
+        """
+        Return user metadata without password hashes.
+
+        Returns:
+            Dict mapping username → {created_at}
+        """
+        users = self._load_users()
+        return {
+            username: {"created_at": info.get("created_at")}
+            for username, info in users.items()
+        }
+
+    def update_session_activity(
+        self, token: str, current_experiment: Optional[str] = None
+    ) -> None:
+        """
+        Update session with latest activity data (best-effort, silent if token missing).
+
+        Args:
+            token: Session token
+            current_experiment: Two-digit experiment ID the user switched to, e.g. "05"
+        """
+        def _update(sessions: Dict) -> Dict:
+            if token in sessions:
+                sessions[token]["last_activity"] = datetime.now().isoformat()
+                if current_experiment is not None:
+                    sessions[token]["current_experiment"] = current_experiment
+            return sessions
+
+        safe_update_json(SESSIONS_FILE, _update)
 
     def verify_session(self, token: str) -> Optional[str]:
         """

@@ -4,9 +4,13 @@ K8S NetLab - Experiment Documentation API Routes
 Provides endpoints to list and serve Markdown experiment documents.
 """
 
-from fastapi import APIRouter, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, Cookie, HTTPException
 from fastapi.responses import JSONResponse
 from pathlib import Path
+
+from backend.auth import auth_manager
 
 router = APIRouter(prefix="/api/experiments", tags=["experiments"])
 
@@ -119,7 +123,10 @@ async def list_experiments() -> JSONResponse:
 
 
 @router.get("/{exp_id}", summary="Get experiment content")
-async def get_experiment(exp_id: str) -> JSONResponse:
+async def get_experiment(
+    exp_id: str,
+    session_token: Optional[str] = Cookie(None),
+) -> JSONResponse:
     """
     Return the Markdown content of a specific experiment.
 
@@ -141,6 +148,11 @@ async def get_experiment(exp_id: str) -> JSONResponse:
         )
 
     content = file_path.read_text(encoding="utf-8")
+
+    # Record current experiment for admin observability (best-effort, never blocks response)
+    if session_token:
+        auth_manager.update_session_activity(session_token, current_experiment=exp_id)
+
     return JSONResponse({
         "id": exp_id,
         "title": exp["title"],

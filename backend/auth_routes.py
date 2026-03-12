@@ -126,8 +126,8 @@ async def login(credentials: LoginRequest, response: Response, request: Request)
                 detail="Invalid username or password"
             )
 
-        # Create session
-        token = auth_manager.create_session(credentials.username)
+        # Create session (record login IP for admin observability)
+        token = auth_manager.create_session(credentials.username, login_ip=client_ip)
 
         # Set session cookie (httponly + secure for security)
         response.set_cookie(

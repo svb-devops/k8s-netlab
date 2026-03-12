@@ -1,0 +1,133 @@
+"""Tests for admin observability endpoint — auth, data aggregation, field correctness."""
+
+from unittest.mock import patch
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from backend.admin_routes import router
+
+TEST_TOKEN = "test-admin-secret-xyz"
+
+# Minimal app containing only the admin router — avoids Proxmox startup
+@pytest.fixture
+def client():
+    app = FastAPI()
+    app.include_router(router)
+    return TestClient(app, raise_server_exceptions=True)
+
+
+# ============================================================
+# Auth guard
+# ============================================================
+
+class TestAdminAuth:
+    def test_no_token_unconfigured_returns_503(self, client):
+        """When ADMIN_TOKEN is not set, endpoint must be disabled (not just 403)."""
+        with patch("backend.config.ADMIN_TOKEN", ""):
+            resp = client.get("/api/admin/status")
+        assert resp.status_code == 503
+
+    def test_missing_token_returns_403(self, client):
+        with patch("backend.config.ADMIN_TOKEN", TEST_TOKEN):
+            resp = client.get("/api/admin/status")
+        assert resp.status_code == 403
+
+    def test_wrong_token_returns_403(self, client):
+        with patch("backend.config.ADMIN_TOKEN", TEST_TOKEN):
+            resp = client.get("/api/admin/status", headers={"X-Admin-Token": "wrong"})
+        assert resp.status_code == 403
+
+
+# ============================================================
+# Data correctness
+# ============================================================
+
+_EMPTY_MOCKS = dict(
+    get_active_sessions=lambda: [],
+    get_users_summary=lambda: {},
+    get_all_vms_with_details=lambda: [],
+)
+
+
+class TestAdminStatus:
+    def _patch_all(self, sessions=None, users=None, vms=None):
+        """Return a context-manager stack that patches all three data sources."""
+        import contextlib
+        sessions = sessions or []
+        users = users or {}
+        vms = vms or []
+        return contextlib.ExitStack()  # built inline below
+
+    def test_empty_system_returns_zeros(self, client):
+        with patch("backend.config.ADMIN_TOKEN", TEST_TOKEN), \
+             patch("backend.admin_routes.auth_manager.get_active_sessions", return_value=[]), \
+             patch("backend.admin_routes.auth_manager.get_users_summary", return_value={}), \
+             patch("backend.admin_routes.vm_tracker.get_all_vms_with_details", return_value=[]):
+            resp = client.get("/api/admin/status", headers={"X-Admin-Token": TEST_TOKEN})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["stats"]["total_users"] == 0
+        assert data["stats"]["active_sessions"] == 0
+        assert data["stats"]["total_tracked_vms"] == 0
+        assert data["sessions"] == []
+
+    def test_session_fields_populated_correctly(self, client):
+        mock_sessions = [{
+            "username": "alice",
+            "login_ip": "10.0.0.5",
+            "created_at": "2026-03-11T10:00:00",
+            "expires_at": "2026-03-12T10:00:00",
+            "current_experiment": "03",
+            "last_activity": "2026-03-11T10:30:00",
+        }]
+        mock_users = {"alice": {"created_at": "2026-02-01T00:00:00"}}
+        mock_vms = [{
+            "vm_id": 500, "owner": "alice",
+            "created_at": "2026-03-11T10:05:00", "age_minutes": 5.0,
+        }]
+
+        with patch("backend.config.ADMIN_TOKEN", TEST_TOKEN), \
+             patch("backend.admin_routes.auth_manager.get_active_sessions", return_value=mock_sessions), \
+             patch("backend.admin_routes.auth_manager.get_users_summary", return_value=mock_users), \
+             patch("backend.admin_routes.vm_tracker.get_all_vms_with_details", return_value=mock_vms):
+            resp = client.get("/api/admin/status", headers={"X-Admin-Token": TEST_TOKEN})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["stats"]["total_users"] == 1
+        assert data["stats"]["active_sessions"] == 1
+        assert data["stats"]["total_tracked_vms"] == 1
+
+        s = data["sessions"][0]
+        assert s["username"] == "alice"
+        assert s["login_ip"] == "10.0.0.5"
+        assert s["registered_at"] == "2026-02-01T00:00:00"
+        assert s["current_experiment"] == "03"
+        assert s["last_activity"] == "2026-03-11T10:30:00"
+        assert len(s["vms"]) == 1
+        assert s["vms"][0]["vm_id"] == 500
+
+    def test_session_without_experiment_fields_defaults_to_null(self, client):
+        """Sessions created before experiment tracking was added must not crash."""
+        mock_sessions = [{
+            "username": "bob",
+            "login_ip": None,
+            "created_at": "2026-03-11T09:00:00",
+            "expires_at": "2026-03-12T09:00:00",
+            # no current_experiment, no last_activity
+        }]
+
+        with patch("backend.config.ADMIN_TOKEN", TEST_TOKEN), \
+             patch("backend.admin_routes.auth_manager.get_active_sessions", return_value=mock_sessions), \
+             patch("backend.admin_routes.auth_manager.get_users_summary", return_value={"bob": {"created_at": None}}), \
+             patch("backend.admin_routes.vm_tracker.get_all_vms_with_details", return_value=[]):
+            resp = client.get("/api/admin/status", headers={"X-Admin-Token": TEST_TOKEN})
+
+        assert resp.status_code == 200
+        s = resp.json()["sessions"][0]
+        assert s["current_experiment"] is None
+        assert s["last_activity"] is None
+        assert s["login_ip"] is None

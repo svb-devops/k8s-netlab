@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend import config
+from backend.admin_routes import router as admin_router
 from backend.api_routes import router as api_router
 from backend.auth_routes import router as auth_router
 from backend.docs_routes import router as docs_router
@@ -198,9 +199,10 @@ else:
 # Include Routers
 # ============================================================
 
-app.include_router(auth_router)  # Authentication routes
-app.include_router(api_router)   # VM management routes
-app.include_router(docs_router)  # Experiment documentation routes
+app.include_router(auth_router)   # Authentication routes
+app.include_router(api_router)    # VM management routes
+app.include_router(docs_router)   # Experiment documentation routes
+app.include_router(admin_router)  # Admin observability routes
 
 
 # ============================================================
@@ -338,6 +340,25 @@ async def login_page():
     """
     from fastapi.responses import FileResponse
     return FileResponse(str(FRONTEND_DIR / "login.html"))
+
+
+@app.get(
+    "/admin.html",
+    summary="Admin Console",
+    description="Serve the admin observability console",
+    include_in_schema=False
+)
+async def admin_page():
+    """
+    Serve the admin console page.
+
+    Token verification happens client-side via X-Admin-Token header.
+
+    Returns:
+        HTML: The admin console
+    """
+    from fastapi.responses import FileResponse
+    return FileResponse(str(FRONTEND_DIR / "admin.html"))
 
 
 @app.get(

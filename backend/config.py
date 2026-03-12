@@ -131,6 +131,13 @@ VM_BRIDGE: str = os.getenv("VM_BRIDGE", "vmbr1")
 VM_IP_START: int = _get_env_int("VM_IP_START", 10)
 VM_IP_END: int = _get_env_int("VM_IP_END", 254)
 
+# --- Admin API Configuration ---
+# Static token for the admin observability endpoint (X-Admin-Token header).
+# If not set, the admin endpoint returns 503 rather than exposing a weak default.
+ADMIN_TOKEN: str = os.getenv("ADMIN_TOKEN", "")
+if not ADMIN_TOKEN:
+    logger.warning("ADMIN_TOKEN not set — admin API (/api/admin/status) will be disabled")
+
 # --- VM Quota Configuration ---
 # Maximum number of VMs a single user can own simultaneously.
 # Default 1 (one VM per user). Increase for instructors/admins.

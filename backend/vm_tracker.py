@@ -149,6 +149,37 @@ class VMTracker:
             if isinstance(vm_data, dict) and vm_data.get("owner") == username
         ]
 
+    def get_all_vms_with_details(self) -> list:
+        """
+        Return all tracked VMs with full detail.
+
+        Returns:
+            List of dicts: {vm_id, owner, created_at, age_minutes}
+        """
+        raw = self._load_data()
+        now = datetime.now()
+        result = []
+        for vm_id, vm_data in raw.items():
+            if isinstance(vm_data, str):
+                created_at_str = vm_data
+                owner = "unknown"
+            else:
+                created_at_str = vm_data.get("created_at", "")
+                owner = vm_data.get("owner", "unknown")
+            try:
+                age_minutes = round(
+                    (now - datetime.fromisoformat(created_at_str)).total_seconds() / 60, 1
+                )
+            except (ValueError, TypeError):
+                age_minutes = 0.0
+            result.append({
+                "vm_id": int(vm_id),
+                "owner": owner,
+                "created_at": created_at_str,
+                "age_minutes": age_minutes,
+            })
+        return result
+
     def get_expired_vms(self, max_age_minutes: int = 30) -> list[int]:
         """
         Get list of VMs that exceeded max age.

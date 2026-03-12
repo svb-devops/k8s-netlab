@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理员控制台 - K8S NetLab</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: { extend: { colors: { 'k8s-blue': '#326CE5' } } }
+        }
+    </script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+
+<!-- ── Header ── -->
+<header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+        <svg class="w-8 h-8 text-k8s-blue" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </svg>
+        <div>
+            <h1 class="text-lg font-bold text-gray-900">K8S NetLab</h1>
+            <p class="text-xs text-gray-500">管理员控制台</p>
+        </div>
+    </div>
+    <div class="flex items-center gap-3">
+        <span id="auto-refresh-indicator" class="text-xs text-gray-400 hidden">自动刷新中…</span>
+        <span id="last-updated" class="text-xs text-gray-400"></span>
+        <button id="btn-refresh"
+                class="px-3 py-1.5 text-sm bg-k8s-blue text-white rounded-lg hover:bg-blue-700 transition">
+            刷新
+        </button>
+        <button id="btn-logout"
+                class="px-3 py-1.5 text-sm border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition">
+            退出
+        </button>
+    </div>
+</header>
+
+<!-- ── Token Gate ── -->
+<div id="token-gate" class="flex items-center justify-center min-h-[calc(100vh-64px)]">
+    <div class="bg-white rounded-xl shadow-lg p-8 w-full max-w-sm mx-4">
+        <h2 class="text-xl font-semibold text-gray-800 mb-1">管理员验证</h2>
+        <p class="text-sm text-gray-500 mb-6">输入 ADMIN_TOKEN 以访问控制台</p>
+        <form id="token-form" class="space-y-4">
+            <input type="password" id="token-input" required
+                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-k8s-blue focus:border-transparent text-sm"
+                   placeholder="粘贴 Admin Token…">
+            <button type="submit"
+                    class="w-full bg-k8s-blue hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition text-sm">
+                进入控制台
+            </button>
+        </form>
+        <p id="token-error" class="mt-3 text-sm text-red-600 hidden"></p>
+    </div>
+</div>
+
+<!-- ── Dashboard (hidden until authenticated) ── -->
+<div id="dashboard" class="hidden max-w-7xl mx-auto px-6 py-6 space-y-6">
+
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-3 gap-4">
+        <div class="bg-white rounded-xl shadow-sm p-5 flex items-center gap-4">
+            <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center text-k8s-blue">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+            </div>
+            <div>
+                <p class="text-sm text-gray-500">总注册用户</p>
+                <p id="stat-total-users" class="text-2xl font-bold text-gray-900">—</p>
+            </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5 flex items-center gap-4">
+            <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center text-green-600">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728M9 12a3 3 0 106 0 3 3 0 00-6 0z"/>
+                </svg>
+            </div>
+            <div>
+                <p class="text-sm text-gray-500">当前在线</p>
+                <p id="stat-active-sessions" class="text-2xl font-bold text-gray-900">—</p>
+            </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5 flex items-center gap-4">
+            <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center text-purple-600">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
+            </div>
+            <div>
+                <p class="text-sm text-gray-500">活跃 VM</p>
+                <p id="stat-total-vms" class="text-2xl font-bold text-gray-900">—</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sessions Table -->
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 class="font-semibold text-gray-800">在线用户</h2>
+            <label class="flex items-center gap-2 text-sm text-gray-500 cursor-pointer">
+                <input type="checkbox" id="auto-refresh-toggle" class="rounded">
+                每30秒自动刷新
+            </label>
+        </div>
+
+        <!-- Empty state -->
+        <div id="no-sessions" class="hidden py-16 text-center text-gray-400">
+            <svg class="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            <p>暂无在线用户</p>
+        </div>
+
+        <table id="sessions-table" class="w-full text-sm hidden">
+            <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wider">
+                <tr>
+                    <th class="px-6 py-3 text-left">用户</th>
+                    <th class="px-6 py-3 text-left">登录 IP</th>
+                    <th class="px-6 py-3 text-left">注册时间</th>
+                    <th class="px-6 py-3 text-left">登录时间</th>
+                    <th class="px-6 py-3 text-left">当前实验</th>
+                    <th class="px-6 py-3 text-left">最后活跃</th>
+                    <th class="px-6 py-3 text-left">VM</th>
+                    <th class="px-6 py-3 text-left">会话剩余</th>
+                </tr>
+            </thead>
+            <tbody id="sessions-tbody" class="divide-y divide-gray-100"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+// ── Experiment title map (matches docs_routes.py) ──────────────────────────
+const EXP_TITLES = {
+    '01': 'Kubernetes 网络基础',
+    '02': 'Pod 网络深入探索',
+    '03': 'Service 负载均衡',
+    '04': 'Ingress 控制器详解',
+    '05': 'NetworkPolicy 网络策略',
+    '06': 'DNS 服务发现',
+    '07': '持久化存储 PV/PVC',
+    '08': 'ConfigMap 和 Secret',
+    '09': 'StatefulSet 有状态应用',
+    '10': '监控和日志管理',
+    '11': '综合实战项目',
+};
+
+// ── State ──────────────────────────────────────────────────────────────────
+let adminToken = sessionStorage.getItem('admin_token') || '';
+let autoRefreshTimer = null;
+
+// ── DOM refs ───────────────────────────────────────────────────────────────
+const tokenGate    = document.getElementById('token-gate');
+const dashboard    = document.getElementById('dashboard');
+const tokenForm    = document.getElementById('token-form');
+const tokenInput   = document.getElementById('token-input');
+const tokenError   = document.getElementById('token-error');
+const btnRefresh   = document.getElementById('btn-refresh');
+const btnLogout    = document.getElementById('btn-logout');
+const autoToggle   = document.getElementById('auto-refresh-toggle');
+const autoLabel    = document.getElementById('auto-refresh-indicator');
+const lastUpdated  = document.getElementById('last-updated');
+const noSessions   = document.getElementById('no-sessions');
+const sessionsTable= document.getElementById('sessions-table');
+const tbody        = document.getElementById('sessions-tbody');
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function timeAgo(isoStr) {
+    if (!isoStr) return '—';
+    const diff = Math.floor((Date.now() - new Date(isoStr)) / 1000);
+    if (diff < 60)  return `${diff}秒前`;
+    if (diff < 3600) return `${Math.floor(diff/60)}分钟前`;
+    if (diff < 86400) return `${Math.floor(diff/3600)}小时前`;
+    return `${Math.floor(diff/86400)}天前`;
+}
+
+function formatDate(isoStr) {
+    if (!isoStr) return '—';
+    return new Date(isoStr).toLocaleString('zh-CN', {
+        month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit'
+    });
+}
+
+function remainingTime(isoStr) {
+    if (!isoStr) return '—';
+    const mins = Math.floor((new Date(isoStr) - Date.now()) / 60000);
+    if (mins <= 0) return '<span class="text-red-500">已过期</span>';
+    if (mins < 60) return `<span class="text-yellow-600">${mins}分钟</span>`;
+    return `${Math.floor(mins/60)}小时`;
+}
+
+function vmAgeColor(age) {
+    if (age < 15) return 'bg-green-100 text-green-700';
+    if (age < 25) return 'bg-yellow-100 text-yellow-700';
+    return 'bg-red-100 text-red-700';
+}
+
+// ── Fetch & Render ─────────────────────────────────────────────────────────
+async function fetchStatus() {
+    const resp = await fetch('/api/admin/status', {
+        headers: { 'X-Admin-Token': adminToken }
+    });
+    if (resp.status === 403 || resp.status === 503) {
+        const data = await resp.json();
+        throw new Error(data.detail || `HTTP ${resp.status}`);
+    }
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return resp.json();
+}
+
+function renderStats(stats) {
+    document.getElementById('stat-total-users').textContent     = stats.total_users;
+    document.getElementById('stat-active-sessions').textContent = stats.active_sessions;
+    document.getElementById('stat-total-vms').textContent       = stats.total_tracked_vms;
+}
+
+function renderSessions(sessions) {
+    if (!sessions.length) {
+        noSessions.classList.remove('hidden');
+        sessionsTable.classList.add('hidden');
+        return;
+    }
+    noSessions.classList.add('hidden');
+    sessionsTable.classList.remove('hidden');
+
+    tbody.innerHTML = sessions.map(s => {
+        const expLabel = s.current_experiment
+            ? `<span class="font-mono text-xs bg-blue-50 text-k8s-blue px-2 py-0.5 rounded">
+                 实验${s.current_experiment}
+               </span>
+               <span class="text-gray-500 text-xs ml-1">${EXP_TITLES[s.current_experiment] || ''}</span>`
+            : '<span class="text-gray-300">—</span>';
+
+        const vmsHtml = s.vms.length
+            ? s.vms.map(v =>
+                `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono ${vmAgeColor(v.age_minutes)}">
+                    VM-${v.vm_id} <span class="opacity-70">${v.age_minutes}m</span>
+                 </span>`
+              ).join(' ')
+            : '<span class="text-gray-300">—</span>';
+
+        return `<tr class="hover:bg-gray-50 transition">
+            <td class="px-6 py-4 font-medium text-gray-900">${s.username}</td>
+            <td class="px-6 py-4 font-mono text-gray-600 text-xs">${s.login_ip || '<span class="text-gray-300">—</span>'}</td>
+            <td class="px-6 py-4 text-gray-500 text-xs">${formatDate(s.registered_at)}</td>
+            <td class="px-6 py-4 text-gray-500 text-xs">${formatDate(s.login_time)}</td>
+            <td class="px-6 py-4">${expLabel}</td>
+            <td class="px-6 py-4 text-gray-500 text-xs">${timeAgo(s.last_activity)}</td>
+            <td class="px-6 py-4">${vmsHtml}</td>
+            <td class="px-6 py-4 text-xs">${remainingTime(s.expires_at)}</td>
+        </tr>`;
+    }).join('');
+}
+
+async function refresh() {
+    btnRefresh.disabled = true;
+    btnRefresh.textContent = '加载中…';
+    try {
+        const data = await fetchStatus();
+        renderStats(data.stats);
+        renderSessions(data.sessions);
+        lastUpdated.textContent = `更新于 ${new Date().toLocaleTimeString('zh-CN')}`;
+    } catch (err) {
+        if (err.message.includes('403') || err.message.includes('Invalid')) {
+            logout();
+            return;
+        }
+        lastUpdated.textContent = `错误: ${err.message}`;
+    } finally {
+        btnRefresh.disabled = false;
+        btnRefresh.textContent = '刷新';
+    }
+}
+
+// ── Auth ───────────────────────────────────────────────────────────────────
+async function login(token) {
+    // Probe the endpoint to verify token before entering dashboard
+    try {
+        const resp = await fetch('/api/admin/status', {
+            headers: { 'X-Admin-Token': token }
+        });
+        if (resp.status === 403) {
+            tokenError.textContent = 'Token 无效，请重试';
+            tokenError.classList.remove('hidden');
+            return;
+        }
+        if (resp.status === 503) {
+            tokenError.textContent = '服务端未配置 ADMIN_TOKEN';
+            tokenError.classList.remove('hidden');
+            return;
+        }
+        if (!resp.ok) {
+            tokenError.textContent = `服务器错误 (HTTP ${resp.status})`;
+            tokenError.classList.remove('hidden');
+            return;
+        }
+        const data = await resp.json();
+        adminToken = token;
+        sessionStorage.setItem('admin_token', token);
+        tokenGate.classList.add('hidden');
+        dashboard.classList.remove('hidden');
+        tokenError.classList.add('hidden');
+        renderStats(data.stats);
+        renderSessions(data.sessions);
+        lastUpdated.textContent = `更新于 ${new Date().toLocaleTimeString('zh-CN')}`;
+    } catch {
+        tokenError.textContent = '无法连接服务器';
+        tokenError.classList.remove('hidden');
+    }
+}
+
+function logout() {
+    adminToken = '';
+    sessionStorage.removeItem('admin_token');
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+    autoToggle.checked = false;
+    autoLabel.classList.add('hidden');
+    dashboard.classList.add('hidden');
+    tokenGate.classList.remove('hidden');
+    tokenInput.value = '';
+}
+
+// ── Event Handlers ─────────────────────────────────────────────────────────
+tokenForm.addEventListener('submit', e => {
+    e.preventDefault();
+    login(tokenInput.value.trim());
+});
+
+btnRefresh.addEventListener('click', refresh);
+btnLogout.addEventListener('click', logout);
+
+autoToggle.addEventListener('change', () => {
+    if (autoToggle.checked) {
+        autoLabel.classList.remove('hidden');
+        autoRefreshTimer = setInterval(refresh, 30000);
+    } else {
+        autoLabel.classList.add('hidden');
+        clearInterval(autoRefreshTimer);
+        autoRefreshTimer = null;
+    }
+});
+
+// ── Init: restore session if token saved ──────────────────────────────────
+if (adminToken) {
+    login(adminToken);
+}
+</script>
+</body>
+</html>
