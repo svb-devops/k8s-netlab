@@ -164,18 +164,66 @@ class AuthManager:
             if datetime.fromisoformat(data["expires_at"]) > now
         ]
 
+    def is_admin(self, username: str) -> bool:
+        """Return True if username is in the ADMIN_USERNAMES config set."""
+        from backend import config
+        return username in config.ADMIN_USERNAMES
+
     def get_users_summary(self) -> Dict:
         """
         Return user metadata without password hashes.
 
         Returns:
-            Dict mapping username → {created_at}
+            Dict mapping username → {created_at, is_admin}
         """
+        from backend import config
         users = self._load_users()
         return {
-            username: {"created_at": info.get("created_at")}
+            username: {
+                "created_at": info.get("created_at"),
+                "is_admin": username in config.ADMIN_USERNAMES,
+            }
             for username, info in users.items()
         }
+
+    def change_password(self, username: str, old_password: str, new_password: str) -> bool:
+        """
+        Change password after verifying the old one.
+
+        Returns:
+            True on success, False if old_password is incorrect.
+        """
+        if not self.verify_credentials(username, old_password):
+            return False
+
+        def _update(users: Dict) -> Dict:
+            if username in users:
+                users[username]["password_hash"] = hash_password(new_password)
+            return users
+
+        safe_update_json(USERS_FILE, _update)
+        logger.info(f"Password changed for '{username}'")
+        return True
+
+    def reset_password(self, username: str, new_password: str) -> bool:
+        """
+        Reset password without verifying the old one (admin action).
+
+        Returns:
+            True on success, False if user not found.
+        """
+        users = self._load_users()
+        if username not in users:
+            return False
+
+        def _update(u: Dict) -> Dict:
+            if username in u:
+                u[username]["password_hash"] = hash_password(new_password)
+            return u
+
+        safe_update_json(USERS_FILE, _update)
+        logger.info(f"Password reset for '{username}' by admin")
+        return True
 
     def update_session_activity(
         self, token: str, current_experiment: Optional[str] = None

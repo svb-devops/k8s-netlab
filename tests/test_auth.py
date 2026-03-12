@@ -92,12 +92,22 @@ class TestGetUsersSummary:
         assert "alice" in summary
         assert "password_hash" not in summary["alice"]
         assert "created_at" in summary["alice"]
+        assert "is_admin" in summary["alice"]
 
     def test_all_users_returned(self, auth):
         auth.register_user("alice", "pass123")
         auth.register_user("bob", "pass456")
         summary = auth.get_users_summary()
         assert set(summary.keys()) == {"alice", "bob"}
+
+    def test_is_admin_flag(self, auth):
+        from unittest.mock import patch
+        auth.register_user("alice", "pass123")
+        auth.register_user("bob", "pass456")
+        with patch("backend.config.ADMIN_USERNAMES", {"alice"}):
+            summary = auth.get_users_summary()
+        assert summary["alice"]["is_admin"] is True
+        assert summary["bob"]["is_admin"] is False
 
 
 # ============================================================

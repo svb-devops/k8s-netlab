@@ -40,6 +40,20 @@ class AuthResponse(BaseModel):
     success: bool
     message: str
     username: Optional[str] = None
+    is_admin: Optional[bool] = None
+
+
+class ChangePasswordRequest(BaseModel):
+    """Change-password request."""
+    old_password: str = Field(..., min_length=1, max_length=100)
+    new_password: str = Field(..., min_length=6, max_length=100)
+
+
+def _normalize_ip(ip: str) -> str:
+    """Strip IPv6-mapped IPv4 prefix so ::ffff:1.2.3.4 → 1.2.3.4."""
+    if ip and ip.startswith("::ffff:"):
+        return ip[7:]
+    return ip
 
 
 # ============================================================
@@ -110,7 +124,7 @@ async def login(credentials: LoginRequest, response: Response, request: Request)
     """
     try:
         # Rate limit: 5 login attempts per IP per 60 seconds
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = _normalize_ip(request.client.host if request.client else "unknown")
         if not rate_limiter.is_allowed(f"login:{client_ip}", max_requests=5, window_seconds=60):
             wait = rate_limiter.retry_after(f"login:{client_ip}", window_seconds=60)
             raise HTTPException(
@@ -234,5 +248,34 @@ async def get_current_user(
     return AuthResponse(
         success=True,
         message="Authenticated",
-        username=username
+        username=username,
+        is_admin=auth_manager.is_admin(username),
     )
+
+
+@router.post(
+    "/change-password",
+    response_model=AuthResponse,
+    summary="Change current user's password"
+)
+async def change_password(
+    req: ChangePasswordRequest,
+    session_token: Optional[str] = Cookie(None),
+) -> AuthResponse:
+    """
+    Change the logged-in user's password.
+
+    Requires the current password for verification.
+    """
+    if not session_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+
+    username = auth_manager.verify_session(session_token)
+    if not username:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired session")
+
+    if not auth_manager.change_password(username, req.old_password, req.new_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前密码不正确")
+
+    logger.info(f"Password changed via API for '{username}'")
+    return AuthResponse(success=True, message="密码已修改", username=username)

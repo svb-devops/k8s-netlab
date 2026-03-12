@@ -13,7 +13,7 @@ import secrets
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend import config
 from backend.auth import auth_manager
@@ -60,6 +60,7 @@ class VMDetail(BaseModel):
 
 class SessionDetail(BaseModel):
     username: str
+    is_admin: bool
     login_ip: Optional[str]
     login_time: str
     expires_at: str
@@ -67,6 +68,11 @@ class SessionDetail(BaseModel):
     current_experiment: Optional[str]   # e.g. "05" — set when user opens an experiment
     last_activity: Optional[str]        # ISO timestamp of last experiment page load
     vms: list[VMDetail]
+
+
+class ResetPasswordRequest(BaseModel):
+    username: str
+    new_password: str = Field(..., min_length=6, max_length=100)
 
 
 class AdminStats(BaseModel):
@@ -123,6 +129,7 @@ async def admin_status(
     sessions: list[SessionDetail] = [
         SessionDetail(
             username=s["username"],
+            is_admin=s["username"] in config.ADMIN_USERNAMES,
             login_ip=s.get("login_ip"),
             login_time=s["created_at"],
             expires_at=s["expires_at"],
@@ -147,3 +154,22 @@ async def admin_status(
     )
 
     return AdminStatusResponse(stats=stats, sessions=sessions)
+
+
+@router.post(
+    "/reset-password",
+    status_code=status.HTTP_200_OK,
+    summary="Reset a user's password (admin action, no old password required)",
+)
+async def reset_password(
+    req: ResetPasswordRequest,
+    _: None = Depends(require_admin),
+) -> dict:
+    """Force-reset any user's password without knowing the old one."""
+    if not auth_manager.reset_password(req.username, req.new_password):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User '{req.username}' not found",
+        )
+    logger.info(f"Admin reset password for '{req.username}'")
+    return {"success": True, "message": f"Password reset for '{req.username}'"}

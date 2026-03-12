@@ -138,6 +138,12 @@ ADMIN_TOKEN: str = os.getenv("ADMIN_TOKEN", "")
 if not ADMIN_TOKEN:
     logger.warning("ADMIN_TOKEN not set — admin API (/api/admin/status) will be disabled")
 
+# Comma-separated list of usernames that have admin privileges.
+# Admins are shown an admin badge in the UI.
+# Example: ADMIN_USERNAMES=alice,bob
+_admin_usernames_raw = os.getenv("ADMIN_USERNAMES", "")
+ADMIN_USERNAMES: set = {u.strip() for u in _admin_usernames_raw.split(",") if u.strip()}
+
 # --- VM Quota Configuration ---
 # Maximum number of VMs a single user can own simultaneously.
 # Default 1 (one VM per user). Increase for instructors/admins.
