@@ -9,6 +9,8 @@ class ExperimentDocs {
     constructor() {
         this.experiments = [];
         this.currentExpId = null;
+        this.activeVmId = null;         // set by app when terminal connects
+        this._pendingJumpExpId = null;  // experiment awaiting jump confirmation
 
         // DOM refs
         this.selectEl       = document.getElementById('experiment-select');
@@ -21,6 +23,10 @@ class ExperimentDocs {
         this.stepPillsEl    = document.getElementById('step-pills');
         this.progressBarEl  = document.getElementById('step-progress-bar');
         this.progressTextEl = document.getElementById('step-progress-text');
+        this.jumpWarningEl  = document.getElementById('exp-jump-warning');
+        this.jumpWarningTxt = document.getElementById('exp-jump-warning-text');
+        this.btnPrev        = document.getElementById('btn-prev-exp');
+        this.btnNext        = document.getElementById('btn-next-exp');
 
         // Step navigation state
         this.steps          = [];   // [{ el, title, idx }]
@@ -44,6 +50,17 @@ class ExperimentDocs {
     async init() {
         await this.loadExperimentList();
         this.bindEvents();
+    }
+
+    /**
+     * Called by app.js when the user connects a terminal to a VM.
+     * Resets per-VM state so highwater marks are tracked per VM.
+     * @param {number} vmId
+     */
+    setActiveVm(vmId) {
+        if (this.activeVmId === vmId) return;
+        this.activeVmId = vmId;
+        // Don't reset currentExpId — user may already be reading a doc
     }
 
     /**
@@ -75,17 +92,129 @@ class ExperimentDocs {
     }
 
     /**
-     * Bind the change event on the experiment selector.
+     * Bind events for dropdown, prev/next buttons, and jump warning actions.
      */
     bindEvents() {
         this.selectEl.addEventListener('change', (e) => {
             const expId = e.target.value;
-            if (expId) {
-                this.loadExperiment(expId);
-            } else {
+            if (!expId) {
                 this.showPlaceholder();
+                return;
             }
+            this._handleSelectChange(expId);
         });
+
+        if (this.btnPrev) {
+            this.btnPrev.addEventListener('click', () => this.prevExperiment());
+        }
+        if (this.btnNext) {
+            this.btnNext.addEventListener('click', () => this.nextExperiment());
+        }
+
+        const confirmBtn = document.getElementById('exp-jump-confirm');
+        const cancelBtn  = document.getElementById('exp-jump-cancel');
+        if (confirmBtn) confirmBtn.addEventListener('click', () => this._confirmJump());
+        if (cancelBtn)  cancelBtn.addEventListener('click',  () => this._cancelJump());
+    }
+
+    /**
+     * Handle dropdown change: intercept forward jumps that skip experiments.
+     * @param {string} expId
+     */
+    _handleSelectChange(expId) {
+        const targetN = parseInt(expId, 10);
+        const hwm     = this._getHighwater();
+
+        // Only warn when jumping 2+ ahead of the furthest reached experiment
+        if (hwm > 0 && targetN > hwm + 1) {
+            this._showJumpWarning(expId, hwm);
+        } else {
+            this.loadExperiment(expId);
+        }
+    }
+
+    // ─── Jump Warning ─────────────────────────────────────────────────────────
+
+    _showJumpWarning(expId, hwm) {
+        this._pendingJumpExpId = expId;
+        const hwmStr = String(hwm).padStart(2, '0');
+        this.jumpWarningTxt.textContent =
+            `实验 ${expId} 依赖前序实验的 K8s 环境配置（当前进度：实验 ${hwmStr}），` +
+            `跳过中间实验可能导致步骤失败。`;
+        if (this.jumpWarningEl) this.jumpWarningEl.classList.remove('hidden');
+    }
+
+    _confirmJump() {
+        if (this.jumpWarningEl) this.jumpWarningEl.classList.add('hidden');
+        if (this._pendingJumpExpId) {
+            const expId = this._pendingJumpExpId;
+            this._pendingJumpExpId = null;
+            this.loadExperiment(expId);
+        }
+    }
+
+    _cancelJump() {
+        if (this.jumpWarningEl) this.jumpWarningEl.classList.add('hidden');
+        // Restore select to currently loaded experiment
+        if (this.selectEl) this.selectEl.value = this.currentExpId || '';
+        this._pendingJumpExpId = null;
+    }
+
+    // ─── Prev / Next Navigation ───────────────────────────────────────────────
+
+    prevExperiment() {
+        if (!this.experiments.length) return;
+        const idx = this.currentExpId
+            ? this.experiments.findIndex(e => e.id === this.currentExpId)
+            : -1;
+        if (idx > 0) this.loadExperiment(this.experiments[idx - 1].id);
+    }
+
+    nextExperiment() {
+        if (!this.experiments.length) return;
+        if (!this.currentExpId) {
+            this.loadExperiment(this.experiments[0].id);
+            return;
+        }
+        const idx = this.experiments.findIndex(e => e.id === this.currentExpId);
+        if (idx >= 0 && idx < this.experiments.length - 1) {
+            this.loadExperiment(this.experiments[idx + 1].id);
+        }
+    }
+
+    /**
+     * Update disabled state of prev/next buttons based on current position.
+     */
+    _updateNavButtons() {
+        if (!this.btnPrev || !this.btnNext) return;
+        const idx = this.currentExpId
+            ? this.experiments.findIndex(e => e.id === this.currentExpId)
+            : -1;
+        this.btnPrev.disabled = (idx <= 0);
+        this.btnNext.disabled = (idx < 0 || idx >= this.experiments.length - 1);
+    }
+
+    // ─── Highwater Mark (furthest experiment reached, per VM) ─────────────────
+
+    _hwmKey() {
+        return this.activeVmId
+            ? `k8s-lab-hwm-vm${this.activeVmId}`
+            : 'k8s-lab-hwm';
+    }
+
+    _getHighwater() {
+        try {
+            return parseInt(localStorage.getItem(this._hwmKey()) || '0', 10);
+        } catch {
+            return 0;
+        }
+    }
+
+    _updateHighwater(expId) {
+        const n = parseInt(expId, 10);
+        if (n > this._getHighwater()) {
+            try { localStorage.setItem(this._hwmKey(), expId); } catch {}
+        }
     }
 
     /**
@@ -94,6 +223,10 @@ class ExperimentDocs {
      */
     async loadExperiment(expId) {
         if (this.currentExpId === expId) return;
+
+        // Dismiss any pending jump warning
+        if (this.jumpWarningEl) this.jumpWarningEl.classList.add('hidden');
+        this._pendingJumpExpId = null;
 
         // Reset step nav for new experiment
         this.steps = [];
@@ -108,9 +241,16 @@ class ExperimentDocs {
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const data = await resp.json();
 
-            this.currentExpId = expId;  // set before renderMarkdown so buildStepNav can use it
+            this.currentExpId = expId;
             this.renderMarkdown(data.content);
             this.showInfoBar(data.difficulty, data.duration);
+
+            // Sync dropdown selection (covers navigation via prev/next buttons)
+            if (this.selectEl) this.selectEl.value = expId;
+
+            // Update highwater mark and nav buttons
+            this._updateHighwater(expId);
+            this._updateNavButtons();
 
         } catch (err) {
             this.contentEl.innerHTML = `
@@ -226,7 +366,9 @@ class ExperimentDocs {
         this.currentStepIdx = -1;
         this.contentEl.removeEventListener('scroll', this._scrollBound);
         if (this.stepNavEl) this.stepNavEl.classList.add('hidden');
+        if (this.jumpWarningEl) this.jumpWarningEl.classList.add('hidden');
         this.infoBar.classList.add('hidden');
+        this._updateNavButtons();
         this.contentEl.innerHTML = `
             <div class="flex flex-col items-center justify-center h-full text-gray-400 space-y-3">
                 <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">

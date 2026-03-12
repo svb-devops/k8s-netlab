@@ -264,6 +264,9 @@ class K8SNetLabApp {
             // Connect to VM terminal
             await terminalManager.connect(vmId);
 
+            // Notify experiment docs manager so highwater marks are scoped to this VM
+            if (window.experimentDocs) experimentDocs.setActiveVm(vmId);
+
             // Scroll to terminal section
             document.getElementById('terminal-section').scrollIntoView({
                 behavior: 'smooth'

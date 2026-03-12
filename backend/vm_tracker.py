@@ -180,6 +180,21 @@ class VMTracker:
             })
         return result
 
+    def get_vm_age_minutes(self, vm_id: int) -> float:
+        """Return age in minutes of a tracked VM, or 0.0 if not found."""
+        data = self._load_data()
+        vm_data = data.get(vm_id)
+        if vm_data is None:
+            return 0.0
+        try:
+            if isinstance(vm_data, str):
+                created_at = datetime.fromisoformat(vm_data)
+            else:
+                created_at = datetime.fromisoformat(vm_data["created_at"])
+            return (datetime.now() - created_at).total_seconds() / 60
+        except (ValueError, KeyError):
+            return 0.0
+
     def get_expired_vms(self, max_age_minutes: int = 30) -> list[int]:
         """
         Get list of VMs that exceeded max age.

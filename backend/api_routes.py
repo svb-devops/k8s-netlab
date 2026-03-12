@@ -5,6 +5,7 @@ RESTful API endpoints for VM management.
 All routes use vm_manager functions and return standardized JSON responses.
 """
 
+import asyncio
 import logging
 from typing import Dict, Any, List, Optional
 
@@ -182,8 +183,9 @@ async def api_create_vm(
 
         logger.info(f"API: User '{current_user}' creating VM {vm_id} from template {request.template_id}")
 
-        # Create VM using vm_manager
-        result = create_vm(vm_id=vm_id, template_id=request.template_id)
+        # Create VM using vm_manager (run in thread — blocks up to 300s polling Proxmox)
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, create_vm, vm_id, request.template_id)
 
         if result['success']:
             logger.info(f"API: VM {vm_id} created successfully by '{current_user}'")
@@ -251,8 +253,9 @@ async def api_delete_vm(
 
         logger.info(f"API: User '{current_user}' deleting VM {vm_id} (force={force})")
 
-        # Delete VM using vm_manager
-        result = delete_vm(vm_id=vm_id, force=force)
+        # Delete VM using vm_manager (run in thread — blocks while polling Proxmox)
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, lambda: delete_vm(vm_id=vm_id, force=force))
 
         if result['success']:
             logger.info(f"API: VM {vm_id} deleted successfully")

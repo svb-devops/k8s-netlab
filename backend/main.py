@@ -288,7 +288,9 @@ async def terminal_endpoint(websocket: WebSocket, vm_id: int):
         f"WebSocket terminal authorized: user={username}, vm_id={vm_id}, "
         f"client={websocket.client}"
     )
-    await websocket_terminal(websocket, vm_id)
+    # Skip K3s readiness wait for mature VMs — K3s is already running on reconnect
+    skip_k3s = vm_tracker.get_vm_age_minutes(vm_id) > 5
+    await websocket_terminal(websocket, vm_id, skip_k3s_wait=skip_k3s)
 
 
 # ============================================================

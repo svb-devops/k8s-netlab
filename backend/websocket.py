@@ -221,7 +221,7 @@ async def wait_for_k3s(terminal: SSHTerminal, websocket: WebSocket, max_wait: in
     return False
 
 
-async def websocket_terminal(websocket: WebSocket, vm_id: int):
+async def websocket_terminal(websocket: WebSocket, vm_id: int, skip_k3s_wait: bool = False):
     """
     WebSocket terminal handler (SSH bridge).
 
@@ -266,8 +266,23 @@ async def websocket_terminal(websocket: WebSocket, vm_id: int):
         # Create SSH terminal
         terminal = SSHTerminal(vm_id, vm_ip)
 
-        # Connect to VM
-        if not await terminal.connect():
+        # Connect to VM with retries — SSH daemon may still be starting
+        # (sync_vm_password restarts sshd, which causes a brief connection reset)
+        MAX_SSH_RETRIES = 12
+        SSH_RETRY_INTERVAL = 5  # seconds (12 × 5 = 60s total)
+        ssh_connected = False
+        for attempt in range(MAX_SSH_RETRIES):
+            if await terminal.connect():
+                ssh_connected = True
+                break
+            if attempt < MAX_SSH_RETRIES - 1:
+                await websocket.send_json({
+                    "type": "waiting",
+                    "message": f"等待 SSH 就绪... ({(attempt + 1) * SSH_RETRY_INTERVAL}s / {MAX_SSH_RETRIES * SSH_RETRY_INTERVAL}s)",
+                })
+                await asyncio.sleep(SSH_RETRY_INTERVAL)
+
+        if not ssh_connected:
             error_detail = terminal.last_error or "未知错误"
             await websocket.send_json({
                 "type": "error",
@@ -276,11 +291,16 @@ async def websocket_terminal(websocket: WebSocket, vm_id: int):
             await websocket.close()
             return
 
-        # Wait for K3s to be ready before handing over the shell
-        await websocket.send_json({"type": "waiting", "message": "等待 K3s 就绪，请稍候..."})
-        k3s_ready = await wait_for_k3s(terminal, websocket)
-        if not k3s_ready:
-            await websocket.send_json({"type": "waiting", "message": "⚠ K3s 未在 120s 内就绪，已开放终端，部分命令可能需要稍等"})
+        # Wait for K3s to be ready before handing over the shell.
+        # Skip when VM is mature (reconnect scenario) — K3s is already running.
+        if skip_k3s_wait:
+            logger.info(f"VM {vm_id}: skipping K3s wait (mature VM, reconnect)")
+            await websocket.send_json({"type": "waiting", "message": "SSH 连接成功，正在开放终端..."})
+        else:
+            await websocket.send_json({"type": "waiting", "message": "等待 K3s 就绪，请稍候..."})
+            k3s_ready = await wait_for_k3s(terminal, websocket)
+            if not k3s_ready:
+                await websocket.send_json({"type": "waiting", "message": "⚠ K3s 未在 150s 内就绪，已开放终端，部分命令可能需要稍等"})
 
         # Send connection success message
         await websocket.send_json({

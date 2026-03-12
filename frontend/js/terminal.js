@@ -10,6 +10,7 @@ class TerminalManager {
         this.fitAddon = null;
         this.websocket = null;
         this.currentVMId = null;
+        this.reconnectBtn = document.getElementById('btn-reconnect-terminal');
     }
 
     /**
@@ -20,6 +21,9 @@ class TerminalManager {
         this.disconnect();
 
         this.currentVMId = vmId;
+
+        // Hide reconnect button while connecting
+        if (this.reconnectBtn) this.reconnectBtn.classList.add('hidden');
 
         // Create xterm instance
         this.terminal = new Terminal({
@@ -77,7 +81,6 @@ class TerminalManager {
                         this.terminal.write('\r\n\x1b[32m✓ SSH 连接成功 (' + msg.vm_ip + ')\x1b[0m\r\n\r\n');
                     } else if (msg.type === 'disconnected') {
                         this.terminal.write('\r\n\x1b[33m✗ ' + msg.message + '\x1b[0m\r\n');
-                        // Close WebSocket connection
                         if (this.websocket) {
                             this.websocket.close();
                         }
@@ -86,7 +89,7 @@ class TerminalManager {
                         this.terminal.write(event.data);
                     }
                 } else {
-                    // Valid JSON but not a control object (e.g. bare number like "1"), treat as terminal data
+                    // Valid JSON but not a control object, treat as terminal data
                     this.terminal.write(event.data);
                 }
             } catch {
@@ -102,7 +105,15 @@ class TerminalManager {
 
         this.websocket.onclose = () => {
             console.log('WebSocket closed');
-            this.terminal.write('\r\n\x1b[33m✗ 连接已关闭\x1b[0m\r\n');
+            this.terminal.write('\r\n\x1b[33m连接已关闭\x1b[0m  \x1b[2m(点击右上角"↻ 重新连接"恢复)\x1b[0m\r\n');
+            // Show reconnect button
+            if (this.reconnectBtn && this.currentVMId) {
+                this.reconnectBtn.classList.remove('hidden');
+                this.reconnectBtn.onclick = () => {
+                    const vmId = this.currentVMId;
+                    if (vmId) this.connect(vmId);
+                };
+            }
         };
 
         // Terminal input -> WebSocket
@@ -124,6 +135,8 @@ class TerminalManager {
      * Disconnect terminal
      */
     disconnect() {
+        if (this.reconnectBtn) this.reconnectBtn.classList.add('hidden');
+
         if (this.websocket) {
             this.websocket.close();
             this.websocket = null;

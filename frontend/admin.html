@@ -184,7 +184,6 @@ const EXP_TITLES = {
 // ── State ──────────────────────────────────────────────────────────────────
 let adminToken = sessionStorage.getItem('admin_token') || '';
 let autoRefreshTimer = null;
-const geoCache = new Map(); // ip → "City, Country" string
 
 // ── DOM refs ───────────────────────────────────────────────────────────────
 const tokenGate    = document.getElementById('token-gate');
@@ -231,19 +230,6 @@ function vmAgeColor(age) {
     if (age < 15) return 'bg-green-100 text-green-700';
     if (age < 25) return 'bg-yellow-100 text-yellow-700';
     return 'bg-red-100 text-red-700';
-}
-
-async function fetchGeo(ip) {
-    if (!ip) return '';
-    if (geoCache.has(ip)) return geoCache.get(ip);
-    geoCache.set(ip, ''); // prevent duplicate in-flight requests
-    try {
-        const r = await fetch(`https://ipwho.is/${ip}`);
-        const d = await r.json();
-        const label = d.success ? `${d.city}, ${d.country}` : '';
-        geoCache.set(ip, label);
-        return label;
-    } catch { return ''; }
 }
 
 // ── Fetch & Render ─────────────────────────────────────────────────────────
@@ -295,8 +281,8 @@ function renderSessions(sessions) {
             : '<span class="text-gray-300">—</span>';
 
         const ipDisplay = s.login_ip
-            ? `<span class="font-mono" id="ip-${encodeURIComponent(s.login_ip)}">${s.login_ip}</span>
-               <span class="text-gray-400 block" id="geo-${encodeURIComponent(s.login_ip)}"></span>`
+            ? `<span class="font-mono">${s.login_ip}</span>
+               ${s.login_location ? `<span class="text-gray-400 block">${s.login_location}</span>` : ''}`
             : '<span class="text-gray-300">—</span>';
 
         return `<tr class="hover:bg-gray-50 transition">
@@ -315,15 +301,6 @@ function renderSessions(sessions) {
         </tr>`;
     }).join('');
 
-    // Async-fill geolocation labels
-    sessions.forEach(s => {
-        if (!s.login_ip) return;
-        const key = encodeURIComponent(s.login_ip);
-        fetchGeo(s.login_ip).then(label => {
-            const el = document.getElementById(`geo-${key}`);
-            if (el && label) el.textContent = label;
-        });
-    });
 }
 
 async function refresh() {
