@@ -143,12 +143,12 @@ async def login(credentials: LoginRequest, response: Response, request: Request)
         # Create session (record login IP for admin observability)
         token = auth_manager.create_session(credentials.username, login_ip=client_ip)
 
-        # Set session cookie (httponly + secure for security)
+        # Set session cookie (httponly; secure=False — service runs over HTTP)
         response.set_cookie(
             key="session_token",
             value=token,
             httponly=True,
-            secure=True,
+            secure=False,
             max_age=86400,  # 24 hours
             samesite="lax"
         )
@@ -193,11 +193,11 @@ async def logout(
             auth_manager.delete_session(session_token)
 
         # Clear session cookie — attributes must match the original set_cookie call
-        # so the browser properly removes the Secure+HttpOnly cookie.
+        # so the browser properly removes the HttpOnly cookie.
         response.delete_cookie(
             key="session_token",
             httponly=True,
-            secure=True,
+            secure=False,
             samesite="lax",
         )
 
