@@ -89,7 +89,12 @@ class TestModuleLoadFailsFast:
         monkeypatch.delenv("PROXMOX_HOST", raising=False)
         monkeypatch.delenv("PROXMOX_USER", raising=False)
         monkeypatch.delenv("PROXMOX_PASSWORD", raising=False)
-        # Remove cached module so it re-evaluates on import
+        # Save current module so monkeypatch restores it after the test.
+        # Without this, sys.modules loses the entry and other tests that
+        # monkeypatch config attributes get a fresh module object that
+        # isn't shared with already-imported modules (e.g. vm_manager).
+        if "backend.config" in sys.modules:
+            monkeypatch.setitem(sys.modules, "backend.config", sys.modules["backend.config"])
         sys.modules.pop("backend.config", None)
         with pytest.raises(RuntimeError, match="Missing required environment variable"):
             import backend.config  # noqa: F401

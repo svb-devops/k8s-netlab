@@ -93,6 +93,7 @@ class TestCreateVm:
         assert result["success"] is True
         assert result["data"]["vm_id"] == 200
         assert result["data"]["name"] == "k8s-lab-200"
+        # _patch_config (autouse) sets VM_CORES=4, VM_MEMORY_MB=8192 for this test
         assert result["data"]["cores"] == 4
         assert result["data"]["memory_mb"] == 8192
         assert result["error"] is None

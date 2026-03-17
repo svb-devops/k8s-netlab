@@ -1,0 +1,4 @@
+[run]
+omit =
+    backend/main.py
+    backend/websocket.py
