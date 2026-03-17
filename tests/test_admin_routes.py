@@ -131,3 +131,67 @@ class TestAdminStatus:
         assert s["current_experiment"] is None
         assert s["last_activity"] is None
         assert s["login_ip"] is None
+
+
+# ============================================================
+# POST /api/admin/reset-password
+# ============================================================
+
+class TestAdminResetPassword:
+    def test_success_resets_password(self, client):
+        with patch("backend.config.ADMIN_TOKEN", TEST_TOKEN), \
+             patch("backend.admin_routes.auth_manager.reset_password", return_value=True) as mock_rp:
+            resp = client.post(
+                "/api/admin/reset-password",
+                json={"username": "alice", "new_password": "newpass1"},
+                headers={"X-Admin-Token": TEST_TOKEN},
+            )
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+        mock_rp.assert_called_once_with("alice", "newpass1")
+
+    def test_user_not_found_returns_404(self, client):
+        with patch("backend.config.ADMIN_TOKEN", TEST_TOKEN), \
+             patch("backend.admin_routes.auth_manager.reset_password", return_value=False):
+            resp = client.post(
+                "/api/admin/reset-password",
+                json={"username": "ghost", "new_password": "newpass1"},
+                headers={"X-Admin-Token": TEST_TOKEN},
+            )
+        assert resp.status_code == 404
+        assert "not found" in resp.json()["detail"].lower()
+
+    def test_no_token_returns_503(self, client):
+        with patch("backend.config.ADMIN_TOKEN", ""):
+            resp = client.post(
+                "/api/admin/reset-password",
+                json={"username": "alice", "new_password": "newpass1"},
+            )
+        assert resp.status_code == 503
+
+    def test_wrong_token_returns_403(self, client):
+        with patch("backend.config.ADMIN_TOKEN", TEST_TOKEN):
+            resp = client.post(
+                "/api/admin/reset-password",
+                json={"username": "alice", "new_password": "newpass1"},
+                headers={"X-Admin-Token": "wrong-token"},
+            )
+        assert resp.status_code == 403
+
+    def test_new_password_too_short_returns_422(self, client):
+        with patch("backend.config.ADMIN_TOKEN", TEST_TOKEN):
+            resp = client.post(
+                "/api/admin/reset-password",
+                json={"username": "alice", "new_password": "abc"},
+                headers={"X-Admin-Token": TEST_TOKEN},
+            )
+        assert resp.status_code == 422
+
+    def test_missing_username_returns_422(self, client):
+        with patch("backend.config.ADMIN_TOKEN", TEST_TOKEN):
+            resp = client.post(
+                "/api/admin/reset-password",
+                json={"new_password": "newpass1"},
+                headers={"X-Admin-Token": TEST_TOKEN},
+            )
+        assert resp.status_code == 422

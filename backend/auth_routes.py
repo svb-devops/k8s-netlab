@@ -26,7 +26,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 class RegisterRequest(BaseModel):
     """User registration request."""
     username: str = Field(..., min_length=3, max_length=20, pattern="^[a-zA-Z0-9_-]+$")
-    password: str = Field(..., min_length=6, max_length=100)
+    password: str = Field(..., min_length=6, max_length=72)  # bcrypt max is 72 bytes
 
 
 class LoginRequest(BaseModel):
@@ -45,8 +45,8 @@ class AuthResponse(BaseModel):
 
 class ChangePasswordRequest(BaseModel):
     """Change-password request."""
-    old_password: str = Field(..., min_length=1, max_length=100)
-    new_password: str = Field(..., min_length=6, max_length=100)
+    old_password: str = Field(..., min_length=1, max_length=72)  # bcrypt max is 72 bytes
+    new_password: str = Field(..., min_length=6, max_length=72)  # bcrypt max is 72 bytes
 
 
 def _normalize_ip(ip: str) -> str:
