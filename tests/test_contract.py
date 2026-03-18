@@ -53,7 +53,7 @@ def auth_client(tmp_path):
          patch("backend.auth.DATA_DIR", tmp_path):
         mgr = AuthManager()
         mock_rl = MagicMock()
-        mock_rl.is_allowed.return_value = True
+        mock_rl.is_over_limit.return_value = False
         mock_rl.retry_after.return_value = 30
 
         with patch("backend.auth_routes.auth_manager", mgr), \

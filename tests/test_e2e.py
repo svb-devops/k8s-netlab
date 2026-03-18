@@ -35,7 +35,7 @@ def full_app(tmp_path):
         )
 
     mock_rl = MagicMock()
-    mock_rl.is_allowed.return_value = True
+    mock_rl.is_over_limit.return_value = False
     mock_rl.retry_after.return_value = 30
 
     with patch("backend.auth.USERS_FILE", users_file), \
@@ -223,13 +223,13 @@ def test_e2e_rate_limit_login(full_app):
     mgr.register_user("charlie", "secret1")
 
     # 前 5 次正常放行，第 6 次触发限制
-    allow_count = [0]
+    call_count = [0]
 
     def rate_side_effect(key, max_requests, window_seconds):
-        allow_count[0] += 1
-        return allow_count[0] <= 5
+        call_count[0] += 1
+        return call_count[0] > 5  # True = over limit = blocked
 
-    mock_rl.is_allowed.side_effect = rate_side_effect
+    mock_rl.is_over_limit.side_effect = rate_side_effect
     mock_rl.retry_after.return_value = 45
 
     # 消耗配额（5 次失败登录）
@@ -245,8 +245,8 @@ def test_e2e_rate_limit_login(full_app):
     assert int(resp.headers["retry-after"]) > 0
 
     # 速率恢复后正常登录
-    mock_rl.is_allowed.side_effect = None
-    mock_rl.is_allowed.return_value = True
+    mock_rl.is_over_limit.side_effect = None
+    mock_rl.is_over_limit.return_value = False
     resp = client.post("/api/auth/login",
                        json={"username": "charlie", "password": "secret1"})
     assert resp.status_code == 200

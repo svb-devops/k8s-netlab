@@ -32,7 +32,7 @@ def _auth_client(tmp_path, rl_allowed=True):
         mgr = AuthManager()
 
     mock_rl = MagicMock()
-    mock_rl.is_allowed.return_value = rl_allowed
+    mock_rl.is_over_limit.return_value = not rl_allowed  # True = over limit = block
     mock_rl.retry_after.return_value = 55
 
     app = FastAPI()
@@ -160,7 +160,7 @@ class TestRateLimiting:
     def test_login_rate_limit_returns_429(self, tmp_path):
         client, mgr, mock_rl = _auth_client(tmp_path)
         mgr.register_user("alice", "secret1")
-        mock_rl.is_allowed.return_value = False
+        mock_rl.is_over_limit.return_value = True
 
         with patch("backend.auth_routes.auth_manager", mgr), \
              patch("backend.auth_routes.rate_limiter", mock_rl):
@@ -171,7 +171,7 @@ class TestRateLimiting:
     def test_login_rate_limit_includes_retry_after_header(self, tmp_path):
         client, mgr, mock_rl = _auth_client(tmp_path)
         mgr.register_user("alice", "secret1")
-        mock_rl.is_allowed.return_value = False
+        mock_rl.is_over_limit.return_value = True
         mock_rl.retry_after.return_value = 55
 
         with patch("backend.auth_routes.auth_manager", mgr), \
@@ -183,7 +183,7 @@ class TestRateLimiting:
     def test_successful_login_not_rate_limited(self, tmp_path):
         client, mgr, mock_rl = _auth_client(tmp_path)
         mgr.register_user("alice", "secret1")
-        mock_rl.is_allowed.return_value = True
+        mock_rl.is_over_limit.return_value = False
 
         with patch("backend.auth_routes.auth_manager", mgr), \
              patch("backend.auth_routes.rate_limiter", mock_rl):

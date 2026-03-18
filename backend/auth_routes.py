@@ -123,18 +123,21 @@ async def login(credentials: LoginRequest, response: Response, request: Request)
         AuthResponse with login status
     """
     try:
-        # Rate limit: 5 login attempts per IP per 60 seconds
+        # Rate limit: 5 failed login attempts per IP per 60 seconds.
+        # Only failed attempts count — successful logins do not exhaust the quota.
         client_ip = _normalize_ip(request.client.host if request.client else "unknown")
-        if not rate_limiter.is_allowed(f"login:{client_ip}", max_requests=5, window_seconds=60):
-            wait = rate_limiter.retry_after(f"login:{client_ip}", window_seconds=60)
+        rl_key = f"login:{client_ip}"
+        if rate_limiter.is_over_limit(rl_key, max_requests=5, window_seconds=60):
+            wait = rate_limiter.retry_after(rl_key, window_seconds=60)
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail=f"登录尝试过于频繁，请 {wait} 秒后重试",
                 headers={"Retry-After": str(wait)},
             )
 
-        # Verify credentials
+        # Verify credentials — record attempt only on failure
         if not auth_manager.verify_credentials(credentials.username, credentials.password):
+            rate_limiter.record(rl_key)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid username or password"

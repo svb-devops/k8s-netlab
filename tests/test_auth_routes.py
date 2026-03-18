@@ -33,7 +33,7 @@ def auth_setup(tmp_path):
         mgr = AuthManager()
 
         mock_rl = MagicMock()
-        mock_rl.is_allowed.return_value = True
+        mock_rl.is_over_limit.return_value = False  # not over limit by default
         mock_rl.retry_after.return_value = 30
 
         with patch("backend.auth_routes.auth_manager", mgr), \
@@ -111,7 +111,7 @@ class TestLogin:
     def test_rate_limit_returns_429_with_retry_after(self, auth_setup):
         client, mgr, mock_rl = auth_setup
         mgr.register_user("alice", "secret1")
-        mock_rl.is_allowed.return_value = False
+        mock_rl.is_over_limit.return_value = True
         mock_rl.retry_after.return_value = 42
 
         resp = client.post("/api/auth/login", json={"username": "alice", "password": "secret1"})
@@ -129,7 +129,7 @@ class TestLogin:
             headers={"X-Forwarded-For": "::ffff:192.168.1.1"},
         )
         # rate limiter key must not contain ::ffff: prefix
-        call_key = mock_rl.is_allowed.call_args[0][0]
+        call_key = mock_rl.is_over_limit.call_args[0][0]
         assert "::ffff:" not in call_key
 
 

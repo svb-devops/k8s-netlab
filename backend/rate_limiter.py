@@ -15,6 +15,7 @@ class RateLimiter:
         self._timestamps: dict = defaultdict(list)
 
     def is_allowed(self, key: str, max_requests: int, window_seconds: int) -> bool:
+        """Check limit and record the attempt (for endpoints where all attempts count)."""
         now = time.time()
         cutoff = now - window_seconds
         ts = self._timestamps[key]
@@ -24,6 +25,17 @@ class RateLimiter:
             return False
         self._timestamps[key].append(now)
         return True
+
+    def is_over_limit(self, key: str, max_requests: int, window_seconds: int) -> bool:
+        """Check limit WITHOUT recording — use with record() to count selectively."""
+        cutoff = time.time() - window_seconds
+        ts = [t for t in self._timestamps[key] if t > cutoff]
+        self._timestamps[key] = ts
+        return len(ts) >= max_requests
+
+    def record(self, key: str) -> None:
+        """Record a single attempt for the given key."""
+        self._timestamps[key].append(time.time())
 
     def retry_after(self, key: str, window_seconds: int) -> int:
         """Seconds until the oldest request expires and a slot opens."""
