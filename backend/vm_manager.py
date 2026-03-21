@@ -73,14 +73,14 @@ def create_vm(vm_id: int, template_id: int) -> Dict[str, Any]:
         clone_task_id = node.qemu(template_id).clone.post(
             newid=vm_id,
             name=f"k8s-lab-{vm_id}",
-            full=1,
+            full=0,  # linked clone: seconds instead of minutes (shares base-xxx-disk)
         )
         slog.info(f"Clone task started: {clone_task_id}")
 
         # Wait for clone task to complete
         slog.info("Waiting for clone task to complete...")
-        max_wait = 300  # seconds (increased from 120s for larger templates)
-        wait_interval = 3  # seconds
+        max_wait = 60   # linked clone completes in seconds, 60s is ample
+        wait_interval = 2  # seconds
         for i in range(max_wait // wait_interval):
             # Check task status
             task_status = node.tasks(clone_task_id).status.get()
