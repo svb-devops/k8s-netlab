@@ -296,7 +296,7 @@ This is Web Service 2
 ```bash
 # 第一步：创建 StripPrefix Middleware
 cat > stripprefix-middleware.yaml <<EOF
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: strip-prefix
@@ -375,6 +375,7 @@ This is Web Service 2
 - Traefik 默认将完整路径转发到后端，**不自动剥离路径前缀**
 - `StripPrefix Middleware` 在转发前剥离指定前缀，解决此问题
 - Middleware 名称格式：`<命名空间>-<名称>@kubernetescrd`（这里是 `default-strip-prefix@kubernetescrd`）
+- ⚠️ API group 必须用 `traefik.io/v1alpha1`，旧版 `traefik.containo.us/v1alpha1` 已废弃，会报 `no matches for kind` 错误
 - 主机名路由无此问题（因为路径本身就是 `/`）
 - 路径路由适合同一域名下的 API 版本控制（/api/v1, /api/v2）
 
@@ -450,6 +451,8 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: priority-ingress
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: default-strip-prefix@kubernetescrd
 spec:
   rules:
   - host: web1.example.local
@@ -472,6 +475,11 @@ spec:
 EOF
 
 kubectl apply -f priority-ingress.yaml
+
+# 同时更新 Middleware，加入 /special 前缀剥离
+kubectl patch middleware strip-prefix --type=merge -p '{"spec":{"stripPrefix":{"prefixes":["/web1","/web2","/special"]}}}'
+
+sleep 3
 
 # 测试：/ 路径应到 web1，/special 路径应到 web2
 curl -H "Host: web1.example.local" http://$NODE_IP/
