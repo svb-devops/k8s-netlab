@@ -285,18 +285,49 @@ This is Web Service 2
 
 ---
 
-### Step 6: 创建基于路径的Ingress规则（可选）
+### Step 6: 创建基于路径的Ingress规则（含路径重写）
 
-创建基于路径的Ingress，演示路径路由（适用于API版本控制场景）：
+路径路由比主机名路由多一个关键陷阱：**Traefik 默认将完整路径原样转发给后端**。
+
+例如请求 `/web1` → Traefik → nginx，nginx 收到的路径仍是 `/web1`，而 nginx 的内容在根路径 `/`，结果返回 404。
+
+解决方案是使用 Traefik **StripPrefix Middleware**，在转发前把 `/web1` 前缀剥离掉：
 
 ```bash
+# 第一步：创建 StripPrefix Middleware
+cat > stripprefix-middleware.yaml <<EOF
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-prefix
+spec:
+  stripPrefix:
+    prefixes:
+      - /web1
+      - /web2
+EOF
+
+kubectl apply -f stripprefix-middleware.yaml
+
+# 验证 Middleware 创建成功
+kubectl get middleware
+```
+
+**预期输出:**
+```
+NAME           AGE
+strip-prefix   5s
+```
+
+```bash
+# 第二步：创建引用该 Middleware 的 Ingress
 cat > path-based-ingress.yaml <<EOF
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: path-based-ingress
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: web
+    traefik.ingress.kubernetes.io/router.middlewares: default-strip-prefix@kubernetescrd
 spec:
   rules:
   - http:
@@ -317,42 +348,35 @@ spec:
               number: 80
 EOF
 
-# 应用Ingress规则
 kubectl apply -f path-based-ingress.yaml
-
-# 查看Ingress列表
 kubectl get ingress
 ```
 
 **测试基于路径的路由:**
 
 ```bash
-# 测试访问web1（路径 /web1）
-curl http://$NODE_IP/web1
+# 获取节点 IP（如果之前已设置可跳过）
+NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[0].address}')
 
-# 测试访问web2（路径 /web2）
+# 测试路径路由（Middleware 剥离前缀后，后端收到 / 路径）
+curl http://$NODE_IP/web1
 curl http://$NODE_IP/web2
 ```
 
 **预期输出:**
 ```
-# /web1 可能返回:
 This is Web Service 1
-# 或 404（取决于Traefik配置）
-
-# /web2 可能返回:
 This is Web Service 2
-# 或 404（取决于Traefik配置）
 ```
 
-**验证点:** ⚠️ 路径路由在某些配置下可能需要额外的路径重写注解
+**验证点:** ✅ 路径路由配合 StripPrefix Middleware 工作正常
 
 **💡 知识点:**
-- `path: /web1` 定义路径前缀匹配
-- `pathType: Prefix` 表示前缀匹配模式
-- Traefik默认将完整路径转发到后端，可能需要路径重写
-- 建议使用主机名路由（Step 4）作为首选方案
-- 路径路由适合API版本控制（/api/v1, /api/v2）
+- Traefik 默认将完整路径转发到后端，**不自动剥离路径前缀**
+- `StripPrefix Middleware` 在转发前剥离指定前缀，解决此问题
+- Middleware 名称格式：`<命名空间>-<名称>@kubernetescrd`（这里是 `default-strip-prefix@kubernetescrd`）
+- 主机名路由无此问题（因为路径本身就是 `/`）
+- 路径路由适合同一域名下的 API 版本控制（/api/v1, /api/v2）
 
 ---
 
@@ -391,10 +415,10 @@ kubectl get events --field-selector involvedObject.kind=Ingress
 验证Ingress是否提供负载均衡：
 
 ```bash
-# 多次请求测试负载均衡
+# 多次请求测试负载均衡（使用主机名路由，稳定可靠）
 for i in {1..10}; do
   echo "Request $i:"
-  curl -s http://$NODE_IP/web1
+  curl -s -H "Host: web1.example.local" http://$NODE_IP/
   echo ""
 done
 
@@ -417,48 +441,59 @@ kubectl logs -l app=web1 --tail=5
 
 ### Step 9: 理解Ingress的路由优先级
 
-测试不同路由规则的优先级：
+在同一个主机下，**更具体的路径优先级更高**。我们基于 Step 4 的主机名 Ingress 来验证这个规律：
 
 ```bash
-# 创建更复杂的路由规则
-cat > complex-ingress.yaml <<EOF
+# 更新 host-based-ingress，为 web1.example.local 增加一条更具体的路径
+cat > priority-ingress.yaml <<EOF
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: complex-ingress
+  name: priority-ingress
 spec:
   rules:
-  - http:
+  - host: web1.example.local
+    http:
       paths:
-      - path: /web1/api
+      - path: /special
+        pathType: Prefix
+        backend:
+          service:
+            name: web2-service   # 故意路由到 web2，用于区分
+            port:
+              number: 80
+      - path: /
         pathType: Prefix
         backend:
           service:
             name: web1-service
             port:
               number: 80
-      - path: /web1
-        pathType: Prefix
-        backend:
-          service:
-            name: web2-service
-            port:
-              number: 80
 EOF
 
-# 应用配置
-kubectl apply -f complex-ingress.yaml
+kubectl apply -f priority-ingress.yaml
 
-# 测试不同路径
-curl http://$NODE_IP/web1/api
-curl http://$NODE_IP/web1
+# 测试：/ 路径应到 web1，/special 路径应到 web2
+curl -H "Host: web1.example.local" http://$NODE_IP/
+curl -H "Host: web1.example.local" http://$NODE_IP/special
 ```
 
+**预期输出:**
+```
+# / 返回：
+This is Web Service 1
+
+# /special 返回：
+This is Web Service 2
+```
+
+**验证点:** ✅ `/special` 比 `/` 更具体，优先匹配到 web2-service
+
 **💡 知识点:**
-- 更具体的路径规则优先级更高
-- `/web1/api` 比 `/web1` 更具体
-- Ingress Controller自动处理优先级
-- 规则顺序在某些Controller中很重要
+- 更具体（更长）的路径规则优先级更高
+- `/special` 比 `/` 更具体，即使 `/` 定义在前面
+- Ingress Controller 自动按路径长度排序，无需手动排列顺序
+- 这是 API 网关中版本路由的核心机制（`/api/v2` 优先于 `/api`）
 
 ---
 
@@ -516,11 +551,11 @@ Pod (nginx容器)
 
 - [ ] Traefik Ingress Controller运行正常
 - [ ] 创建了两个后端Service（web1-service, web2-service）
-- [ ] 基于路径的Ingress规则工作正常
-- [ ] /web1 路由到 web1-service
-- [ ] /web2 路由到 web2-service
-- [ ] （可选）基于主机名的路由工作
-- [ ] 理解Ingress的工作原理
+- [ ] 基于主机名的Ingress规则工作正常
+- [ ] Host: web1.example.local 路由到 web1-service
+- [ ] Host: web2.example.local 路由到 web2-service
+- [ ] （Step 6）StripPrefix Middleware 配置成功，路径路由返回正确内容
+- [ ] 理解路径路由为何需要 Middleware（路径原样转发问题）
 - [ ] 理解Ingress与Service的关系
 - [ ] 能够查看和分析Ingress配置
 - [ ] 理解完整的流量路径
@@ -940,7 +975,10 @@ v2.app.com → app-v2
 kubectl delete ingress host-based-ingress
 
 # 删除可选的Ingress（如果创建了）
-kubectl delete ingress path-based-ingress complex-ingress ingress-with-default rewrite-ingress tls-ingress multi-path-ingress 2>/dev/null || true
+kubectl delete ingress path-based-ingress priority-ingress ingress-with-default rewrite-ingress tls-ingress multi-path-ingress 2>/dev/null || true
+
+# 删除 Middleware（如果创建了）
+kubectl delete middleware strip-prefix 2>/dev/null || true
 
 # 删除Service
 kubectl delete svc web1-service web2-service
@@ -955,7 +993,7 @@ kubectl delete deployment web1 web2
 kubectl delete deployment default-backend 2>/dev/null || true
 
 # 删除配置文件
-rm -f host-based-ingress.yaml path-based-ingress.yaml complex-ingress.yaml
+rm -f host-based-ingress.yaml path-based-ingress.yaml stripprefix-middleware.yaml priority-ingress.yaml
 rm -f ingress-with-default.yaml rewrite-ingress.yaml tls-ingress.yaml multi-path-ingress.yaml
 rm -f tls.key tls.crt 2>/dev/null || true
 
