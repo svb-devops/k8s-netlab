@@ -100,7 +100,7 @@ class TestCreateVm:
 
         # Verify clone was called
         node.qemu(9000).clone.post.assert_called_once_with(
-            newid=200, name="k8s-lab-200", full=1,
+            newid=200, name="k8s-lab-200", full=0,
         )
         # Verify config was called
         node.qemu(200).config.put.assert_called_once_with(

@@ -217,6 +217,28 @@ else
 fi
 
 # ----------------------------------------------------------------
+# 测试门禁：有 tests/ 目录则必须通过
+# ----------------------------------------------------------------
+if [ -d "tests" ] && [ "$ISSUES" -eq 0 ]; then
+    echo ""
+    echo "  [测试] 运行 pytest..."
+    VENV_PYTHON="$PROJECT_ROOT/venv/bin/python3"
+    PYTEST_BIN="${PROJECT_ROOT}/venv/bin/pytest"
+    if [ -f "$PYTEST_BIN" ]; then
+        PYTEST_CMD="$PYTEST_BIN"
+    else
+        PYTEST_CMD="python3 -m pytest"
+    fi
+    if $PYTEST_CMD tests/ -x -q --tb=short 2>&1 | sed 's/^/  /'; then
+        echo "  ✅ 测试通过"
+    else
+        echo "  ❌ 测试失败，push 已阻止"
+        echo "  修复测试后重新推送"
+        exit 1
+    fi
+fi
+
+# ----------------------------------------------------------------
 # Result
 # ----------------------------------------------------------------
 echo ""

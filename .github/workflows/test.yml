@@ -1,0 +1,33 @@
+name: Test
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      # 提供 config.py 必填项的占位值（测试 mock 掉所有真实 Proxmox 调用）
+      PROXMOX_HOST: "10.0.0.1"
+      PROXMOX_TOKEN_ID: "ci@pam!ci-token"
+      PROXMOX_TOKEN_SECRET: "00000000-0000-0000-0000-000000000000"
+      VM_SSH_PASSWORD: "ci-placeholder"
+      ADMIN_TOKEN: "ci-admin-token"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        run: pytest tests/ -x -q --tb=short --cov=backend --cov-report=term-missing
