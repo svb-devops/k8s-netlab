@@ -189,51 +189,67 @@ async def sync_vm_password(vm_id: int) -> bool:
         return False
 
 
-async def reset_k3s_state(terminal: SSHTerminal, websocket: WebSocket) -> None:
+async def reset_k3s_via_agent(vm_id: int, websocket: WebSocket) -> None:
     """
-    Clear stale K3s etcd data and restart K3s, but only if K3s API is unhealthy.
+    Clear stale K3s etcd via QEMU guest agent, BEFORE SSH is established.
 
-    Templates may carry old etcd state (pod records, node registrations) from
-    when they were created. This causes K3s to fail reconciliation on first boot,
-    leading to intermittent API server crashes. Wiping the DB forces a clean init.
+    Running via agent (not SSH) is critical: `systemctl stop k3s` cleans up
+    iptables rules which resets existing TCP connections, which would kill
+    our SSH session if we ran this command over SSH.
 
-    Skipped if K3s is already healthy to avoid disrupting a working cluster.
-    Waits for the reset command to fully complete before returning.
+    Skipped if K3s API is already healthy to avoid disrupting a running cluster.
+    Waits for the reset command to complete so K3s is already starting up by
+    the time the SSH connection is attempted.
     """
+    import time as _time
+
     loop = asyncio.get_event_loop()
 
-    # Check if K3s API is already responding — skip reset if healthy.
-    def _check_healthy() -> bool:
+    def _check_and_reset() -> str:
+        proxmox = connect_proxmox()
+        agent = proxmox.nodes(config.PROXMOX_NODE).qemu(vm_id).agent
+
+        # Check K3s health via agent exec
         try:
-            _, stdout, _ = terminal.ssh_client.exec_command(
-                "curl -sk --max-time 3 https://127.0.0.1:6443/healthz",
-                timeout=5,
-            )
-            return stdout.read().decode().strip() == "ok"
+            r = agent.post("exec", command=["bash", "-c",
+                "curl -sk --max-time 3 https://127.0.0.1:6443/healthz"])
+            pid = r.get("pid")
+            for _ in range(10):
+                _time.sleep(0.5)
+                s = agent.get("exec-status", pid=pid)
+                if s.get("exited"):
+                    if s.get("out-data", "").strip() == "ok":
+                        return "healthy"
+                    break
         except Exception:
-            return False
+            pass
 
-    healthy = await loop.run_in_executor(None, _check_healthy)
-    if healthy:
-        logger.info(f"VM {terminal.vm_id}: K3s already healthy, skipping etcd reset")
-        return
+        # K3s unhealthy — wipe etcd and restart via agent
+        r = agent.post("exec", command=["bash", "-c",
+            "systemctl stop k3s"
+            " && rm -rf /var/lib/rancher/k3s/server/db"
+            " && systemctl start k3s"])
+        pid = r.get("pid")
+        # Wait up to 90s for the reset command to complete
+        for _ in range(90):
+            _time.sleep(1)
+            try:
+                s = agent.get("exec-status", pid=pid)
+                if s.get("exited"):
+                    return "reset"
+            except Exception:
+                pass
+        return "reset-timeout"
 
-    # K3s API is not responding — wipe stale etcd and restart.
-    await websocket.send_json({"type": "waiting", "message": "正在初始化 K3s 环境（首次启动）..."})
     try:
-        def _do_reset():
-            _, stdout, _ = terminal.ssh_client.exec_command(
-                "systemctl stop k3s"
-                " && rm -rf /var/lib/rancher/k3s/server/db"
-                " && systemctl start k3s",
-                timeout=60,
-            )
-            stdout.channel.recv_exit_status()  # block until command finishes
-
-        await loop.run_in_executor(None, _do_reset)
-        logger.info(f"VM {terminal.vm_id}: K3s state reset (etcd cleared, service restarted)")
+        await websocket.send_json({"type": "waiting", "message": "正在初始化 K3s 环境..."})
+        result = await loop.run_in_executor(None, _check_and_reset)
+        if result == "healthy":
+            logger.info(f"VM {vm_id}: K3s already healthy, skipping etcd reset")
+        else:
+            logger.info(f"VM {vm_id}: K3s state reset via QEMU agent ({result})")
     except Exception as e:
-        logger.warning(f"VM {terminal.vm_id}: K3s state reset failed (non-fatal): {e}")
+        logger.warning(f"VM {vm_id}: K3s reset via agent failed (non-fatal): {e}")
 
 
 async def wait_for_k3s(terminal: SSHTerminal, websocket: WebSocket, max_wait: int = 150) -> bool:
@@ -310,6 +326,12 @@ async def websocket_terminal(websocket: WebSocket, vm_id: int, skip_k3s_wait: bo
         # (handles templates whose original password differs from VM_SSH_PASSWORD)
         await sync_vm_password(vm_id)
 
+        # Fresh VM: clear stale etcd via QEMU agent BEFORE SSH is established.
+        # Must run before SSH because `systemctl stop k3s` flushes iptables,
+        # which would reset any live SSH TCP connection.
+        if not skip_k3s_wait:
+            await reset_k3s_via_agent(vm_id, websocket)
+
         # Create SSH terminal
         terminal = SSHTerminal(vm_id, vm_ip)
 
@@ -344,10 +366,8 @@ async def websocket_terminal(websocket: WebSocket, vm_id: int, skip_k3s_wait: bo
             logger.info(f"VM {vm_id}: skipping K3s wait (mature VM, reconnect)")
             await websocket.send_json({"type": "waiting", "message": "SSH 连接成功，正在开放终端..."})
         else:
-            # Fresh VM: clear stale etcd state from template before waiting for K3s.
-            # Templates may carry old pod/node records that cause the API server to
-            # crash-loop on first boot. Wiping the DB forces a clean initialization.
-            await reset_k3s_state(terminal, websocket)
+            # etcd reset already ran via QEMU agent before SSH was established.
+            # K3s is starting up — wait for it to become ready.
             await websocket.send_json({"type": "waiting", "message": "等待 K3s 就绪，请稍候..."})
             k3s_ready = await wait_for_k3s(terminal, websocket)
             if not k3s_ready:
