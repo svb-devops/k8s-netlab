@@ -358,7 +358,7 @@ class K8SNetLabApp {
             <div class="flex-1 min-w-0">
                 <p class="font-semibold text-amber-800">实验环境已满员</p>
                 <p class="text-sm text-amber-700 mt-1 break-words">${message}</p>
-                <p class="text-xs text-amber-500 mt-2">配额状态每 30 秒自动刷新，空位出现后可立即重试。</p>
+                <p class="text-xs text-amber-500 mt-2">本平台运行在家庭实验室（车库服务器），硬件资源有限，最多支持 15 人同时使用。配额状态每 30 秒自动刷新，空位出现后可立即重试。</p>
             </div>
             <button id="capacity-notice-close"
                     class="text-amber-400 hover:text-amber-600 text-xl leading-none flex-shrink-0">✕</button>
