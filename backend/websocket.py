@@ -189,6 +189,31 @@ async def sync_vm_password(vm_id: int) -> bool:
         return False
 
 
+async def reset_k3s_state(terminal: SSHTerminal, websocket: WebSocket) -> None:
+    """
+    Clear stale K3s etcd data and restart K3s on a freshly cloned VM.
+
+    Templates may carry old etcd state (pod records, node registrations) from
+    when they were created. This causes K3s to fail reconciliation on first boot,
+    leading to intermittent API server crashes. Wiping the DB forces a clean init.
+    """
+    loop = asyncio.get_event_loop()
+    await websocket.send_json({"type": "waiting", "message": "正在初始化 K3s 环境..."})
+    try:
+        await loop.run_in_executor(
+            None,
+            lambda: terminal.ssh_client.exec_command(
+                "systemctl stop k3s"
+                " && rm -rf /var/lib/rancher/k3s/server/db"
+                " && systemctl start k3s",
+                timeout=30,
+            ),
+        )
+        logger.info(f"VM {terminal.vm_id}: K3s state reset (etcd cleared)")
+    except Exception as e:
+        logger.warning(f"VM {terminal.vm_id}: K3s state reset failed (non-fatal): {e}")
+
+
 async def wait_for_k3s(terminal: SSHTerminal, websocket: WebSocket, max_wait: int = 150) -> bool:
     """Wait until K3s API is stable: core pods Running/Completed, confirmed twice."""
     loop = asyncio.get_event_loop()
@@ -297,6 +322,10 @@ async def websocket_terminal(websocket: WebSocket, vm_id: int, skip_k3s_wait: bo
             logger.info(f"VM {vm_id}: skipping K3s wait (mature VM, reconnect)")
             await websocket.send_json({"type": "waiting", "message": "SSH 连接成功，正在开放终端..."})
         else:
+            # Fresh VM: clear stale etcd state from template before waiting for K3s.
+            # Templates may carry old pod/node records that cause the API server to
+            # crash-loop on first boot. Wiping the DB forces a clean initialization.
+            await reset_k3s_state(terminal, websocket)
             await websocket.send_json({"type": "waiting", "message": "等待 K3s 就绪，请稍候..."})
             k3s_ready = await wait_for_k3s(terminal, websocket)
             if not k3s_ready:
