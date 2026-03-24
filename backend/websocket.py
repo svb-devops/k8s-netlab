@@ -208,6 +208,44 @@ async def reset_k3s_via_agent(vm_id: int, websocket: WebSocket) -> None:
     def _check_and_reset() -> str:
         proxmox = connect_proxmox()
         agent = proxmox.nodes(config.PROXMOX_NODE).qemu(vm_id).agent
+        hostname = f"k8s-lab-{vm_id}"
+
+        # Step 1: Set hostname
+        try:
+            r = agent.post("exec", command=["bash", "-c",
+                f"hostnamectl set-hostname {hostname}"
+                f" && sed -i 's/k8s-template/{hostname}/g' /etc/hosts 2>/dev/null || true"])
+            pid = r.get("pid")
+            for _ in range(10):
+                _time.sleep(0.5)
+                s = agent.get("exec-status", pid=pid)
+                if s.get("exited"):
+                    break
+        except Exception:
+            pass
+
+        # Step 2: Configure registry mirror so K3s pulls via local cache, not directly from internet
+        mirror_url = config.VM_REGISTRY_MIRROR or f"http://{config.VM_GATEWAY}:5000"
+        _REGISTRIES_YAML = (
+            'mirrors:\n'
+            '  "docker.io":\n'
+            '    endpoint:\n'
+            f'      - "{mirror_url}"\n'
+        )
+        try:
+            r = agent.post("exec", command=[
+                "python3", "-c",
+                "import os; os.makedirs('/etc/rancher/k3s', exist_ok=True);"
+                f"open('/etc/rancher/k3s/registries.yaml','w').write({repr(_REGISTRIES_YAML)})"
+            ])
+            pid = r.get("pid")
+            for _ in range(10):
+                _time.sleep(0.5)
+                s = agent.get("exec-status", pid=pid)
+                if s.get("exited"):
+                    break
+        except Exception:
+            pass
 
         # Check K3s health via agent exec
         try:

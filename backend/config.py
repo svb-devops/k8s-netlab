@@ -130,6 +130,9 @@ VM_GATEWAY: str = os.getenv("VM_GATEWAY", "172.16.100.1")
 VM_BRIDGE: str = os.getenv("VM_BRIDGE", "vmbr1")
 VM_IP_START: int = _get_env_int("VM_IP_START", 10)
 VM_IP_END: int = _get_env_int("VM_IP_END", 254)
+# Registry mirror running on Proxmox host (pull-through cache for docker.io)
+# Defaults to http://<VM_GATEWAY>:5000; set to empty string to disable
+VM_REGISTRY_MIRROR: str = os.getenv("VM_REGISTRY_MIRROR", "")
 
 # --- Admin API Configuration ---
 # Static token for the admin observability endpoint (X-Admin-Token header).
