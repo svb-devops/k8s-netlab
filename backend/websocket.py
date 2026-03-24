@@ -191,25 +191,47 @@ async def sync_vm_password(vm_id: int) -> bool:
 
 async def reset_k3s_state(terminal: SSHTerminal, websocket: WebSocket) -> None:
     """
-    Clear stale K3s etcd data and restart K3s on a freshly cloned VM.
+    Clear stale K3s etcd data and restart K3s, but only if K3s API is unhealthy.
 
     Templates may carry old etcd state (pod records, node registrations) from
     when they were created. This causes K3s to fail reconciliation on first boot,
     leading to intermittent API server crashes. Wiping the DB forces a clean init.
+
+    Skipped if K3s is already healthy to avoid disrupting a working cluster.
+    Waits for the reset command to fully complete before returning.
     """
     loop = asyncio.get_event_loop()
-    await websocket.send_json({"type": "waiting", "message": "正在初始化 K3s 环境..."})
+
+    # Check if K3s API is already responding — skip reset if healthy.
+    def _check_healthy() -> bool:
+        try:
+            _, stdout, _ = terminal.ssh_client.exec_command(
+                "curl -sk --max-time 3 https://127.0.0.1:6443/healthz",
+                timeout=5,
+            )
+            return stdout.read().decode().strip() == "ok"
+        except Exception:
+            return False
+
+    healthy = await loop.run_in_executor(None, _check_healthy)
+    if healthy:
+        logger.info(f"VM {terminal.vm_id}: K3s already healthy, skipping etcd reset")
+        return
+
+    # K3s API is not responding — wipe stale etcd and restart.
+    await websocket.send_json({"type": "waiting", "message": "正在初始化 K3s 环境（首次启动）..."})
     try:
-        await loop.run_in_executor(
-            None,
-            lambda: terminal.ssh_client.exec_command(
+        def _do_reset():
+            _, stdout, _ = terminal.ssh_client.exec_command(
                 "systemctl stop k3s"
                 " && rm -rf /var/lib/rancher/k3s/server/db"
                 " && systemctl start k3s",
-                timeout=30,
-            ),
-        )
-        logger.info(f"VM {terminal.vm_id}: K3s state reset (etcd cleared)")
+                timeout=60,
+            )
+            stdout.channel.recv_exit_status()  # block until command finishes
+
+        await loop.run_in_executor(None, _do_reset)
+        logger.info(f"VM {terminal.vm_id}: K3s state reset (etcd cleared, service restarted)")
     except Exception as e:
         logger.warning(f"VM {terminal.vm_id}: K3s state reset failed (non-fatal): {e}")
 
