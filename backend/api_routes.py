@@ -164,8 +164,8 @@ async def api_create_vm(
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=(
-                    f"系统 VM 总数已达上限（{config.MAX_TOTAL_VMS} 个），"
-                    "请稍后再试或联系管理员。"
+                    f"实验环境当前已满员（{total_vm_count}/{config.MAX_TOTAL_VMS} 个）。"
+                    "请稍候，当有同学完成实验并释放环境后即可创建。"
                 ),
             )
 

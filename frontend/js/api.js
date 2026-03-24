@@ -32,7 +32,12 @@ class K8SNetLabAPI {
 
             // Handle HTTP errors
             if (!response.ok) {
-                throw new Error(data.detail || data.error || `HTTP ${response.status}`);
+                return {
+                    success: false,
+                    data: null,
+                    error: data.detail || data.error || `HTTP ${response.status}`,
+                    status: response.status,
+                };
             }
 
             return data;

@@ -205,13 +205,15 @@ class K8SNetLabApp {
             if (result.success && this.elements.statQuota) {
                 const q = result.data.user;
                 const sys = result.data.system;
-                this.elements.statQuota.textContent =
-                    `我的配额: ${q.current}/${q.max} | 系统: ${sys.current}/${sys.max}`;
-                // Warn when quota is full
-                const atLimit = q.available === 0;
+                const sysFull = sys.available === 0;
+                this.elements.statQuota.textContent = sysFull
+                    ? `系统已满员 ${sys.current}/${sys.max} — 请等待同学释放环境`
+                    : `我的配额: ${q.current}/${q.max} | 系统: ${sys.current}/${sys.max}`;
+                // Warn when user or system quota is full
+                const atLimit = q.available === 0 || sysFull;
                 this.elements.statQuota.className =
                     atLimit
-                        ? 'text-xs text-red-500 mt-1 font-medium'
+                        ? 'text-xs text-amber-500 mt-1 font-medium'
                         : 'text-xs text-gray-400 mt-1';
             }
         }).catch(() => {});
@@ -249,6 +251,8 @@ class K8SNetLabApp {
                 `VM ${result.data.vm_id} (${result.data.name}) 已创建并启动。\n资源: ${result.data.cores} 核 CPU, ${result.data.memory_mb} MB 内存\n\n⏳ 网络就绪约需 1 分钟，终端连接时会自动等待。`
             );
             await this.refreshVMList();
+        } else if (result.status === 503) {
+            this.showCapacityFull(result.error);
         } else {
             this.showError('创建失败', result.error);
         }
@@ -333,6 +337,39 @@ class K8SNetLabApp {
      */
     showError(title, message) {
         alert(`❌ ${title}\n\n${message}`);
+    }
+
+    /**
+     * Show capacity-full notice (friendly banner, not alert)
+     */
+    showCapacityFull(message) {
+        const existing = document.getElementById('capacity-notice');
+        if (existing) existing.remove();
+
+        const notice = document.createElement('div');
+        notice.id = 'capacity-notice';
+        notice.className = [
+            'fixed top-6 left-1/2 -translate-x-1/2 z-50',
+            'bg-amber-50 border border-amber-300 rounded-xl shadow-xl',
+            'p-5 max-w-md w-11/12 flex items-start space-x-3',
+        ].join(' ');
+        notice.innerHTML = `
+            <div class="text-2xl select-none">⏳</div>
+            <div class="flex-1 min-w-0">
+                <p class="font-semibold text-amber-800">实验环境已满员</p>
+                <p class="text-sm text-amber-700 mt-1 break-words">${message}</p>
+                <p class="text-xs text-amber-500 mt-2">配额状态每 30 秒自动刷新，空位出现后可立即重试。</p>
+            </div>
+            <button id="capacity-notice-close"
+                    class="text-amber-400 hover:text-amber-600 text-xl leading-none flex-shrink-0">✕</button>
+        `;
+        document.body.appendChild(notice);
+
+        document.getElementById('capacity-notice-close')
+            .addEventListener('click', () => notice.remove());
+
+        // Auto-dismiss after 60s
+        setTimeout(() => { if (notice.isConnected) notice.remove(); }, 60000);
     }
 
     /**
