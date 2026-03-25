@@ -132,6 +132,27 @@ class TestLogin:
         call_key = mock_rl.is_over_limit.call_args[0][0]
         assert "::ffff:" not in call_key
 
+    def test_login_evicts_previous_session(self, auth_setup):
+        """Regression: 登录时应清除该用户所有旧 session，防止 session 无限堆积。
+        Bug: 重复登录不清除旧 token，sessions.json 无限增长。
+        Fix: commit 5ad6384"""
+        client, mgr, _ = auth_setup
+        mgr.register_user("alice", "secret1")
+
+        # 登录两次
+        resp1 = client.post("/api/auth/login", json={"username": "alice", "password": "secret1"})
+        token1 = resp1.cookies["session_token"]
+
+        resp2 = client.post("/api/auth/login", json={"username": "alice", "password": "secret1"})
+        token2 = resp2.cookies["session_token"]
+
+        assert token1 != token2, "两次登录应生成不同 token"
+
+        # 旧 token 必须已失效
+        assert mgr.verify_session(token1) is None, "旧 session 应在新登录时被清除"
+        # 新 token 有效
+        assert mgr.verify_session(token2) is not None
+
 
 # ============================================================
 # POST /api/auth/logout
