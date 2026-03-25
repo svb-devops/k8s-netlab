@@ -67,14 +67,39 @@ class TestCreateVM:
         with patch("backend.api_routes.vm_tracker", mock_tracker), \
              patch("backend.api_routes.list_vms", return_value={"success": True, "data": []}), \
              patch("backend.api_routes.create_vm", return_value={"success": True, "data": {"vm_id": 500}}):
-            resp = client.post("/api/vms/create", json={"template_id": 100})
+            resp = client.post("/api/vms/create", json={})
 
         assert resp.status_code == 201
         assert resp.json()["success"] is True
         mock_tracker.track_vm.assert_called_once_with(500, owner="testuser")
 
+    def test_create_vm_always_uses_config_template_id(self, client_with_rl):
+        """Regression: create_vm must be called with config.VM_TEMPLATE_ID, never a
+        client-supplied value. This test would have caught the api.js hardcoded-100 bug."""
+        client, _ = client_with_rl
+        mock_tracker = MagicMock()
+        mock_tracker.get_user_vms.return_value = []
+        mock_tracker.get_all_tracked_vms.return_value = []
+
+        with patch("backend.api_routes.vm_tracker", mock_tracker), \
+             patch("backend.api_routes.list_vms", return_value={"success": True, "data": []}), \
+             patch("backend.api_routes.create_vm", return_value={"success": True, "data": {"vm_id": 500}}) as mock_create, \
+             patch("backend.api_routes.config") as mock_config:
+            mock_config.VM_TEMPLATE_ID = 999
+            mock_config.MAX_VMS_PER_USER = 5
+            mock_config.MAX_TOTAL_VMS = 20
+            resp = client.post("/api/vms/create", json={})
+
+        assert resp.status_code == 201
+        # The second positional arg to create_vm must be config.VM_TEMPLATE_ID (999), not any hardcoded value
+        called_template_id = mock_create.call_args[0][1]
+        assert called_template_id == 999, (
+            f"create_vm called with template_id={called_template_id}, expected config.VM_TEMPLATE_ID=999. "
+            "Frontend or API route must not hardcode template IDs."
+        )
+
     def test_unauthenticated_returns_401(self, unauthed_client):
-        resp = unauthed_client.post("/api/vms/create", json={"template_id": 100})
+        resp = unauthed_client.post("/api/vms/create", json={})
         assert resp.status_code == 401
 
     def test_per_user_quota_exceeded_returns_429(self, client_with_rl):
@@ -84,7 +109,7 @@ class TestCreateVM:
 
         with patch("backend.api_routes.vm_tracker", mock_tracker), \
              patch("backend.config.MAX_VMS_PER_USER", 1):
-            resp = client.post("/api/vms/create", json={"template_id": 100})
+            resp = client.post("/api/vms/create", json={})
 
         assert resp.status_code == 429
 
@@ -97,7 +122,7 @@ class TestCreateVM:
         with patch("backend.api_routes.vm_tracker", mock_tracker), \
              patch("backend.config.MAX_VMS_PER_USER", 5), \
              patch("backend.config.MAX_TOTAL_VMS", 12):
-            resp = client.post("/api/vms/create", json={"template_id": 100})
+            resp = client.post("/api/vms/create", json={})
 
         assert resp.status_code == 503
 
@@ -110,7 +135,7 @@ class TestCreateVM:
         mock_rl.retry_after.return_value = 1800
 
         with patch("backend.api_routes.vm_tracker", mock_tracker):
-            resp = client.post("/api/vms/create", json={"template_id": 100})
+            resp = client.post("/api/vms/create", json={})
 
         assert resp.status_code == 429
         assert "retry-after" in resp.headers
@@ -124,13 +149,13 @@ class TestCreateVM:
         with patch("backend.api_routes.vm_tracker", mock_tracker), \
              patch("backend.api_routes.list_vms", return_value={"success": True, "data": []}), \
              patch("backend.api_routes.create_vm", return_value={"success": False, "error": "Proxmox error"}):
-            resp = client.post("/api/vms/create", json={"template_id": 100})
+            resp = client.post("/api/vms/create", json={})
 
         assert resp.status_code == 500
 
     def test_vm_id_range_validation(self, client_with_rl):
         client, _ = client_with_rl
-        resp = client.post("/api/vms/create", json={"template_id": 100, "vm_id": 50})
+        resp = client.post("/api/vms/create", json={"vm_id": 50})
         assert resp.status_code == 422
 
 

@@ -38,18 +38,14 @@ class CreateVMRequest(BaseModel):
         ge=100,
         le=999999
     )
-    template_id: int = Field(
-        default=config.VM_TEMPLATE_ID,
-        description="Template VM ID to clone from",
-        ge=100,
-        le=999999
-    )
+    # template_id is server-controlled (from config.VM_TEMPLATE_ID).
+    # Clients must NOT specify it — removing it from the request model
+    # ensures a single source of truth and prevents client-side drift.
 
     class Config:
         json_schema_extra = {
             "example": {
-                "vm_id": 500,
-                "template_id": 9000
+                "vm_id": 500
             }
         }
 
@@ -181,11 +177,11 @@ async def api_create_vm(
         # Auto-assign VM ID if not provided
         vm_id = request.vm_id if request.vm_id else _find_available_vm_id()
 
-        logger.info(f"API: User '{current_user}' creating VM {vm_id} from template {request.template_id}")
+        logger.info(f"API: User '{current_user}' creating VM {vm_id} from template {config.VM_TEMPLATE_ID}")
 
         # Create VM using vm_manager (run in thread — blocks up to 300s polling Proxmox)
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, create_vm, vm_id, request.template_id)
+        result = await loop.run_in_executor(None, create_vm, vm_id, config.VM_TEMPLATE_ID)
 
         if result['success']:
             logger.info(f"API: VM {vm_id} created successfully by '{current_user}'")
