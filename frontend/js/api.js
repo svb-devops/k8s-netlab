@@ -81,10 +81,9 @@ class K8SNetLabAPI {
      * POST /api/vms/create
      *
      * @param {number|null} vmId - VM ID (optional, will auto-assign if null)
-     * @param {number} templateId - Template VM ID (default: 100)
      */
-    async createVM(vmId = null, templateId = 100) {
-        const body = { template_id: templateId };
+    async createVM(vmId = null) {
+        const body = {};
         if (vmId !== null) {
             body.vm_id = vmId;
         }
