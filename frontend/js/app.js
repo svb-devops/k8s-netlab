@@ -299,6 +299,10 @@ class K8SNetLabApp {
 
         if (result.success) {
             this.showSuccess('删除成功', `VM ${vmId} 已删除`);
+            // Close terminal if it's connected to the deleted VM
+            if (terminalManager.currentVMId === vmId) {
+                terminalManager.disconnect();
+            }
             await this.refreshVMList();
         } else {
             this.showError('删除失败', result.error);
