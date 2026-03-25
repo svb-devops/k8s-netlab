@@ -137,6 +137,9 @@ class AuthManager:
         expires_at = (datetime.now() + timedelta(hours=24)).isoformat()
 
         def _add(sessions: Dict) -> Dict:
+            # Evict previous sessions for this user (one active session per user)
+            for old_token in [k for k, v in sessions.items() if v.get("username") == username]:
+                del sessions[old_token]
             sessions[token] = {
                 "username": username,
                 "created_at": created_at,
