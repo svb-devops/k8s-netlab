@@ -10,7 +10,7 @@ import logging
 from typing import Dict, Any, List, Optional
 
 from fastapi import APIRouter, HTTPException, Path, Query, status, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from backend import config
 from backend.vm_manager import create_vm, delete_vm, start_vm, list_vms
@@ -42,12 +42,7 @@ class CreateVMRequest(BaseModel):
     # Clients must NOT specify it — removing it from the request model
     # ensures a single source of truth and prevents client-side drift.
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "vm_id": 500
-            }
-        }
+    model_config = ConfigDict(json_schema_extra={"example": {"vm_id": 500}})
 
 
 class VMResponse(BaseModel):
@@ -57,19 +52,7 @@ class VMResponse(BaseModel):
     data: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "success": True,
-                "data": {
-                    "vm_id": 500,
-                    "name": "k8s-lab-500",
-                    "cores": 4,
-                    "memory_mb": 8192
-                },
-                "error": None
-            }
-        }
+    model_config = ConfigDict(json_schema_extra={"example": {"success": True, "data": {"vm_id": 500, "name": "k8s-lab-500", "cores": 4, "memory_mb": 8192}, "error": None}})
 
 
 class VMListResponse(BaseModel):
