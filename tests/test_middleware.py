@@ -103,3 +103,61 @@ def test_json_formatter_includes_exc_info():
     parsed = json.loads(stream.getvalue().strip())
     assert "exc_info" in parsed
     assert "ValueError" in parsed["exc_info"]
+
+
+# ============================================================
+# SecurityHeadersMiddleware tests
+# ============================================================
+
+from backend.middleware import SecurityHeadersMiddleware  # noqa: E402
+
+
+@pytest.fixture
+def app_with_security_headers():
+    """Minimal FastAPI app with SecurityHeadersMiddleware."""
+    app = FastAPI()
+    app.add_middleware(SecurityHeadersMiddleware)
+
+    @app.get("/ping")
+    async def ping():
+        return {"ok": True}
+
+    return app
+
+
+def test_security_headers_x_content_type(app_with_security_headers):
+    """X-Content-Type-Options: nosniff must be set on every response."""
+    client = TestClient(app_with_security_headers)
+    resp = client.get("/ping")
+    assert resp.headers.get("x-content-type-options") == "nosniff"
+
+
+def test_security_headers_x_frame_options(app_with_security_headers):
+    """X-Frame-Options: DENY must be set on every response."""
+    client = TestClient(app_with_security_headers)
+    resp = client.get("/ping")
+    assert resp.headers.get("x-frame-options") == "DENY"
+
+
+def test_security_headers_referrer_policy(app_with_security_headers):
+    """Referrer-Policy must be set on every response."""
+    client = TestClient(app_with_security_headers)
+    resp = client.get("/ping")
+    assert resp.headers.get("referrer-policy") == "strict-origin-when-cross-origin"
+
+
+def test_security_headers_csp_present(app_with_security_headers):
+    """Content-Security-Policy must be present."""
+    client = TestClient(app_with_security_headers)
+    resp = client.get("/ping")
+    csp = resp.headers.get("content-security-policy", "")
+    assert csp, "Content-Security-Policy header is missing"
+    assert "default-src" in csp
+
+
+def test_security_headers_csp_blocks_objects(app_with_security_headers):
+    """CSP must include object-src 'none' to block Flash/ActiveX."""
+    client = TestClient(app_with_security_headers)
+    resp = client.get("/ping")
+    csp = resp.headers.get("content-security-policy", "")
+    assert "object-src 'none'" in csp

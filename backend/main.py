@@ -27,7 +27,7 @@ from backend.api_routes import router as api_router
 from backend.auth import auth_manager
 from backend.auth_routes import router as auth_router
 from backend.docs_routes import router as docs_router
-from backend.middleware import JsonFormatter, RequestIDMiddleware
+from backend.middleware import JsonFormatter, RequestIDMiddleware, SecurityHeadersMiddleware
 from backend.task_registry import drain as drain_vm_tasks
 from prometheus_fastapi_instrumentator import Instrumentator
 from backend.proxmox_api import connect_proxmox
@@ -190,6 +190,7 @@ app = FastAPI(
 # cross-origin requests are rejected — the safest default.
 
 app.add_middleware(RequestIDMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Prometheus metrics — exposed at /metrics (scrape target for Prometheus/Grafana)
 Instrumentator().instrument(app).expose(app, endpoint="/metrics")

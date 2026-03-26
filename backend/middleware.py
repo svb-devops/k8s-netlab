@@ -34,6 +34,42 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         return response
 
 
+_CSP = (
+    "default-src 'self'; "
+    # CDN scripts + inline scripts (Tailwind config, admin badge IIFE in index.html)
+    "script-src 'self' cdn.tailwindcss.com cdn.jsdelivr.net 'unsafe-inline'; "
+    # CDN styles + inline <style> blocks
+    "style-src 'self' cdn.jsdelivr.net 'unsafe-inline'; "
+    # same-origin fetch + WebSocket (ws/wss to the same host)
+    "connect-src 'self' ws: wss:; "
+    "img-src 'self' data:; "
+    "font-src 'self' cdn.jsdelivr.net; "
+    # Harden against plugin exploits and base-tag injection
+    "object-src 'none'; "
+    "base-uri 'self';"
+)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """
+    Attach defensive HTTP security headers to every response.
+
+    Headers applied:
+      - X-Content-Type-Options: nosniff        — prevent MIME sniffing
+      - X-Frame-Options: DENY                  — prevent clickjacking
+      - Referrer-Policy: strict-origin-when-cross-origin
+      - Content-Security-Policy                — restrict resource origins
+    """
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = _CSP
+        return response
+
+
 class JsonFormatter(logging.Formatter):
     """
     Emit each log record as a single-line JSON object.
