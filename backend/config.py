@@ -156,6 +156,16 @@ MAX_VMS_PER_USER: int = _get_env_int("MAX_VMS_PER_USER", 1)
 # Recommended: number of students + 2 spares.
 MAX_TOTAL_VMS: int = _get_env_int("MAX_TOTAL_VMS", 12)
 
+# --- VM ID Auto-Assignment Range ---
+# Range scanned when auto-assigning a VM ID (client did not specify one).
+# Must not overlap with VM_TEMPLATE_ID or other projects' VMID ranges.
+VM_ID_MIN: int = _get_env_int("VM_ID_MIN", 500)
+VM_ID_MAX: int = _get_env_int("VM_ID_MAX", 599)
+
+# --- Proxmox Pool ---
+# All project VMs are placed in this pool for permission scoping.
+PROXMOX_POOL: str = os.getenv("PROXMOX_POOL", "k8s-netlab")
+
 logger.info(
     f"VM quota: per_user={MAX_VMS_PER_USER}, system_total={MAX_TOTAL_VMS}"
 )

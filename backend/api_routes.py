@@ -71,10 +71,11 @@ def _find_available_vm_id() -> int:
     """
     Find the next available VM ID for auto-assignment.
 
-    Scans VM IDs from 500-599 and returns the first available ID.
+    Scans VM IDs from config.VM_ID_MIN to config.VM_ID_MAX (inclusive)
+    and returns the first available ID.
 
     Returns:
-        int: Available VM ID (500-599)
+        int: Available VM ID within the configured range
 
     Raises:
         HTTPException: If no available IDs found
@@ -88,14 +89,13 @@ def _find_available_vm_id() -> int:
 
     existing_ids = {vm['vmid'] for vm in result['data']}
 
-    # Search for available ID in range 500-599
-    for vm_id in range(500, 600):
+    for vm_id in range(config.VM_ID_MIN, config.VM_ID_MAX + 1):
         if vm_id not in existing_ids:
             return vm_id
 
     raise HTTPException(
         status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
-        detail="No available VM IDs in range 500-599"
+        detail=f"No available VM IDs in range {config.VM_ID_MIN}-{config.VM_ID_MAX}"
     )
 
 

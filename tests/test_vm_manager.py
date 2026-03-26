@@ -78,6 +78,32 @@ class TestValidateVmId:
 class TestCreateVm:
     """Tests for create_vm()"""
 
+    def test_create_vm_uses_config_pool_name(self, mock_proxmox, monkeypatch):
+        """Regression: create_vm must call proxmox.pools(config.PROXMOX_POOL), not
+        the hardcoded string 'k8s-netlab'. Changing PROXMOX_POOL env var must take effect."""
+        from backend import config
+        monkeypatch.setattr(config, "PROXMOX_POOL", "custom-pool-name")
+
+        node = mock_proxmox.nodes("pve")
+        node.qemu(9000).clone.post.return_value = "UPID:clone:task"
+        node.tasks("UPID:clone:task").status.get.return_value = {
+            "status": "stopped", "exitstatus": "OK"
+        }
+
+        from backend.vm_manager import create_vm
+        result = create_vm(vm_id=200, template_id=9000)
+
+        assert result["success"] is True
+        # Verify pool call used the config value, not a hardcoded string
+        pool_calls = [str(c) for c in mock_proxmox.pools.call_args_list]
+        assert any("custom-pool-name" in c for c in pool_calls), (
+            f"proxmox.pools was not called with 'custom-pool-name'. "
+            f"Calls: {pool_calls}. vm_manager must use config.PROXMOX_POOL."
+        )
+        assert not any("k8s-netlab" in c for c in pool_calls), (
+            "proxmox.pools was called with hardcoded 'k8s-netlab' instead of config.PROXMOX_POOL."
+        )
+
     def test_successful_creation(self, mock_proxmox):
         """Full flow: clone -> pool -> configure -> start -> success."""
         node = mock_proxmox.nodes("pve")

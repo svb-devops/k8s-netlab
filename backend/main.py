@@ -55,8 +55,8 @@ async def auto_cleanup_task():
         try:
             await asyncio.sleep(60)  # Check every minute
 
-            # Get expired VMs (older than 30 minutes)
-            expired_vms = vm_tracker.get_expired_vms(max_age_minutes=30)
+            # Get expired VMs (older than config.VM_SESSION_TIMEOUT_MIN minutes)
+            expired_vms = vm_tracker.get_expired_vms(max_age_minutes=config.VM_SESSION_TIMEOUT_MIN)
 
             if expired_vms:
                 logger.info(f"Found {len(expired_vms)} expired VMs to delete: {expired_vms}")

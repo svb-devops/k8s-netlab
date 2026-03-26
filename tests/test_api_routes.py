@@ -88,6 +88,8 @@ class TestCreateVM:
             mock_config.VM_TEMPLATE_ID = 999
             mock_config.MAX_VMS_PER_USER = 5
             mock_config.MAX_TOTAL_VMS = 20
+            mock_config.VM_ID_MIN = 500
+            mock_config.VM_ID_MAX = 599
             resp = client.post("/api/vms/create", json={})
 
         assert resp.status_code == 201
@@ -157,6 +159,38 @@ class TestCreateVM:
         client, _ = client_with_rl
         resp = client.post("/api/vms/create", json={"vm_id": 50})
         assert resp.status_code == 422
+
+    def test_auto_assignment_respects_config_vm_id_range(self, client_with_rl):
+        """Regression: _find_available_vm_id must scan config.VM_ID_MIN..VM_ID_MAX,
+        not the hardcoded range(500, 600). Auto-assigned ID must fall within the
+        configured range even when the range differs from the default."""
+        client, _ = client_with_rl
+        mock_tracker = MagicMock()
+        mock_tracker.get_user_vms.return_value = []
+        mock_tracker.get_all_tracked_vms.return_value = []
+
+        captured = {}
+
+        def fake_create_vm(vm_id, template_id):
+            captured["vm_id"] = vm_id
+            return {"success": True, "data": {"vm_id": vm_id}, "error": None}
+
+        with patch("backend.api_routes.vm_tracker", mock_tracker), \
+             patch("backend.api_routes.list_vms", return_value={"success": True, "data": []}), \
+             patch("backend.api_routes.create_vm", side_effect=fake_create_vm), \
+             patch("backend.api_routes.config") as mock_config:
+            mock_config.VM_TEMPLATE_ID = 100
+            mock_config.MAX_VMS_PER_USER = 5
+            mock_config.MAX_TOTAL_VMS = 20
+            mock_config.VM_ID_MIN = 300
+            mock_config.VM_ID_MAX = 302
+            resp = client.post("/api/vms/create", json={})
+
+        assert resp.status_code == 201
+        assert 300 <= captured["vm_id"] <= 302, (
+            f"Auto-assigned vm_id={captured['vm_id']} is outside config range [300, 302]. "
+            "api_routes._find_available_vm_id must use config.VM_ID_MIN/VM_ID_MAX."
+        )
 
 
 # ============================================================

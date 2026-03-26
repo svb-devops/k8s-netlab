@@ -97,9 +97,9 @@ def create_vm(vm_id: int, template_id: int) -> Dict[str, Any]:
             raise RuntimeError(f"Clone task did not complete within {max_wait}s")
 
         # Step 2: Add VM to pool immediately (enables pool-scoped permissions)
-        slog.info("Adding VM to pool 'k8s-netlab'")
-        proxmox.pools("k8s-netlab").put(vms=str(vm_id))
-        slog.success(f"VM {vm_id} added to pool 'k8s-netlab'")
+        slog.info(f"Adding VM to pool '{config.PROXMOX_POOL}'")
+        proxmox.pools(config.PROXMOX_POOL).put(vms=str(vm_id))
+        slog.success(f"VM {vm_id} added to pool '{config.PROXMOX_POOL}'")
 
         # Step 3: Configure VM resources
         slog.info("Configuring VM resources", {
