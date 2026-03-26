@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(pytest *)",
+      "Bash(python3 -m pytest *)",
+      "Bash(source venv/bin/activate *)",
+      "Bash(pip install *)",
+      "Bash(pip3 install *)",
+      "Bash(systemctl restart k8s-netlab)",
+      "Bash(systemctl status k8s-netlab)",
+      "Bash(journalctl -u k8s-netlab *)",
+      "Bash(curl -s https://lab.cloudnetops.tech/api/health)",
+      "Bash(bash scripts/*.sh *)",
+      "Bash(bash scripts/*.sh)"
+    ]
+  }
+}
