@@ -1,3 +1,7 @@
+---
+description: 运行完整测试套件并报告覆盖率结果。
+---
+
 运行完整测试套件并报告结果。
 
 ```bash
@@ -9,5 +13,5 @@ source venv/bin/activate && pytest tests/ -x -q --tb=short --cov=backend --cov-r
 - 覆盖率（必须 ≥ 75%，当前目标 80%）
 - 如有失败，列出失败的测试名称和错误摘要
 
-测试失败时推荐 → `skills/investigate.md` 定位根因
-准备发版时推荐 → `skills/pre-release.md` 做完整质量门检查
+测试失败时推荐 → `skills/investigate/SKILL.md` 定位根因
+准备发版时推荐 → `skills/pre-release/SKILL.md` 做完整质量门检查

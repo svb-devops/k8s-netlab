@@ -1,3 +1,7 @@
+---
+description: 根据用户提供的实验编号和标题，从模板创建新实验文档。
+---
+
 根据用户提供的实验编号和标题，从模板创建新实验文档。
 
 1. 读取模板：`docs/experiments/template.md`
@@ -10,4 +14,4 @@
 
 如用户未提供编号或标题，先询问。
 
-文件创建后推荐 → 运行 `skills/validate-experiment.md` 验证文档质量
+文件创建后推荐 → 运行 `skills/validate-experiment/SKILL.md` 验证文档质量

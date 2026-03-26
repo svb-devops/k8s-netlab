@@ -10,4 +10,4 @@ systemctl restart k8s-netlab
 ```
 
 部署成功后推荐 → `/project:smoke-test` 验证核心端点
-部署前发版检查 → 先运行 `skills/pre-release.md`
+部署前发版检查 → 先运行 `skills/pre-release/SKILL.md`
