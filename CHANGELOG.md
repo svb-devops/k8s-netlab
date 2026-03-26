@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+### Added
+- feat: CDN SRI integrity 属性 — xterm.js / marked / highlight.js 所有 jsdelivr 资源加 sha384 哈希，防 CDN 投毒
+- feat: 结构化 JSON 日志 — `backend/middleware.py` JsonFormatter，每条日志一行 JSON（timestamp/level/logger/message/exc_info）
+- feat: X-Request-ID middleware — 每个 HTTP 请求自动注入 UUID4，客户端可自带，响应头回显
+
 ---
 
 ## [1.1.0] - 2026-03-25

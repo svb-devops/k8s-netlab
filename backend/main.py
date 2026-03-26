@@ -22,6 +22,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend import config
+from backend.middleware import JsonFormatter, RequestIDMiddleware
 from backend.admin_routes import router as admin_router
 from backend.api_routes import router as api_router
 from backend.auth_routes import router as auth_router
@@ -31,11 +32,11 @@ from backend.vm_tracker import vm_tracker
 from backend.vm_manager import delete_vm
 from backend.auth import auth_manager
 
-# Configure logging
-logging.basicConfig(
-    level=getattr(logging, config.LOG_LEVEL),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Configure structured JSON logging
+_handler = logging.StreamHandler()
+_handler.setFormatter(JsonFormatter())
+logging.root.handlers = [_handler]
+logging.root.setLevel(getattr(logging, config.LOG_LEVEL))
 logger = logging.getLogger(__name__)
 
 
@@ -182,6 +183,8 @@ app = FastAPI(
 # Only mount when ALLOWED_ORIGINS is explicitly configured.
 # When empty (default), no CORS headers are sent and all
 # cross-origin requests are rejected — the safest default.
+
+app.add_middleware(RequestIDMiddleware)
 
 if config.ALLOWED_ORIGINS:
     app.add_middleware(
