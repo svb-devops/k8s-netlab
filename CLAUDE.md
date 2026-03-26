@@ -20,6 +20,7 @@
 |------|------|
 | 修 bug | [rules/bug-fix.md](.claude/rules/bug-fix.md) |
 | 加新功能 | [rules/feature.md](.claude/rules/feature.md) |
+| 重构代码（不改行为） | [rules/refactor.md](.claude/rules/refactor.md) |
 | 发版 | [rules/release.md](.claude/rules/release.md) |
 | 重启服务后 | [rules/deploy.md](.claude/rules/deploy.md) |
 | 任何时候 | [rules/constraints.md](.claude/rules/constraints.md) |
