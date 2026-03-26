@@ -19,7 +19,7 @@ websockets==12.0
 pydantic==2.12.5
 
 # Configuration
-python-dotenv==1.0.0
+python-dotenv==1.2.2
 
 # Password Hashing
 bcrypt>=4.0.0
