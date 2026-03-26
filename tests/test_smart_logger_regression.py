@@ -1,0 +1,38 @@
+"""
+回归测试：SmartLogger 在 root logger 已有 handler 时日志文件仍须创建。
+
+根因：main.py 设置 logging.root.handlers = [JsonFormatter handler] 之后，
+SmartLogger._setup_logging() 里的 logging.basicConfig() 因 root 已有 handler
+而什么都不做，导致日志文件从不创建。
+"""
+
+import logging
+from pathlib import Path
+
+
+def test_smart_logger_creates_log_file_when_root_has_handlers(tmp_path, monkeypatch):
+    """
+    SmartLogger 在 root logger 已有 handler（即 main.py 已初始化）的情况下，
+    仍须写出任务专属日志文件。
+    """
+    # 模拟 main.py 初始化后的状态：root 已有 handler
+    dummy_handler = logging.StreamHandler()
+    logging.root.addHandler(dummy_handler)
+
+    # 把日志目录重定向到 tmp_path，不污染真实 logs/
+    monkeypatch.chdir(tmp_path)
+
+    try:
+        from backend.smart_logger import SmartLogger
+
+        sl = SmartLogger("regression_test")
+        sl.info("test message")
+
+        log_file = tmp_path / "logs" / "regression_test.log"
+        assert log_file.exists(), (
+            "SmartLogger 日志文件未创建 — "
+            "basicConfig 在 root 已有 handler 时被跳过导致此回归"
+        )
+        assert log_file.stat().st_size > 0, "日志文件存在但为空"
+    finally:
+        logging.root.removeHandler(dummy_handler)

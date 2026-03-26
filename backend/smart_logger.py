@@ -40,15 +40,17 @@ class SmartLogger:
         log_dir = Path("logs")
         log_dir.mkdir(exist_ok=True)
 
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(f'logs/{self.task_name}.log'),
-                logging.StreamHandler()
-            ]
-        )
         self.logger = logging.getLogger(self.task_name)
+        self.logger.setLevel(logging.INFO)
+
+        # Directly attach a FileHandler to this logger so it always writes its
+        # task log file, regardless of whether the root logger already has handlers
+        # (logging.basicConfig is a no-op when root already has handlers).
+        file_handler = logging.FileHandler(f'logs/{self.task_name}.log')
+        file_handler.setFormatter(
+            logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        )
+        self.logger.addHandler(file_handler)
 
     def info(self, message: str, context: Optional[Dict] = None):
         """记录信息"""

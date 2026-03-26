@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### Fixed
+- fix: SmartLogger 日志文件在 root logger 已有 handler 时为空 — 改用直接挂 FileHandler 到子 logger，绕过 basicConfig 的 no-op 陷阱；补回归测试防止重现
+- fix: pytest-asyncio 漏加进 requirements.txt — 补声明 + 重新生成 requirements.lock；pytest.ini 加 asyncio_mode=auto 消除隐式警告
+
 ### Added
 - feat: CDN SRI integrity 属性 — xterm.js / marked / highlight.js 所有 jsdelivr 资源加 sha384 哈希，防 CDN 投毒
 - feat: 结构化 JSON 日志 — `backend/middleware.py` JsonFormatter，每条日志一行 JSON（timestamp/level/logger/message/exc_info）
