@@ -30,7 +30,9 @@ coverage[toml]==7.13.5
 cryptography==46.0.6
     # via paramiko
 fastapi==0.104.1
-    # via -r requirements.txt
+    # via
+    #   -r requirements.txt
+    #   prometheus-fastapi-instrumentator
 h11==0.16.0
     # via
     #   httpcore
@@ -56,6 +58,10 @@ pluggy==1.6.0
     # via
     #   pytest
     #   pytest-cov
+prometheus-client==0.24.1
+    # via prometheus-fastapi-instrumentator
+prometheus-fastapi-instrumentator==6.1.0
+    # via -r requirements.txt
 proxmoxer==2.0.1
     # via -r requirements.txt
 pycparser==3.0
