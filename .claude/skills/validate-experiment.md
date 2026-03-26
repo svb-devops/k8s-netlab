@@ -1,3 +1,8 @@
+---
+name: validate-experiment
+description: Experiment document quality validator for k8s-netlab. Use when user adds or modifies files under docs/experiments/. Checks structure completeness, kubectl command validity, file naming, and template conformance. Returns quality score and merge readiness.
+---
+
 # validate-experiment
 
 **触发时机**：用户新增或修改 `docs/experiments/` 下的实验文档时主动推荐。

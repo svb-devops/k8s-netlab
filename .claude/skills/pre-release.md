@@ -1,3 +1,8 @@
+---
+name: pre-release
+description: Pre-release quality gate for k8s-netlab. Runs automatically before any release/tag operation. Six gates must all pass — test suite, CHANGELOG updated, clean working tree, no secrets in diff, production health, smoke test.
+---
+
 # pre-release
 
 **触发时机**：用户说"发版"、"打 tag"、"准备上线"时，在执行 `release.md` 流程**之前**自动运行。

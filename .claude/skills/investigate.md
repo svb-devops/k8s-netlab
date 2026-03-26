@@ -1,3 +1,8 @@
+---
+name: investigate
+description: Systematic bug investigation for k8s-netlab. Use when user reports errors, unexpected behavior, or "why is this broken". Four phases: collect facts, narrow scope, hypothesize root cause, implement fix. Iron law — no fix without confirmed root cause.
+---
+
 # investigate
 
 **触发时机**：用户报告 bug、异常行为、"为什么不工作"时主动推荐。

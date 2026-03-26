@@ -52,6 +52,9 @@ proxmox_credentials.*
 # Local security config (contains real IPs — never commit)
 .security-config
 
+# Claude Code local settings (machine-specific, not shared)
+.claude/settings.local.json
+
 # Any other .env files
 *.env
 .gstack/
