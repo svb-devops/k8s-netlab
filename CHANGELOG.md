@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### Security
+- fix: 升级 CVE 依赖 — fastapi 0.104.1→0.135.2, starlette 0.27→0.52.1, python-multipart 0.0.6→0.0.22, requests 2.31→2.33.0, pydantic 2.5→2.12.5；清除 9 个 CVE（pygments CVE-2026-4539 暂无修复版本）
+- fix: 重新生成 requirements.lock 锁定所有传递依赖版本
+
 ### Fixed
 - fix: SmartLogger 日志文件在 root logger 已有 handler 时为空 — 改用直接挂 FileHandler 到子 logger，绕过 basicConfig 的 no-op 陷阱；补回归测试防止重现
 - fix: pytest-asyncio 漏加进 requirements.txt — 补声明 + 重新生成 requirements.lock；pytest.ini 加 asyncio_mode=auto 消除隐式警告
