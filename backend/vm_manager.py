@@ -15,9 +15,7 @@ from proxmoxer.core import ResourceException
 from backend import config
 from backend.proxmox_api import connect_proxmox
 
-# SmartLogger lives at project root
-sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent.parent))
-from smart_logger import SmartLogger
+from backend.smart_logger import SmartLogger
 
 logger = logging.getLogger(__name__)
 
