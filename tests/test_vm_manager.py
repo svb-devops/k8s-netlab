@@ -172,6 +172,85 @@ class TestCreateVm:
         assert result["error"] is not None
 
 
+class TestCreateVmRollback:
+    """
+    回归测试：create_vm 在 clone 成功后的步骤（pool/config/start）失败时，
+    必须自动清理孤儿 VM，防止 Proxmox 中出现未被跟踪的残留 VM。
+    """
+
+    def _setup_successful_clone(self, mock_proxmox):
+        """配置 mock 使 clone 步骤成功完成。"""
+        node = mock_proxmox.nodes("pve")
+        node.qemu(9000).clone.post.return_value = "UPID:clone:task"
+        node.tasks("UPID:clone:task").status.get.return_value = {
+            "status": "stopped", "exitstatus": "OK"
+        }
+        return node
+
+    def test_orphan_vm_deleted_when_pool_add_fails(self, mock_proxmox):
+        """
+        clone 成功后 pool add 失败 → 必须删除孤儿 VM。
+        根因：Step 2 失败时 VM 已在 Proxmox 创建，但不在 vm_tracker，
+        必须通过 rollback 删除，否则 VM 永远占用 VMID。
+        """
+        node = self._setup_successful_clone(mock_proxmox)
+        mock_proxmox.pools.return_value.put.side_effect = RuntimeError("pool ACL error")
+
+        from backend.vm_manager import create_vm
+        result = create_vm(vm_id=200, template_id=9000)
+
+        assert result["success"] is False
+        node.qemu(200).delete.assert_called_once()
+
+    def test_orphan_vm_deleted_when_config_fails(self, mock_proxmox):
+        """clone + pool add 成功后 config 失败 → 必须删除孤儿 VM。"""
+        node = self._setup_successful_clone(mock_proxmox)
+        node.qemu(200).config.put.side_effect = RuntimeError("config error")
+
+        from backend.vm_manager import create_vm
+        result = create_vm(vm_id=200, template_id=9000)
+
+        assert result["success"] is False
+        node.qemu(200).delete.assert_called_once()
+
+    def test_orphan_vm_deleted_when_start_fails(self, mock_proxmox):
+        """clone + pool + config 成功后 start 失败 → 必须删除孤儿 VM。"""
+        node = self._setup_successful_clone(mock_proxmox)
+        node.qemu(200).status.start.post.side_effect = RuntimeError("start error")
+
+        from backend.vm_manager import create_vm
+        result = create_vm(vm_id=200, template_id=9000)
+
+        assert result["success"] is False
+        node.qemu(200).delete.assert_called_once()
+
+    def test_no_cleanup_when_clone_fails(self, mock_proxmox):
+        """clone 本身失败 → VM 从未创建，不得调用 delete。"""
+        node = mock_proxmox.nodes("pve")
+        node.qemu(9000).clone.post.side_effect = RuntimeError("clone error")
+
+        from backend.vm_manager import create_vm
+        result = create_vm(vm_id=200, template_id=9000)
+
+        assert result["success"] is False
+        node.qemu(200).delete.assert_not_called()
+
+    def test_cleanup_failure_does_not_mask_original_error(self, mock_proxmox):
+        """
+        如果 rollback 删除也失败，返回的 error 必须是原始错误，
+        不能被 cleanup 的异常覆盖。
+        """
+        node = self._setup_successful_clone(mock_proxmox)
+        mock_proxmox.pools.return_value.put.side_effect = RuntimeError("pool error")
+        node.qemu(200).delete.side_effect = RuntimeError("delete also failed")
+
+        from backend.vm_manager import create_vm
+        result = create_vm(vm_id=200, template_id=9000)
+
+        assert result["success"] is False
+        assert "pool error" in result["error"]
+
+
 # --- delete_vm Tests ---
 
 class TestDeleteVm:

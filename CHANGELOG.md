@@ -11,6 +11,7 @@
 - fix: 重新生成 requirements.lock 锁定所有传递依赖版本
 
 ### Fixed
+- fix: vm_manager create_vm 部分失败无回滚 — clone 成功后 pool/config/start 任一步骤失败时自动删除孤儿 VM；补 5 个回归测试覆盖各失败场景
 - fix: SmartLogger 日志文件在 root logger 已有 handler 时为空 — 改用直接挂 FileHandler 到子 logger，绕过 basicConfig 的 no-op 陷阱；补回归测试防止重现
 - fix: pytest-asyncio 漏加进 requirements.txt — 补声明 + 重新生成 requirements.lock；pytest.ini 加 asyncio_mode=auto 消除隐式警告
 

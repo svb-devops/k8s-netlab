@@ -5,15 +5,14 @@ Creates, deletes, and lists VMs on Proxmox VE.
 Each operation uses SmartLogger for structured logging and reporting.
 """
 
-import time
 import logging
-from typing import Dict, Any
+import time
+from typing import Any, Dict
 
 from proxmoxer.core import ResourceException
 
 from backend import config
 from backend.proxmox_api import connect_proxmox
-
 from backend.smart_logger import SmartLogger
 
 logger = logging.getLogger(__name__)
@@ -39,11 +38,32 @@ def _validate_vm_id(vm_id: int) -> None:
         raise ValueError(f"Invalid VM ID: {vm_id}. Must be {VM_ID_MIN}-{VM_ID_MAX}")
 
 
+def _delete_orphan_vm(vm_id: int, node: Any, slog: SmartLogger) -> None:
+    """
+    Best-effort cleanup: delete a VM that was cloned but whose creation failed.
+    Errors are logged but not re-raised so they never mask the original failure.
+    """
+    slog.warning(f"Rolling back: deleting orphaned VM {vm_id}")
+    try:
+        vm = node.qemu(vm_id)
+        try:
+            # VM may be starting if Step 4 raised; try to stop it first
+            vm.status.stop.post()
+        except Exception:
+            pass  # already stopped — that's fine
+        vm.delete()
+        slog.warning(f"Orphaned VM {vm_id} deleted (rollback complete)")
+    except Exception as cleanup_err:
+        slog.error(f"Rollback failed for VM {vm_id}: {cleanup_err}", cleanup_err)
+
+
 def create_vm(vm_id: int, template_id: int) -> Dict[str, Any]:
     """
     Create a new VM by cloning a template, configuring resources, and starting it.
 
     Steps: validate -> clone template -> configure CPU/RAM -> start VM.
+    On partial failure (clone succeeded but a later step failed), automatically
+    deletes the orphaned VM to prevent untracked VMs in Proxmox.
 
     Args:
         vm_id: ID for the new VM (100-999999)
@@ -60,6 +80,9 @@ def create_vm(vm_id: int, template_id: int) -> Dict[str, Any]:
 
     slog = SmartLogger(f"create_vm_{vm_id}")
     slog.info(f"Creating VM {vm_id} from template {template_id}")
+
+    clone_completed = False
+    node: Any = None
 
     try:
         proxmox = connect_proxmox()
@@ -96,6 +119,9 @@ def create_vm(vm_id: int, template_id: int) -> Dict[str, Any]:
         else:
             raise RuntimeError(f"Clone task did not complete within {max_wait}s")
 
+        # VM now exists in Proxmox; subsequent failures must trigger rollback
+        clone_completed = True
+
         # Step 2: Add VM to pool immediately (enables pool-scoped permissions)
         slog.info(f"Adding VM to pool '{config.PROXMOX_POOL}'")
         proxmox.pools(config.PROXMOX_POOL).put(vms=str(vm_id))
@@ -129,9 +155,13 @@ def create_vm(vm_id: int, template_id: int) -> Dict[str, Any]:
 
     except (ConnectionError, ResourceException) as e:
         slog.error(f"VM creation failed: {e}", e)
+        if clone_completed and node is not None:
+            _delete_orphan_vm(vm_id, node, slog)
         return {"success": False, "data": None, "error": str(e)}
     except Exception as e:
         slog.error(f"Unexpected error creating VM {vm_id}: {e}", e)
+        if clone_completed and node is not None:
+            _delete_orphan_vm(vm_id, node, slog)
         return {"success": False, "data": None, "error": str(e)}
     finally:
         slog.generate_report()
