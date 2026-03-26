@@ -16,6 +16,7 @@ from backend import config
 from backend.auth_deps import get_current_user
 from backend.proxmox_api import connect_proxmox
 from backend.rate_limiter import rate_limiter
+from backend.task_registry import register as register_task
 from backend.vm_manager import create_vm, delete_vm, list_vms
 from backend.vm_tracker import vm_tracker
 
@@ -164,7 +165,7 @@ async def api_create_vm(
 
         # Create VM using vm_manager (run in thread — blocks up to 300s polling Proxmox)
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, create_vm, vm_id, config.VM_TEMPLATE_ID)
+        result = await register_task(loop.run_in_executor(None, create_vm, vm_id, config.VM_TEMPLATE_ID))
 
         if result['success']:
             logger.info(f"API: VM {vm_id} created successfully by '{current_user}'")
@@ -234,7 +235,7 @@ async def api_delete_vm(
 
         # Delete VM using vm_manager (run in thread — blocks while polling Proxmox)
         loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(None, lambda: delete_vm(vm_id=vm_id, force=force))
+        result = await register_task(loop.run_in_executor(None, lambda: delete_vm(vm_id=vm_id, force=force)))
 
         if result['success']:
             logger.info(f"API: VM {vm_id} deleted successfully")

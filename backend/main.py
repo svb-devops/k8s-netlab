@@ -8,12 +8,12 @@ Provides RESTful endpoints for VM management and WebSocket terminal access.
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
-
 from pathlib import Path
+from typing import AsyncGenerator
 
 # Load environment variables first
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from fastapi import FastAPI, WebSocket
@@ -22,15 +22,16 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend import config
-from backend.middleware import JsonFormatter, RequestIDMiddleware
 from backend.admin_routes import router as admin_router
 from backend.api_routes import router as api_router
+from backend.auth import auth_manager
 from backend.auth_routes import router as auth_router
 from backend.docs_routes import router as docs_router
+from backend.middleware import JsonFormatter, RequestIDMiddleware
+from backend.task_registry import drain as drain_vm_tasks
 from backend.proxmox_api import connect_proxmox
-from backend.vm_tracker import vm_tracker
 from backend.vm_manager import delete_vm
-from backend.auth import auth_manager
+from backend.vm_tracker import vm_tracker
 
 # Configure structured JSON logging
 _handler = logging.StreamHandler()
@@ -155,6 +156,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("=" * 60)
     logger.info("K8S NetLab - Shutting down...")
     logger.info("=" * 60)
+
+    # Wait for in-flight VM operations (create/delete) before exiting
+    await drain_vm_tasks(timeout=30.0)
 
     # Cancel background task
     cleanup_task.cancel()
