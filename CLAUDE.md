@@ -15,10 +15,28 @@
 
 ## 工作流规则（触发时自动执行）
 
-| 场景 | 规则文件 |
-|------|---------|
+| 场景 | 文件 |
+|------|------|
 | 修 bug | [rules/bug-fix.md](.claude/rules/bug-fix.md) |
 | 加新功能 | [rules/feature.md](.claude/rules/feature.md) |
 | 发版 | [rules/release.md](.claude/rules/release.md) |
 | 重启服务后 | [rules/deploy.md](.claude/rules/deploy.md) |
 | 任何时候 | [rules/constraints.md](.claude/rules/constraints.md) |
+
+## 命令（主动调用）
+
+| 命令 | 用途 |
+|------|------|
+| `/project:deploy` | 重启服务 + 健康验证 |
+| `/project:test` | 全量测试 + 覆盖率 |
+| `/project:smoke-test` | 生产端点验证 |
+| `/project:new-experiment` | 创建实验文档脚手架 |
+
+## Skills（复杂工作流，Claude 会主动推荐）
+
+| Skill | 触发场景 |
+|-------|---------|
+| [investigate](.claude/skills/investigate.md) | 应用层 bug 根因分析 |
+| [debug-vm](.claude/skills/debug-vm.md) | VM 创建失败系统排查 |
+| [pre-release](.claude/skills/pre-release.md) | 发版前六道质量门 |
+| [validate-experiment](.claude/skills/validate-experiment.md) | 实验文档质量验证 |
