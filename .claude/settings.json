@@ -19,11 +19,11 @@
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Bash(systemctl restart k8s-netlab)",
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "sleep 3 && curl -s https://lab.cloudnetops.tech/api/health | python3 -m json.tool; journalctl -u k8s-netlab -p err --since '2 minutes ago' --no-pager | head -20"
+            "command": "bash /root/k8s-netlab/.claude/hooks/post-deploy.sh"
           }
         ]
       }
