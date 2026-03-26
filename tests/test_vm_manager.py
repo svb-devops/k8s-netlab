@@ -38,7 +38,7 @@ def mock_proxmox():
 @pytest.fixture(autouse=True)
 def _suppress_reports(monkeypatch):
     """Suppress SmartLogger report file creation during tests."""
-    from smart_logger import SmartLogger
+    from backend.smart_logger import SmartLogger
     monkeypatch.setattr(SmartLogger, "generate_report", lambda self: "test_report.txt")
 
 
