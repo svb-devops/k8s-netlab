@@ -20,6 +20,7 @@ from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from backend import config
 from backend.admin_routes import router as admin_router
@@ -28,9 +29,8 @@ from backend.auth import auth_manager
 from backend.auth_routes import router as auth_router
 from backend.docs_routes import router as docs_router
 from backend.middleware import JsonFormatter, RequestIDMiddleware, SecurityHeadersMiddleware
-from backend.task_registry import drain as drain_vm_tasks
-from prometheus_fastapi_instrumentator import Instrumentator
 from backend.proxmox_api import connect_proxmox
+from backend.task_registry import drain as drain_vm_tasks
 from backend.vm_manager import delete_vm
 from backend.vm_tracker import vm_tracker
 

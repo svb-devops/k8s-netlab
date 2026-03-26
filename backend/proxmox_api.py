@@ -6,7 +6,7 @@ to the Proxmox VE server using environment-based configuration.
 """
 
 import logging
-from typing import Dict, Any
+from typing import Any, Dict
 
 from proxmoxer import ProxmoxAPI
 

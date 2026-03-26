@@ -5,8 +5,8 @@ Loads all configuration from environment variables.
 No hardcoded secrets. Fails fast if required variables are missing.
 """
 
-import os
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 

@@ -7,7 +7,7 @@ User registration, login, and session management.
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request, Response, Cookie, status
+from fastapi import APIRouter, Cookie, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from backend.auth import auth_manager
