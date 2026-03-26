@@ -1,3 +1,8 @@
+---
+description: 重启 k8s-netlab 服务，然后按 `.claude/rules/deploy.md` 执行部署后强制检查。
+disable-model-invocation: true
+---
+
 重启 k8s-netlab 服务，然后按 `.claude/rules/deploy.md` 执行部署后强制检查。
 
 ```bash
