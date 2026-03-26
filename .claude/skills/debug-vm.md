@@ -1,6 +1,7 @@
 ---
 name: debug-vm
 description: Systematic VM creation failure diagnosis for k8s-netlab on Proxmox. Use when user reports VM creation failure, clone timeout, or students cannot get lab environment. Four-phase checklist: Proxmox connectivity, template VM in pool, capacity, token permissions.
+context: fork
 ---
 
 # debug-vm
