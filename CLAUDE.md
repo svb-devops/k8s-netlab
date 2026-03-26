@@ -39,5 +39,5 @@
 |-------|---------|
 | [investigate](.claude/skills/investigate/SKILL.md) | 应用层 bug 根因分析 |
 | [debug-vm](.claude/skills/debug-vm/SKILL.md) | VM 创建失败系统排查 |
-| [pre-release](.claude/skills/pre-release.md) | 发版前六道质量门 |
-| [validate-experiment](.claude/skills/validate-experiment.md) | 实验文档质量验证 |
+| [pre-release](.claude/skills/pre-release/SKILL.md) | 发版前六道质量门 |
+| [validate-experiment](.claude/skills/validate-experiment/SKILL.md) | 实验文档质量验证 |

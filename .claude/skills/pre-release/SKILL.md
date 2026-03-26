@@ -1,6 +1,7 @@
 ---
 name: pre-release
 description: Pre-release quality gate for k8s-netlab. Runs automatically before any release/tag operation. Six gates must all pass — test suite, CHANGELOG updated, clean working tree, no secrets in diff, production health, smoke test.
+context: fork
 ---
 
 # pre-release
@@ -102,6 +103,6 @@ bash scripts/smoke_test.sh
 ## 下一步推荐
 
 - 全部通过 → 执行 `.claude/rules/release.md` 发版流程
-- Gate 1 失败（测试不过）→ 用 `skills/investigate.md` 定位失败原因
-- Gate 6 失败（smoke test）→ 用 `/project:smoke-test` 单独排查，或 `skills/debug-vm.md`（若涉及 VM）
+- Gate 1 失败（测试不过）→ 用 `skills/investigate/SKILL.md` 定位失败原因
+- Gate 6 失败（smoke test）→ 用 `/project:smoke-test` 单独排查，或 `skills/debug-vm/SKILL.md`（若涉及 VM）
 - 发版完成后 → 运行 `/project:smoke-test` 做生产验证
