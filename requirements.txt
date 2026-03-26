@@ -13,7 +13,7 @@ requests==2.33.0
 
 # SSH and Terminal
 paramiko==3.4.0
-websockets==12.0
+websockets==16.0
 
 # Data Validation
 pydantic==2.12.5
