@@ -76,7 +76,7 @@ curl -sk -H "Authorization: PVEAPIToken=${PROXMOX_TOKEN_ID}=${PROXMOX_TOKEN_SECR
 
 ## 下一步推荐
 
-- 阶段一失败（Proxmox 不可达）→ 检查 `systemctl status k8s-netlab`，可能是服务配置问题，改用 `skills/investigate.md`
+- 阶段一失败（Proxmox 不可达）→ 检查 `systemctl status k8s-netlab`，可能是服务配置问题，改用 `skills/investigate/SKILL.md`
 - 阶段二失败（模板不在 pool）→ 修复后运行 `/project:smoke-test` 验证用户可正常创建 VM
 - 阶段四失败（Token 权限）→ 修复 Proxmox ACL 后，查 `~/.claude/rules/proxmox-infrastructure.md` 确认分配表无误
-- 全部通过但问题仍存在 → 应用层问题，改用 `skills/investigate.md`
+- 全部通过但问题仍存在 → 应用层问题，改用 `skills/investigate/SKILL.md`

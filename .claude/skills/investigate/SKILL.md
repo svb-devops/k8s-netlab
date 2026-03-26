@@ -101,5 +101,5 @@ git log --oneline --follow -10 -- <相关文件>
 ## 下一步推荐
 
 - 修复完成后 → 运行 `/project:smoke-test` 确认生产无影响
-- 若涉及 VM 基础设施问题 → 改用 `skills/debug-vm.md`
+- 若涉及 VM 基础设施问题 → 改用 `skills/debug-vm/SKILL.md`
 - 若经验值得留存 → 立即写入 `/root/kb/topics/mistakes/`
