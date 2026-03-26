@@ -14,6 +14,7 @@
 - fix: 修复 smart_logger/websocket/docs_routes 中 8 处 mypy 类型注解错误（Optional、union-attr）
 - fix: 修复 websocket.py 3 处 bare except → except Exception
 - feat: 优雅关闭 — backend/task_registry.py 追踪 in-flight VM 操作，lifespan shutdown 等待 30s 后才退出，防止孤儿 VM
+- feat: pip-tools 依赖锁文件 — requirements.lock 固定所有传递依赖版本，CI 验证锁文件与 requirements.txt 同步
 
 ---
 

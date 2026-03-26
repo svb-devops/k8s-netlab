@@ -27,7 +27,10 @@ jobs:
           cache: "pip"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt ruff mypy
+        run: pip install -r requirements.lock ruff mypy pip-tools
+
+      - name: Verify lock file is up to date
+        run: pip-compile requirements.txt -o /tmp/requirements.check --no-header --no-strip-extras --quiet && diff requirements.lock /tmp/requirements.check
 
       - name: Lint (ruff)
         run: ruff check backend/
