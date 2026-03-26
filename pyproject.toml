@@ -1,0 +1,17 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = [
+    # load_dotenv() must run before backend imports in main.py — intentional pattern
+    "E402",
+    # Line length is not enforced — borderline cases are acceptable
+    "E501",
+]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_ignores = false

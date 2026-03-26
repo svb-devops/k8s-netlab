@@ -10,6 +10,9 @@
 - feat: CDN SRI integrity 属性 — xterm.js / marked / highlight.js 所有 jsdelivr 资源加 sha384 哈希，防 CDN 投毒
 - feat: 结构化 JSON 日志 — `backend/middleware.py` JsonFormatter，每条日志一行 JSON（timestamp/level/logger/message/exc_info）
 - feat: X-Request-ID middleware — 每个 HTTP 请求自动注入 UUID4，客户端可自带，响应头回显
+- feat: ruff + mypy 接入 CI — 每次推送自动 lint + 类型检查；pyproject.toml 固化规则
+- fix: 修复 smart_logger/websocket/docs_routes 中 8 处 mypy 类型注解错误（Optional、union-attr）
+- fix: 修复 websocket.py 3 处 bare except → except Exception
 
 ---
 

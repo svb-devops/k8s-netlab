@@ -9,7 +9,7 @@ import ipaddress
 import logging
 from typing import Optional
 
-import paramiko
+import paramiko  # type: ignore[import-untyped]
 from fastapi import WebSocket, WebSocketDisconnect
 from websockets.exceptions import ConnectionClosed
 
@@ -29,7 +29,7 @@ class SSHTerminal:
         self.channel: Optional[paramiko.Channel] = None
         self.last_error: Optional[str] = None
 
-    async def connect(self, username: str = None, password: str = None):
+    async def connect(self, username: Optional[str] = None, password: Optional[str] = None):
         """Connect to VM via SSH."""
         username = username or config.VM_SSH_USER
         password = password or config.VM_SSH_PASSWORD
@@ -38,9 +38,10 @@ class SSHTerminal:
             self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
             # Connect to VM
+            client = self.ssh_client  # local ref so mypy knows it's non-None in lambda
             await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: self.ssh_client.connect(
+                lambda: client.connect(
                     self.vm_ip,
                     username=username,
                     password=password,
@@ -296,9 +297,11 @@ async def wait_for_k3s(terminal: SSHTerminal, websocket: WebSocket, max_wait: in
     consecutive_ok = 0
     for elapsed in range(0, max_wait, 5):
         try:
+            assert terminal.ssh_client is not None
+            ssh = terminal.ssh_client
             _, stdout, _ = await loop.run_in_executor(
                 None,
-                lambda: terminal.ssh_client.exec_command(
+                lambda: ssh.exec_command(
                     "kubectl get pods -n kube-system --no-headers 2>/dev/null"
                     " | grep -cE '(Running|Completed)'",
                     timeout=5,
@@ -464,7 +467,7 @@ async def websocket_terminal(websocket: WebSocket, vm_id: int, skip_k3s_wait: bo
                         "type": "error",
                         "message": f"SSH 连接错误: {str(e)}"
                     })
-                except:
+                except Exception:
                     pass
 
         # Run bidirectional forwarding concurrently
@@ -483,7 +486,7 @@ async def websocket_terminal(websocket: WebSocket, vm_id: int, skip_k3s_wait: bo
                 "type": "error",
                 "message": str(e)
             })
-        except:
+        except Exception:
             pass
 
     finally:
@@ -491,5 +494,5 @@ async def websocket_terminal(websocket: WebSocket, vm_id: int, skip_k3s_wait: bo
             terminal.close()
         try:
             await websocket.close()
-        except:
+        except Exception:
             pass

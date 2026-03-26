@@ -27,7 +27,13 @@ jobs:
           cache: "pip"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt ruff mypy
+
+      - name: Lint (ruff)
+        run: ruff check backend/
+
+      - name: Type check (mypy)
+        run: mypy backend/ --ignore-missing-imports --no-error-summary
 
       - name: Run tests
         run: pytest tests/ -x -q --tb=short --cov=backend --cov-report=term-missing

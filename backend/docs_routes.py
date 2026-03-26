@@ -4,11 +4,11 @@ K8S NetLab - Experiment Documentation API Routes
 Provides endpoints to list and serve Markdown experiment documents.
 """
 
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Cookie, HTTPException
 from fastapi.responses import JSONResponse
-from pathlib import Path
 
 from backend.auth import auth_manager
 
@@ -140,7 +140,7 @@ async def get_experiment(
     if not exp:
         raise HTTPException(status_code=404, detail=f"Experiment '{exp_id}' not found")
 
-    file_path = EXPERIMENTS_DIR / exp["filename"]
+    file_path = EXPERIMENTS_DIR / str(exp["filename"])
     if not file_path.exists():
         raise HTTPException(
             status_code=404,
