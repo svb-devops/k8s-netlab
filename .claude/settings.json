@@ -23,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash /root/k8s-netlab/.claude/hooks/post-deploy.sh"
+            "command": "bash .claude/hooks/post-deploy.sh"
           }
         ]
       }
