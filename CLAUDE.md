@@ -12,6 +12,7 @@
 - **网络**：vmbr1（172.16.100.0/24）
 - **数据**：`data/*.json`（flock 原子读写，不用数据库）
 - **测试基线**：256 tests，覆盖率 80%
+- **安全门禁**：pre-commit（敏感信息扫描）+ pre-push（8 项安全检查 + pytest），安装：`bash scripts/install-git-hooks.sh`
 
 ## 工作流规则（触发时自动执行）
 
