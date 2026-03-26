@@ -58,3 +58,11 @@ grep -A2 '```bash' docs/experiments/<file> | grep kubectl
 - 质量评分（通过阶段数 / 4）
 - 具体修改建议（如有）
 - `✅ 可以合入` 或 `❌ 需要修改后重新验证`
+
+---
+
+## 下一步推荐
+
+- 验证通过 → commit + push，可用 `scripts/test-experiment.sh <N>` 在真实 VM 上跑端到端验证
+- 阶段一失败（结构缺失）→ 参考 `docs/experiments/template.md` 补全后重跑
+- 涉及新镜像 → 确认宿主机 registry (`172.16.100.1:5000`) 已预先 push，否则实验会拉镜像失败

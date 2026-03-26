@@ -91,3 +91,12 @@ bash scripts/smoke_test.sh
 ```
 
 然后按 `.claude/rules/release.md` 继续。
+
+---
+
+## 下一步推荐
+
+- 全部通过 → 执行 `.claude/rules/release.md` 发版流程
+- Gate 1 失败（测试不过）→ 用 `skills/investigate.md` 定位失败原因
+- Gate 6 失败（smoke test）→ 用 `/project:smoke-test` 单独排查，或 `skills/debug-vm.md`（若涉及 VM）
+- 发版完成后 → 运行 `/project:smoke-test` 做生产验证
