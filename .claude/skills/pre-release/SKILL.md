@@ -18,7 +18,7 @@ context: fork
 source venv/bin/activate && pytest tests/ -x -q --tb=short --cov=backend --cov-report=term-missing
 ```
 
-- 256 passed，覆盖率 ≥ 75% → ✅
+- 全部通过，覆盖率 ≥ 75% → ✅
 - 有失败或覆盖率不足 → ❌ 停止，不得发版
 
 ---
