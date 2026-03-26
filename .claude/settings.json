@@ -15,5 +15,18 @@
       "Bash(bash scripts/*)",
       "Bash(cat data/*)"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash(systemctl restart k8s-netlab)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sleep 3 && curl -s https://lab.cloudnetops.tech/api/health | python3 -m json.tool; journalctl -u k8s-netlab -p err --since '2 minutes ago' --no-pager | head -20"
+          }
+        ]
+      }
+    ]
   }
 }
