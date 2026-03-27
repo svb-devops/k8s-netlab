@@ -472,6 +472,11 @@ class TestHealth:
         assert "192.168.1.10" not in resp.text
         assert resp.json()["error"] == "Proxmox connection failed"
 
+    def test_head_health_returns_200(self, client):
+        """HEAD /api/health 必须返回 200 而非 405 — 修复 UptimeRobot 监控误报（回归）。"""
+        resp = client.head("/api/health")
+        assert resp.status_code == 200
+
 
 # ============================================================
 # GET /api (info endpoint)

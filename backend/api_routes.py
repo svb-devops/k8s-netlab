@@ -9,7 +9,7 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend import config
@@ -446,6 +446,12 @@ async def api_get_vm_status(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=detail
         )
+
+
+@router.head("/health", include_in_schema=False)
+async def api_health_head() -> Response:
+    """HEAD handler for monitoring tools (e.g. UptimeRobot) that use HEAD instead of GET."""
+    return Response(status_code=status.HTTP_200_OK)
 
 
 @router.get(

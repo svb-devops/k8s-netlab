@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Fixed
+- fix: HEAD /api/health 返回 405 导致 UptimeRobot 监控持续误报 — 新增 HEAD 路由返回 200 空响应；补回归测试防止重现
 - fix: admin_routes.py GET /api/admin/status 当 sessions.json 存在损坏条目（缺 username/created_at/expires_at）时整个端点 500 崩溃 — 改为跳过损坏条目并记录 warning，正常条目继续返回；补回归测试防止重现
 - fix: main.py auto_cleanup_task 匹配 "VM 不存在" 时 warning 日志缺失原始 Proxmox 错误串 — 加入 reason 字段便于跨版本调试；补回归测试防止重现
 
