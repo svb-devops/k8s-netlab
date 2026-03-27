@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Fixed
+- fix: 点击"终端"按钮无反应 — terminal.js 在 terminal-section 仍为 display:none 时调用 xterm.js open()/fitAddon.fit()，导致终端无法初始化；改为先 remove('hidden') 再 open/fit；无后端回归测试（纯前端 bug）
 - fix: CSP style-src 缺 'unsafe-inline' 导致 Tailwind Play CDN 样式注入被拦截 — 页面所有布局/颜色/尺寸完全失效，SVG 图标全宽渲染；script-src 保持严格；补回归测试防止重现
 - fix: HEAD /api/health 返回 405 导致 UptimeRobot 监控持续误报 — 新增 HEAD 路由返回 200 空响应；补回归测试防止重现
 - fix: admin_routes.py GET /api/admin/status 当 sessions.json 存在损坏条目（缺 username/created_at/expires_at）时整个端点 500 崩溃 — 改为跳过损坏条目并记录 warning，正常条目继续返回；补回归测试防止重现

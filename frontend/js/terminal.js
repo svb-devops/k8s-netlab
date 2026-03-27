@@ -47,14 +47,16 @@ class TerminalManager {
         // Add web links addon
         this.terminal.loadAddon(new WebLinksAddon.WebLinksAddon());
 
+        // Show terminal section FIRST so the container has real dimensions.
+        // xterm.js open() and fitAddon.fit() require a visible container;
+        // calling them while the parent is display:none causes silent failure.
+        document.getElementById('terminal-section').classList.remove('hidden');
+
         // Mount to DOM
         const terminalContainer = document.getElementById('terminal');
         terminalContainer.innerHTML = ''; // Clear
         this.terminal.open(terminalContainer);
         this.fitAddon.fit();
-
-        // Show terminal section
-        document.getElementById('terminal-section').classList.remove('hidden');
 
         // Connect WebSocket
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
