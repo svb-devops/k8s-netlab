@@ -58,6 +58,9 @@ async def auto_cleanup_task():
         try:
             await asyncio.sleep(60)  # Check every minute
 
+            # Purge expired sessions from sessions.json
+            auth_manager.cleanup_expired_sessions()
+
             # Get expired VMs (older than config.VM_SESSION_TIMEOUT_MIN minutes)
             expired_vms = vm_tracker.get_expired_vms(max_age_minutes=config.VM_SESSION_TIMEOUT_MIN)
 

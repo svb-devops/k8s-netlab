@@ -120,3 +120,33 @@ class TestOldFormatMigration:
         tracker.track_vm(501, owner="bob", created_at=t)
         all_vms = tracker.get_all_tracked_vms()
         assert all_vms[501] == datetime.fromisoformat(t)
+
+
+class TestCorruptedData:
+    """I 回归：_load_data 对损坏文件中的非数字 key 应跳过而不崩溃。"""
+
+    def test_non_digit_key_is_skipped(self, tracker):
+        """文件中的非数字 key 应被过滤掉，不应抛出 ValueError（I 回归）。"""
+        import json
+        corrupted = {
+            "500": {"created_at": "2026-01-01T00:00:00", "owner": "alice"},
+            "not-a-number": {"created_at": "2026-01-01T00:00:00", "owner": "bob"},
+            "abc": "2026-01-01T00:00:00",
+        }
+        tracker.data_file.write_text(json.dumps(corrupted))
+        data = tracker._load_data()
+        assert 500 in data
+        assert "not-a-number" not in data
+        assert "abc" not in data
+
+    def test_corrupted_file_does_not_crash_get_owner(self, tracker):
+        """损坏数据下 get_vm_owner 应正常返回，不抛异常（I 回归）。"""
+        import json
+        corrupted = {
+            "500": {"created_at": "2026-01-01T00:00:00", "owner": "alice"},
+            "bad-key": "some-value",
+        }
+        tracker.data_file.write_text(json.dumps(corrupted))
+        assert tracker.get_vm_owner(500) == "alice"
+        # Non-digit key must not surface as a VM
+        assert tracker.get_vm_owner(0) is None

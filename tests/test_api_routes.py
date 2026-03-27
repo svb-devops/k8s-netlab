@@ -192,6 +192,22 @@ class TestCreateVM:
             "api_routes._find_available_vm_id must use config.VM_ID_MIN/VM_ID_MAX."
         )
 
+    def test_explicit_vm_id_outside_config_range_returns_422(self, client_with_rl):
+        """客户端指定的 vm_id 超出 config.VM_ID_MIN..MAX 范围时应返回 422（J 回归）。
+        Pydantic 允许 100-999999，但 config 范围更窄（如 500-599），handler 须额外校验。"""
+        client, _ = client_with_rl
+        mock_tracker = MagicMock()
+        mock_tracker.get_user_vms.return_value = []
+        mock_tracker.get_all_tracked_vms.return_value = []
+        with patch("backend.api_routes.vm_tracker", mock_tracker), \
+             patch("backend.api_routes.rate_limiter") as mock_rl, \
+             patch("backend.config.VM_ID_MIN", 500), \
+             patch("backend.config.VM_ID_MAX", 599):
+            mock_rl.is_allowed.return_value = True
+            # vm_id=200 passes Pydantic (≥100) but is outside config range [500,599]
+            resp = client.post("/api/vms/create", json={"vm_id": 200})
+        assert resp.status_code == 422
+
 
 # ============================================================
 # DELETE /api/vms/{vm_id}
@@ -387,6 +403,18 @@ class TestHealth:
 
         assert resp.status_code == 200
         assert resp.json()["status"] == "unhealthy"
+
+    def test_healthy_response_does_not_expose_fingerprinting_info(self, client):
+        """健康端点不得暴露 Proxmox version/host/node 指纹信息（H 回归）。"""
+        mock_proxmox = MagicMock()
+        mock_proxmox.version.get.return_value = {"version": "8.0.0"}
+        with patch("backend.api_routes.connect_proxmox", return_value=mock_proxmox):
+            resp = client.get("/api/health")
+        assert resp.status_code == 200
+        proxmox_data = resp.json().get("proxmox", {})
+        assert "version" not in proxmox_data
+        assert "host" not in proxmox_data
+        assert "node" not in proxmox_data
 
 
 # ============================================================

@@ -158,8 +158,16 @@ async def api_create_vm(
                 headers={"Retry-After": str(wait)},
             )
 
-        # Auto-assign VM ID if not provided
-        vm_id = request.vm_id if request.vm_id else _find_available_vm_id()
+        # Validate or auto-assign VM ID
+        if request.vm_id is not None:
+            if not (config.VM_ID_MIN <= request.vm_id <= config.VM_ID_MAX):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"vm_id must be in range {config.VM_ID_MIN}–{config.VM_ID_MAX}",
+                )
+            vm_id = request.vm_id
+        else:
+            vm_id = _find_available_vm_id()
 
         logger.info(f"API: User '{current_user}' creating VM {vm_id} from template {config.VM_TEMPLATE_ID}")
 
@@ -443,12 +451,7 @@ async def api_health_check() -> Dict[str, Any]:
 
         return {
             "status": "healthy",
-            "proxmox": {
-                "connected": True,
-                "version": version_info.get("version"),
-                "host": config.PROXMOX_HOST,
-                "node": config.PROXMOX_NODE
-            }
+            "proxmox": {"connected": True}
         }
     except Exception as e:
         logger.error(f"Health check failed: {e}")

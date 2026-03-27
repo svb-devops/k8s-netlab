@@ -161,3 +161,68 @@ def test_security_headers_csp_blocks_objects(app_with_security_headers):
     resp = client.get("/ping")
     csp = resp.headers.get("content-security-policy", "")
     assert "object-src 'none'" in csp
+
+
+# ============================================================
+# M 回归：请求日志包含 duration_ms 和 status_code
+# ============================================================
+
+def test_request_log_includes_duration_ms_and_status_code():
+    """RequestIDMiddleware 必须将每个请求的 duration_ms 和 status_code 写入 JSON 日志（M 回归）。"""
+    from io import StringIO
+    from backend.middleware import RequestIDMiddleware, JsonFormatter
+
+    app = FastAPI()
+    app.add_middleware(RequestIDMiddleware)
+
+    @app.get("/ping")
+    async def ping():
+        return {"ok": True}
+
+    stream = StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(JsonFormatter())
+    req_logger = logging.getLogger("backend.middleware")
+    req_logger.addHandler(handler)
+    req_logger.setLevel(logging.DEBUG)
+    req_logger.propagate = False
+
+    client = TestClient(app)
+    client.get("/ping")
+
+    req_logger.removeHandler(handler)
+
+    lines = [line for line in stream.getvalue().strip().split("\n") if line]
+    http_log = None
+    for line in lines:
+        parsed = json.loads(line)
+        if "duration_ms" in parsed:
+            http_log = parsed
+            break
+
+    assert http_log is not None, "No HTTP request log line with 'duration_ms' found"
+    assert "status_code" in http_log, "HTTP log must include 'status_code'"
+    assert http_log["status_code"] == 200
+    assert isinstance(http_log["duration_ms"], (int, float))
+    assert http_log["duration_ms"] >= 0
+
+
+def test_json_formatter_includes_extra_fields():
+    """JsonFormatter 必须将 logger.info(extra={...}) 中的字段合并到输出 JSON（M 回归）。"""
+    from io import StringIO
+    from backend.middleware import JsonFormatter
+
+    stream = StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(JsonFormatter())
+    log = logging.getLogger("test.extra_fields")
+    log.addHandler(handler)
+    log.setLevel(logging.DEBUG)
+    log.propagate = False
+
+    log.info("request complete", extra={"status_code": 201, "duration_ms": 42.5})
+    log.removeHandler(handler)
+
+    parsed = json.loads(stream.getvalue().strip())
+    assert parsed["status_code"] == 201
+    assert parsed["duration_ms"] == 42.5

@@ -27,9 +27,13 @@ class VMTracker:
         DATA_DIR.mkdir(exist_ok=True)
 
     def _load_data(self) -> Dict[int, str]:
-        """Load VM creation times from file (string keys → int keys)."""
+        """Load VM creation times from file (string keys → int keys).
+
+        Non-digit keys (e.g. from file corruption) are silently skipped
+        rather than crashing with ValueError.
+        """
         raw = safe_read_json(self.data_file, default={})
-        return {int(k): v for k, v in raw.items()}
+        return {int(k): v for k, v in raw.items() if k.isdigit()}
 
     def _save_data(self, data: Dict[int, str]):
         """Save VM creation times to file."""

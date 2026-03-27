@@ -80,6 +80,32 @@ class TestGetEnvBool:
             assert _get_env_bool("TEST_BOOL", True) is False
 
 
+class TestConfigCrossValidation:
+    """G 回归：启动时配置交叉校验，防止静默冲突。"""
+
+    def _pop_config(self, monkeypatch):
+        import sys
+        if "backend.config" in sys.modules:
+            monkeypatch.setitem(sys.modules, "backend.config", sys.modules["backend.config"])
+        sys.modules.pop("backend.config", None)
+
+    def test_template_id_inside_vm_range_raises(self, monkeypatch):
+        """VM_TEMPLATE_ID 落在 VM_ID_MIN..MAX 范围内时应在启动时抛 RuntimeError（G 回归）。"""
+        self._pop_config(monkeypatch)
+        monkeypatch.setenv("VM_TEMPLATE_ID", "500")
+        monkeypatch.setenv("VM_ID_MIN", "500")
+        monkeypatch.setenv("VM_ID_MAX", "599")
+        with pytest.raises(RuntimeError, match="VM_TEMPLATE_ID"):
+            import backend.config  # noqa: F401
+
+    def test_max_vms_per_user_exceeds_total_raises(self, monkeypatch):
+        """MAX_VMS_PER_USER > MAX_TOTAL_VMS 时应在启动时抛 RuntimeError（G 回归）。"""
+        self._pop_config(monkeypatch)
+        monkeypatch.setenv("MAX_VMS_PER_USER", "10")
+        monkeypatch.setenv("MAX_TOTAL_VMS", "5")
+        with pytest.raises(RuntimeError, match="MAX_VMS_PER_USER"):
+            import backend.config  # noqa: F401
+
 class TestModuleLoadFailsFast:
     """Test that importing config module fails without required env vars."""
 

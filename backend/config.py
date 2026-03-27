@@ -175,4 +175,15 @@ logger.info(
     f"VM quota: per_user={MAX_VMS_PER_USER}, system_total={MAX_TOTAL_VMS}"
 )
 
+# --- Startup cross-validation ---
+if VM_ID_MIN <= VM_TEMPLATE_ID <= VM_ID_MAX:
+    raise RuntimeError(
+        f"VM_TEMPLATE_ID ({VM_TEMPLATE_ID}) must not overlap with the VM auto-assignment range "
+        f"({VM_ID_MIN}–{VM_ID_MAX}). Adjust VM_ID_MIN/VM_ID_MAX or VM_TEMPLATE_ID."
+    )
+if MAX_VMS_PER_USER > MAX_TOTAL_VMS:
+    raise RuntimeError(
+        f"MAX_VMS_PER_USER ({MAX_VMS_PER_USER}) cannot exceed MAX_TOTAL_VMS ({MAX_TOTAL_VMS})."
+    )
+
 logger.info("Configuration loaded successfully")

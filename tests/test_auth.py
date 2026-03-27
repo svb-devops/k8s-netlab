@@ -128,3 +128,44 @@ class TestUpdateSessionActivity:
     def test_silent_on_missing_token(self, auth):
         """Should not raise if token does not exist."""
         auth.update_session_activity("nonexistent-token", current_experiment="01")
+
+
+# ============================================================
+# auto_cleanup_task session 清理（L 回归）
+# ============================================================
+
+class TestAutoCleanupTaskSessionPurge:
+    """L 回归：auto_cleanup_task 必须在每轮循环中清理过期 session。"""
+
+    async def test_auto_cleanup_task_calls_cleanup_expired_sessions(self):
+        """auto_cleanup_task 应调用 auth_manager.cleanup_expired_sessions()（L 回归）。"""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from backend.main import auto_cleanup_task
+
+        mock_auth = MagicMock()
+        mock_tracker = MagicMock()
+        mock_tracker.get_expired_vms.return_value = []
+
+        sleep_calls = [None, asyncio.CancelledError()]
+
+        async def fake_sleep(_):
+            val = sleep_calls.pop(0)
+            if isinstance(val, type) and issubclass(val, BaseException):
+                raise val()
+            if isinstance(val, BaseException):
+                raise val
+
+        with patch("backend.main.auth_manager", mock_auth), \
+             patch("backend.main.vm_tracker", mock_tracker), \
+             patch("backend.main.config") as mock_config, \
+             patch("asyncio.sleep", side_effect=fake_sleep):
+            mock_config.VM_SESSION_TIMEOUT_MIN = 30
+            try:
+                await auto_cleanup_task()
+            except asyncio.CancelledError:
+                pass
+
+        mock_auth.cleanup_expired_sessions.assert_called_once()
+

@@ -140,7 +140,10 @@ async def get_experiment(
     if not exp:
         raise HTTPException(status_code=404, detail=f"Experiment '{exp_id}' not found")
 
-    file_path = EXPERIMENTS_DIR / str(exp["filename"])
+    file_path = (EXPERIMENTS_DIR / str(exp["filename"])).resolve()
+    safe_root = EXPERIMENTS_DIR.resolve()
+    if not str(file_path).startswith(str(safe_root) + "/") and file_path != safe_root:
+        raise HTTPException(status_code=404, detail=f"Experiment file not found: {exp['filename']}")
     if not file_path.exists():
         raise HTTPException(
             status_code=404,

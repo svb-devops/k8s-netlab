@@ -129,3 +129,30 @@ class TestGetExperiment:
 
         assert resp.status_code == 200
         mock_auth.update_session_activity.assert_not_called()
+
+    def test_path_traversal_via_malicious_filename_is_blocked(self, tmp_path):
+        """路径遍历防御：伪造含 '..' 的 filename 不得读取实验目录外的文件（K 回归）。"""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from backend.docs_routes import router
+
+        exp_dir = tmp_path / "experiments"
+        exp_dir.mkdir()
+        secret_file = tmp_path / "secret.txt"
+        secret_file.write_text("TOP_SECRET_CONTENT", encoding="utf-8")
+
+        evil_exp = [{
+            "id": "99", "filename": "../secret.txt",
+            "title": "X", "difficulty": 1, "duration": "0", "phase": 1,
+        }]
+
+        app = FastAPI()
+        app.include_router(router)
+
+        with patch("backend.docs_routes.EXPERIMENTS_DIR", exp_dir), \
+             patch("backend.docs_routes.EXPERIMENTS", evil_exp):
+            client = TestClient(app, raise_server_exceptions=True)
+            resp = client.get("/api/experiments/99")
+
+        assert resp.status_code == 404
+        assert "TOP_SECRET_CONTENT" not in resp.text

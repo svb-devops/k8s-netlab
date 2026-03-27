@@ -7,6 +7,7 @@ JsonFormatter: formats log records as single-line JSON for structured logging.
 
 import json
 import logging
+import time
 import traceback
 import uuid
 from datetime import datetime, timezone
@@ -15,10 +16,21 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 
+_request_logger = logging.getLogger(__name__)
+
+# Standard LogRecord attributes to exclude when merging extra fields
+_LOGRECORD_ATTRS = frozenset({
+    "name", "msg", "args", "created", "filename", "funcName", "levelname",
+    "levelno", "lineno", "module", "msecs", "message", "pathname", "process",
+    "processName", "relativeCreated", "stack_info", "thread", "threadName",
+    "exc_info", "exc_text", "taskName",
+})
+
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
     """
-    Attach a unique request-id to every HTTP request/response.
+    Attach a unique request-id to every HTTP request/response and log each
+    request with method, path, status_code, and duration_ms.
 
     - Reads X-Request-ID from the incoming request if present.
     - Otherwise generates a new UUID4.
@@ -29,8 +41,20 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
         request.state.request_id = request_id
+        start = time.perf_counter()
         response = await call_next(request)
+        duration_ms = round((time.perf_counter() - start) * 1000, 1)
         response.headers["X-Request-ID"] = request_id
+        _request_logger.info(
+            f"{request.method} {request.url.path} {response.status_code}",
+            extra={
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "duration_ms": duration_ms,
+                "request_id": request_id,
+            },
+        )
         return response
 
 
@@ -91,4 +115,8 @@ class JsonFormatter(logging.Formatter):
         }
         if record.exc_info:
             payload["exc_info"] = "".join(traceback.format_exception(*record.exc_info)).strip()
+        # Merge any extra fields passed via logger.info(..., extra={...})
+        for key, value in record.__dict__.items():
+            if key not in _LOGRECORD_ATTRS and not key.startswith("_"):
+                payload[key] = value
         return json.dumps(payload, ensure_ascii=False)

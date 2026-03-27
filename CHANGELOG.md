@@ -7,6 +7,13 @@
 ## [Unreleased]
 
 ### Fixed
+- fix: config.py 启动交叉校验 — VM_TEMPLATE_ID 不得落在 VM_ID_MIN..MAX 范围内；MAX_VMS_PER_USER 不得超过 MAX_TOTAL_VMS；补 2 个回归测试防止重现
+- fix: health 端点移除指纹信息 — 不再返回 version/host/node，只返回 {status, proxmox.connected}；补 1 个回归测试防止重现
+- fix: vm_tracker._load_data 对非数字 key 用 isdigit() 过滤 — 文件损坏时不再崩溃；补 2 个回归测试防止重现
+- fix: create_vm handler 显式校验 vm_id 范围 — 超出 VM_ID_MIN..VM_ID_MAX 返回 422；补 1 个回归测试防止重现
+- fix: docs_routes 路径遍历防御 — 读实验文件前加 .resolve() + 前缀校验；补 1 个回归测试防止重现
+- fix: auto_cleanup_task 每轮调用 cleanup_expired_sessions() — 过期 session 不再残留；补 1 个回归测试防止重现
+- fix: RequestIDMiddleware 记录请求日志含 duration_ms + status_code；JsonFormatter 支持 extra 字段；补 2 个回归测试防止重现
 - ops: CI 加 pip-audit + bandit 安全扫描门禁 — pip-audit 检测依赖 CVE，bandit -lll 阻断 HIGH 级别静态漏洞；websocket.py 已知可接受风险标注 nosec
 - fix: 生产环境 500 响应泄露内部异常信息 — `APP_DEBUG=False` 时统一返回 `"Internal server error"`，细节只写入日志；补 2 个回归测试防止重现
 - fix: LoginRequest.username 缺 pattern 校验 — 登录接口补齐与注册相同的 `^[a-zA-Z0-9_-]+$` 约束，特殊字符返回 422；补 1 个回归测试防止重现
