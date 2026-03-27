@@ -109,6 +109,12 @@ class TestLogin:
             "Cookie must carry Secure attribute when SESSION_COOKIE_SECURE=True"
         )
 
+    def test_special_char_username_returns_422(self, auth_setup):
+        """登录用户名含特殊字符应返回 422（A 回归，与注册保持一致）"""
+        client, _, _ = auth_setup
+        resp = client.post("/api/auth/login", json={"username": "alice<script>", "password": "x"})
+        assert resp.status_code == 422
+
     def test_wrong_password_returns_401(self, auth_setup):
         client, mgr, _ = auth_setup
         mgr.register_user("alice", "secret1")
