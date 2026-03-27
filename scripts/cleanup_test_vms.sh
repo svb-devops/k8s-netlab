@@ -8,7 +8,7 @@
 # Usage:
 #   ./scripts/cleanup_test_vms.sh
 
-set -e
+set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_ROOT"

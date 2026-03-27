@@ -275,7 +275,8 @@ class ExperimentDocs {
             return;
         }
 
-        const html = marked.parse(markdown);
+        const rawHtml = marked.parse(markdown);
+        const html = window.DOMPurify ? DOMPurify.sanitize(rawHtml) : rawHtml;
         this.contentEl.innerHTML = html;
 
         // Apply syntax highlighting to all code blocks

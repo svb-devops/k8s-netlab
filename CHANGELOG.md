@@ -7,6 +7,8 @@
 ## [Unreleased]
 
 ### Fixed
+- fix: DOMPurify 加入 marked.js 渲染管道 — index.html 引入 DOMPurify@3.2.6（SRI sha384），docs.js renderMarkdown() 用 DOMPurify.sanitize() 包裹输出，防御 Markdown 注入的非脚本 payload（meta refresh 等）
+- fix: bootstrap.sh + cleanup_test_vms.sh 改用 set -euo pipefail，与其余脚本保持一致，管道失败不再静默忽略
 - fix: SSHTerminal.receive() 中 asyncio.get_event_loop() 改为 get_running_loop()（S1，第七轮漏网之鱼）；补回归测试防止重现
 - fix: wait_for_k3s 中 assert ssh_client is not None 改为显式 if guard + break，避免 -O 模式下 assert 被剥离
 - fix: _fetch_geo() 静默吞掉所有异常改为 logger.debug 记录，便于调试地理位置解析失败

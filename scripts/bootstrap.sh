@@ -1,6 +1,6 @@
 #!/bin/bash
 # K8S NetLab 快速启动脚本
-set -e
+set -euo pipefail
 
 echo "=========================================="
 echo "  K8S NetLab 快速启动"
