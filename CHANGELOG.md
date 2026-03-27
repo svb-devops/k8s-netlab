@@ -7,6 +7,11 @@
 ## [Unreleased]
 
 ### Fixed
+- fix: health 不健康时不暴露原始异常（改为通用错误字符串），同时清理 version_info 死代码
+- fix: auto_cleanup_task 中 asyncio.get_event_loop() 改为 get_running_loop()（避免 Python 3.10 废弃警告）
+- fix: GET /api/vms 和 GET /api/vms/{vm_id}/status 中阻塞 Proxmox I/O 改用 run_in_executor，防止高并发时阻塞 event loop
+- fix: GET /api 端点移除 version 字段，与 health 端点去指纹精神一致
+- refactor: list_vms() 从 SmartLogger 改为普通 logger，避免频繁轻量调用产生大量磁盘 report 文件
 - fix: config.py 启动交叉校验 — VM_TEMPLATE_ID 不得落在 VM_ID_MIN..MAX 范围内；MAX_VMS_PER_USER 不得超过 MAX_TOTAL_VMS；补 2 个回归测试防止重现
 - fix: health 端点移除指纹信息 — 不再返回 version/host/node，只返回 {status, proxmox.connected}；补 1 个回归测试防止重现
 - fix: vm_tracker._load_data 对非数字 key 用 isdigit() 过滤 — 文件损坏时不再崩溃；补 2 个回归测试防止重现

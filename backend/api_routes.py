@@ -297,8 +297,9 @@ async def api_list_vms(
     try:
         logger.info(f"API: Listing VMs for user '{current_user}'")
 
-        # List all VMs using vm_manager
-        result = list_vms()
+        # List all VMs using vm_manager (run in thread — blocks on Proxmox network call)
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, list_vms)
 
         if result['success']:
             # Filter VMs to only show user's VMs
@@ -390,12 +391,13 @@ async def api_get_vm_status(
     try:
         logger.info(f"API: Getting status for VM {vm_id}")
 
-        # Connect to Proxmox and get VM status
-        proxmox = connect_proxmox()
-        node = proxmox.nodes(config.PROXMOX_NODE)
+        # Connect to Proxmox and get VM status (run in thread — blocking network I/O)
+        def _fetch_status() -> dict:
+            px = connect_proxmox()
+            return px.nodes(config.PROXMOX_NODE).qemu(vm_id).status.current.get()
 
-        # Get VM current status
-        status_data = node.qemu(vm_id).status.current.get()
+        loop = asyncio.get_running_loop()
+        status_data = await loop.run_in_executor(None, _fetch_status)
 
         logger.info(f"API: VM {vm_id} status retrieved: {status_data.get('status')}")
 
@@ -445,10 +447,7 @@ async def api_health_check() -> Dict[str, Any]:
         dict: Health status with Proxmox connection info
     """
     try:
-        # Test Proxmox connection
-        proxmox = connect_proxmox()
-        version_info = proxmox.version.get()
-
+        connect_proxmox().version.get()  # probe; raises on failure
         return {
             "status": "healthy",
             "proxmox": {"connected": True}
@@ -457,7 +456,7 @@ async def api_health_check() -> Dict[str, Any]:
         logger.error(f"Health check failed: {e}")
         return {
             "status": "unhealthy",
-            "error": str(e)
+            "error": "Proxmox connection failed"
         }
 
 

@@ -76,7 +76,7 @@ async def auto_cleanup_task():
                             continue
 
                         logger.info(f"Auto-cleanup: Deleting expired VM {vm_id}")
-                        loop = asyncio.get_event_loop()
+                        loop = asyncio.get_running_loop()
                         result = await loop.run_in_executor(
                             None, lambda: delete_vm(vm_id=vm_id, force=True)
                         )
@@ -391,7 +391,6 @@ async def api_info() -> JSONResponse:
         dict: API version and endpoints
     """
     return JSONResponse({
-        "version": "0.1.0",
         "endpoints": {
             "vms": {
                 "list": "GET /api/vms",

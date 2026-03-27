@@ -317,21 +317,17 @@ def list_vms() -> Dict[str, Any]:
     Returns:
         dict: {'success': bool, 'data': list or None, 'error': str or None}
     """
-    slog = SmartLogger("list_vms")
-    slog.info(f"Listing VMs on node '{config.PROXMOX_NODE}'")
+    logger.debug(f"Listing VMs on node '{config.PROXMOX_NODE}'")
 
     try:
         proxmox = connect_proxmox()
         vms = proxmox.nodes(config.PROXMOX_NODE).qemu.get()
-        slog.success(f"Found {len(vms)} VMs")
-
+        logger.debug(f"Found {len(vms)} VMs")
         return {"success": True, "data": vms, "error": None}
 
     except (ConnectionError, ResourceException) as e:
-        slog.error(f"Failed to list VMs: {e}", e)
+        logger.error(f"Failed to list VMs: {e}")
         return {"success": False, "data": None, "error": str(e)}
     except Exception as e:
-        slog.error(f"Unexpected error listing VMs: {e}", e)
+        logger.error(f"Unexpected error listing VMs: {e}", exc_info=True)
         return {"success": False, "data": None, "error": str(e)}
-    finally:
-        slog.generate_report()

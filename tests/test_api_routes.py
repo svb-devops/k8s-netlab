@@ -416,6 +416,35 @@ class TestHealth:
         assert "host" not in proxmox_data
         assert "node" not in proxmox_data
 
+    def test_unhealthy_error_not_exposed(self, client):
+        """health 不健康时不得向匿名调用者暴露原始异常（O 回归）。"""
+        with patch("backend.api_routes.connect_proxmox",
+                   side_effect=Exception("Connection to 192.168.1.10:8006 refused")):
+            resp = client.get("/api/health")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "unhealthy"
+        assert "192.168.1.10" not in resp.text
+        assert resp.json()["error"] == "Proxmox connection failed"
+
+
+# ============================================================
+# GET /api (info endpoint)
+# ============================================================
+
+class TestApiInfo:
+    def test_version_not_exposed(self):
+        """GET /api 不得暴露版本号，与 health 端点去指纹精神一致（Y 回归）。"""
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from backend.main import api_info
+
+        app2 = FastAPI()
+        app2.add_api_route("/api", api_info)
+        c = TestClient(app2)
+        resp = c.get("/api")
+        assert resp.status_code == 200
+        assert "version" not in resp.json()
+
 
 # ============================================================
 # GET /api/quota
