@@ -6,7 +6,7 @@ to the Proxmox VE server using environment-based configuration.
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any
 
 from proxmoxer import ProxmoxAPI
 
@@ -77,23 +77,3 @@ def connect_proxmox() -> ProxmoxAPI:
         ) from e
 
     return proxmox
-
-
-def get_node_status() -> Dict[str, Any]:
-    """
-    Get the status of the configured Proxmox node.
-
-    Returns:
-        dict: {'success': bool, 'data': dict or None, 'error': str or None}
-    """
-    try:
-        proxmox = connect_proxmox()
-        status = proxmox.nodes(config.PROXMOX_NODE).status.get()
-        logger.info(f"Node '{config.PROXMOX_NODE}' status retrieved")
-        return {"success": True, "data": status, "error": None}
-    except ConnectionError as e:
-        logger.error(f"Connection failed: {e}")
-        return {"success": False, "data": None, "error": str(e)}
-    except Exception as e:
-        logger.critical(f"Unexpected error getting node status: {e}")
-        return {"success": False, "data": None, "error": str(e)}

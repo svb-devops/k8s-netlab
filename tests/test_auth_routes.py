@@ -336,3 +336,61 @@ class TestChangePassword:
 
         # 旧 token 应已作废
         assert mgr.verify_session(old_token) is None
+
+
+# ============================================================
+# _get_client_ip — 代理头信任逻辑（CF-Connecting-IP 回归）
+# ============================================================
+
+class TestGetClientIP:
+    """验证 _get_client_ip 仅在受信任代理（loopback）连接时才读取转发头。
+
+    部署环境：Cloudflare Tunnel（cloudflared）监听 127.0.0.1，将真实客户端 IP
+    放在 CF-Connecting-IP 头。若不读该头，所有用户 IP 均为 127.0.0.1，
+    导致速率限制所有用户共享同一个桶（B 回归）。
+    """
+
+    def _make_request(self, host: str, headers: dict):
+        """构造带指定 client.host 和 headers 的 mock Request。"""
+        req = MagicMock()
+        req.client.host = host
+        req.headers = headers
+        return req
+
+    def test_cf_connecting_ip_used_when_from_loopback(self):
+        """来自 loopback 的连接，CF-Connecting-IP 应作为真实 IP。"""
+        from backend.auth_routes import _get_client_ip
+        req = self._make_request("127.0.0.1", {"CF-Connecting-IP": "203.0.113.42"})
+        assert _get_client_ip(req) == "203.0.113.42"
+
+    def test_x_forwarded_for_used_as_fallback_from_loopback(self):
+        """无 CF-Connecting-IP 时，X-Forwarded-For 第一个 IP 作为真实 IP。"""
+        from backend.auth_routes import _get_client_ip
+        req = self._make_request("127.0.0.1", {"X-Forwarded-For": "198.51.100.1, 10.0.0.1"})
+        assert _get_client_ip(req) == "198.51.100.1"
+
+    def test_headers_ignored_when_not_from_trusted_proxy(self):
+        """非 loopback 直连时，转发头应被忽略（防止外部伪造 CF-Connecting-IP）。"""
+        from backend.auth_routes import _get_client_ip
+        req = self._make_request("10.0.0.5", {"CF-Connecting-IP": "1.2.3.4"})
+        assert _get_client_ip(req) == "10.0.0.5"
+
+    def test_ipv6_mapped_ipv4_stripped_from_cf_header(self):
+        """CF-Connecting-IP 中 ::ffff: 前缀应被剥离。"""
+        from backend.auth_routes import _get_client_ip
+        req = self._make_request("127.0.0.1", {"CF-Connecting-IP": "::ffff:203.0.113.1"})
+        assert _get_client_ip(req) == "203.0.113.1"
+
+    def test_ipv6_loopback_also_trusted(self):
+        """::1（IPv6 loopback）同样受信任。"""
+        from backend.auth_routes import _get_client_ip
+        req = self._make_request("::1", {"CF-Connecting-IP": "203.0.113.7"})
+        assert _get_client_ip(req) == "203.0.113.7"
+
+    def test_no_client_returns_unknown(self):
+        """request.client 为 None 时返回 'unknown'。"""
+        from backend.auth_routes import _get_client_ip
+        req = MagicMock()
+        req.client = None
+        req.headers = {}
+        assert _get_client_ip(req) == "unknown"

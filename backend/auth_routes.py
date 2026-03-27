@@ -57,6 +57,44 @@ def _normalize_ip(ip: str) -> str:
     return ip
 
 
+# IPs that are trusted to forward the real client IP via headers.
+# Only loopback addresses qualify — Cloudflare Tunnel connects from 127.0.0.1.
+_TRUSTED_PROXY_IPS = frozenset({"127.0.0.1", "::1"})
+
+
+def _get_client_ip(request) -> str:
+    """Extract the real client IP, respecting Cloudflare/proxy headers only from trusted proxies.
+
+    When the direct TCP connection comes from a trusted proxy (loopback), read the
+    real IP from Cloudflare or standard forwarding headers.  Otherwise the direct
+    connection IP is used as-is — accepting forwarded headers from untrusted sources
+    would allow any client to spoof their IP and bypass rate limiting.
+
+    Header priority (trusted proxy only):
+        1. CF-Connecting-IP  — set by Cloudflare Tunnel
+        2. X-Forwarded-For   — first entry in the chain
+        3. X-Real-IP         — set by some reverse proxies
+        4. request.client.host — direct connection fallback
+    """
+    if request.client is None:
+        return "unknown"
+
+    direct = request.client.host or ""
+
+    if direct in _TRUSTED_PROXY_IPS:
+        cf = request.headers.get("CF-Connecting-IP", "").strip()
+        if cf:
+            return _normalize_ip(cf)
+        xff = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        if xff:
+            return _normalize_ip(xff)
+        xri = request.headers.get("X-Real-IP", "").strip()
+        if xri:
+            return _normalize_ip(xri)
+
+    return _normalize_ip(direct) if direct else "unknown"
+
+
 # ============================================================
 # Auth Routes
 # ============================================================
@@ -81,7 +119,7 @@ async def register(http_request: Request, request: RegisterRequest) -> AuthRespo
     try:
         # Rate limit: 3 registration attempts per IP per 60 seconds.
         # bcrypt cost (~250ms/hash) makes this endpoint a CPU-exhaustion target without limiting.
-        client_ip = _normalize_ip(http_request.client.host if http_request.client else "unknown")
+        client_ip = _get_client_ip(http_request)
         rl_key = f"register:{client_ip}"
         if rate_limiter.is_over_limit(rl_key, max_requests=3, window_seconds=60):
             wait = rate_limiter.retry_after(rl_key, window_seconds=60)
@@ -140,7 +178,7 @@ async def login(credentials: LoginRequest, response: Response, request: Request)
     try:
         # Rate limit: 5 failed login attempts per IP per 60 seconds.
         # Only failed attempts count — successful logins do not exhaust the quota.
-        client_ip = _normalize_ip(request.client.host if request.client else "unknown")
+        client_ip = _get_client_ip(request)
         rl_key = f"login:{client_ip}"
         if rate_limiter.is_over_limit(rl_key, max_requests=5, window_seconds=60):
             wait = rate_limiter.retry_after(rl_key, window_seconds=60)

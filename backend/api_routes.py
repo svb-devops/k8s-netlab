@@ -463,7 +463,7 @@ async def api_health_check() -> Dict[str, Any]:
     """
     try:
         loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, lambda: connect_proxmox().version.get())
+        await loop.run_in_executor(None, connect_proxmox)
         return {
             "status": "healthy",
             "proxmox": {"connected": True}

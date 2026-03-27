@@ -7,6 +7,12 @@
 ## [Unreleased]
 
 ### Fixed
+- fix: 登录/注册 IP 提取忽略 Cloudflare Tunnel 转发头 — _get_client_ip() 在受信任代理（loopback）连接时优先读 CF-Connecting-IP/X-Forwarded-For，防止速率限制所有用户共享同一个 IP 桶；补 6 条回归测试防止重现
+- refactor: api_health_check() 去掉重复 Proxmox version.get() 调用（connect_proxmox 内部已验证，改为直接调 connect_proxmox）
+- refactor: 删除 get_node_status() 死代码及其 3 个测试（proxmox_api.py，无 API endpoint 无调用者）
+- feat: SecurityHeadersMiddleware 新增 Permissions-Policy: geolocation=(), camera=(), microphone=() 头，限制浏览器敏感 API 访问
+
+### Fixed
 - fix: change_password/reset_password 后未作废现有 session — 密码变更后立即清除该用户所有 session，防止泄露的 cookie 在 24h 内继续有效；补回归测试防止重现
 - refactor: 删除 start_vm() 死代码 — 无 API endpoint 无调用点，vm_manager.py 覆盖率从 72% 升至 90%
 - refactor: _find_available_vm_id() 和 api_health_check() 改走 run_in_executor，避免同步 Proxmox HTTP 请求阻塞 asyncio 事件循环
