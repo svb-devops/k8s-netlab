@@ -440,14 +440,29 @@ class TestConcurrentQuota:
         mock_tracker.get_user_vms.side_effect = [[], [], [500], [500]]
         mock_tracker.get_all_tracked_vms.return_value = []
 
-        # list_vms: 第一次请求时 Proxmox 无 VM；第二次 VM 500 已存在（对账保留它）
-        list_vms_results = iter([
+        # list_vms 调用顺序：
+        #   1. 请求1-对账 (reconcile)：无 VM
+        #   2. 请求1-_find_available_vm_id：VM 500 已存在 → 返回 501
+        #   3. 请求2-对账 (reconcile)：VM 500 已存在 → tracker 条目 500 不是孤儿，保留
+        #
+        # 注意：不能用 iter([...])，因为耗尽时抛 StopIteration。
+        # Python 3.7+ 不允许将 StopIteration 设置到 asyncio.Future 中，
+        # 会导致 run_in_executor 的 await 永远不返回（测试死锁）。
+        # 改用函数作为 side_effect，确保不会抛 StopIteration。
+        _lv_responses = [
             {"success": True, "data": []},
             {"success": True, "data": [{"vmid": 500, "status": "running"}]},
-        ])
+            {"success": True, "data": [{"vmid": 500, "status": "running"}]},
+        ]
+        _lv_call = [0]
+
+        def list_vms_fn():
+            idx = min(_lv_call[0], len(_lv_responses) - 1)
+            _lv_call[0] += 1
+            return _lv_responses[idx]
 
         with patch("backend.api_routes.vm_tracker", mock_tracker), \
-             patch("backend.api_routes.list_vms", side_effect=list_vms_results), \
+             patch("backend.api_routes.list_vms", side_effect=list_vms_fn), \
              patch("backend.api_routes.create_vm", side_effect=mock_create), \
              patch("backend.api_routes.rate_limiter") as mock_rl, \
              patch("backend.config.MAX_VMS_PER_USER", 1):

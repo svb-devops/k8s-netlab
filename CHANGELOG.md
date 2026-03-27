@@ -7,6 +7,8 @@
 ## [Unreleased]
 
 ### Fixed
+- fix: test_serial_second_creation_blocked_by_quota 死锁 — iter([...]) side_effect 耗尽抛 StopIteration，Python 3.7+ 禁止将 StopIteration 设入 asyncio.Future，导致 run_in_executor await 永不返回；改为 side_effect 函数避免抛 StopIteration；同时补充第 3 次 list_vms 调用（req1-_find_available_vm_id 遗漏）
+- feat: 引入 safety-reviewer subagent — 9 项检查清单 + A/B/C 分级触发 + 硬/软失败策略 + 外部升级条件
 - fix: create_vm 配额检查前对账 tracker 与 Proxmox，自动清除孤儿条目，彻底杜绝假性 429 配额超限（孤儿 VM 回归，出现两次）；补回归测试防止重现
 - fix: 点击"终端"按钮无反应 — terminal.js 在 terminal-section 仍为 display:none 时调用 xterm.js open()/fitAddon.fit()，导致终端无法初始化；改为先 remove('hidden') 再 open/fit；无后端回归测试（纯前端 bug）
 - fix: CSP style-src 缺 'unsafe-inline' 导致 Tailwind Play CDN 样式注入被拦截 — 页面所有布局/颜色/尺寸完全失效，SVG 图标全宽渲染；script-src 保持严格；补回归测试防止重现
