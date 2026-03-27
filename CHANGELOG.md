@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- fix: vm_tracker 旧格式迁移 bug — `track_vm()` 对已有条目覆盖 `created_at` 为 `now()`，改为保留原始时间戳；补 3 个回归测试防止重现
+
 ### Security
 - fix: GET /api/vms/{vm_id}/status 无认证 — 加 `get_current_user` 依赖 + 归属校验，未登录返回 401，非归属用户返回 403；补 2 个回归测试防止重现
 - fix: 孤儿 VM 自动认领不检查配额 — 认领前验证 `len(user_vm_ids) < MAX_VMS_PER_USER`，配额满时记录 warning 并跳过；补 1 个回归测试防止重现

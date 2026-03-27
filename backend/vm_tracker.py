@@ -48,13 +48,14 @@ class VMTracker:
             created_at = datetime.now().isoformat()
 
         def _track(data: Dict) -> Dict:
-            # Migrate old format (plain string) to new format (dict)
-            if isinstance(data.get(str(vm_id)), str):
-                data[str(vm_id)] = {
-                    "created_at": data[str(vm_id)],
-                    "owner": "unknown",
-                }
-            data[str(vm_id)] = {"created_at": created_at, "owner": owner}
+            existing = data.get(str(vm_id))
+            if isinstance(existing, str):
+                # Migrate old format (plain string timestamp) — preserve original created_at
+                data[str(vm_id)] = {"created_at": existing, "owner": owner}
+            else:
+                # New entry or update owner of existing dict entry
+                preserved_at = existing["created_at"] if isinstance(existing, dict) else created_at
+                data[str(vm_id)] = {"created_at": preserved_at, "owner": owner}
             return data
 
         safe_update_json(self.data_file, _track)

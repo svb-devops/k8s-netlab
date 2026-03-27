@@ -84,3 +84,39 @@ class TestTemplateSafety:
         from backend import config
         # Template VM is never tracked in normal operations
         assert tracker.get_vm_owner(config.VM_TEMPLATE_ID) is None
+
+
+class TestOldFormatMigration:
+    def test_track_vm_preserves_old_created_at(self, tracker):
+        """旧格式（纯字符串）迁移时 created_at 不得丢失（B 回归）"""
+        old_time = "2026-01-15T10:00:00"
+        # 手动写入旧格式数据
+        import json
+        tracker.data_file.write_text(json.dumps({"500": old_time}))
+
+        # 调用 track_vm 触发迁移（同一 VM，新的 owner）
+        tracker.track_vm(500, owner="alice")
+
+        # 迁移后 created_at 必须保留旧时间，不能被 now() 覆盖
+        all_vms = tracker.get_all_tracked_vms()
+        assert 500 in all_vms
+        assert all_vms[500] == datetime.fromisoformat(old_time), (
+            "track_vm() must preserve original created_at when migrating old-format entries"
+        )
+
+    def test_track_vm_old_format_owner_updated(self, tracker):
+        """旧格式迁移后 owner 正确设置"""
+        import json
+        old_time = "2026-01-15T10:00:00"
+        tracker.data_file.write_text(json.dumps({"500": old_time}))
+
+        tracker.track_vm(500, owner="alice")
+
+        assert tracker.get_vm_owner(500) == "alice"
+
+    def test_track_new_vm_uses_provided_created_at(self, tracker):
+        """全新 VM 使用调用方传入的 created_at"""
+        t = "2026-02-01T08:00:00"
+        tracker.track_vm(501, owner="bob", created_at=t)
+        all_vms = tracker.get_all_tracked_vms()
+        assert all_vms[501] == datetime.fromisoformat(t)
