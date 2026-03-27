@@ -80,7 +80,8 @@ class SSHTerminal:
         """Receive data from SSH channel."""
         if self.channel and self.channel.recv_ready():
             # Receive up to 8192 bytes at a time for better performance
-            data = await asyncio.get_event_loop().run_in_executor(
+            loop = asyncio.get_running_loop()
+            data = await loop.run_in_executor(
                 None, self.channel.recv, 8192
             )
             return data.decode("utf-8", errors="replace")
@@ -297,7 +298,8 @@ async def wait_for_k3s(terminal: SSHTerminal, websocket: WebSocket, max_wait: in
     consecutive_ok = 0
     for elapsed in range(0, max_wait, 5):
         try:
-            assert terminal.ssh_client is not None
+            if terminal.ssh_client is None:
+                break
             ssh = terminal.ssh_client
             _, stdout, _ = await loop.run_in_executor(
                 None,

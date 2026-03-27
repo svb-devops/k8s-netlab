@@ -7,6 +7,9 @@
 ## [Unreleased]
 
 ### Fixed
+- fix: SSHTerminal.receive() 中 asyncio.get_event_loop() 改为 get_running_loop()（S1，第七轮漏网之鱼）；补回归测试防止重现
+- fix: wait_for_k3s 中 assert ssh_client is not None 改为显式 if guard + break，避免 -O 模式下 assert 被剥离
+- fix: _fetch_geo() 静默吞掉所有异常改为 logger.debug 记录，便于调试地理位置解析失败
 - fix: create_vm/delete_vm run_in_executor 加 asyncio.wait_for 超时（360s/120s），Proxmox 挂起时返回 504 而非永久阻塞线程池（B2）；补回归测试防止重现
 - fix: websocket.py 静默异常（except Exception: pass）改为记录 warning（C1）；get_event_loop() 改为 get_running_loop()（S）；补回归测试防止重现
 - fix: ADMIN_TOKEN 长度不足 32 字符时启动抛 RuntimeError，防止弱 token 被暴力破解（H3）；补回归测试防止重现

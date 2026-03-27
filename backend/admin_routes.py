@@ -35,8 +35,8 @@ async def _fetch_geo(ip: str) -> str:
             if d.get("success"):
                 parts = [p for p in [d.get("city"), d.get("country")] if p]
                 return ", ".join(parts)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"IP geo lookup failed for {ip}: {e}")
     return ""
 
 
