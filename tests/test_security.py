@@ -435,13 +435,19 @@ class TestConcurrentQuota:
             return {"success": True, "data": {"vm_id": 500 + creation_count[0]}}
 
         mock_tracker = MagicMock()
-        # 第一次调用：用户没有 VM；第二次：已有 1 个 VM
-        mock_tracker.get_user_vms.side_effect = [[], [500]]
+        # get_user_vms 被调用 2 次/请求（对账 + 配额检查），共 4 次：
+        #   请求1-对账: [] → 请求1-配额: [] → 请求2-对账: [500] → 请求2-配额: [500]
+        mock_tracker.get_user_vms.side_effect = [[], [], [500], [500]]
         mock_tracker.get_all_tracked_vms.return_value = []
 
+        # list_vms: 第一次请求时 Proxmox 无 VM；第二次 VM 500 已存在（对账保留它）
+        list_vms_results = iter([
+            {"success": True, "data": []},
+            {"success": True, "data": [{"vmid": 500, "status": "running"}]},
+        ])
+
         with patch("backend.api_routes.vm_tracker", mock_tracker), \
-             patch("backend.api_routes.list_vms",
-                   return_value={"success": True, "data": []}), \
+             patch("backend.api_routes.list_vms", side_effect=list_vms_results), \
              patch("backend.api_routes.create_vm", side_effect=mock_create), \
              patch("backend.api_routes.rate_limiter") as mock_rl, \
              patch("backend.config.MAX_VMS_PER_USER", 1):

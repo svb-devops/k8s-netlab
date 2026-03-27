@@ -109,11 +109,35 @@ class TestCreateVM:
         mock_tracker = MagicMock()
         mock_tracker.get_user_vms.return_value = [500]  # already at limit
 
+        # list_vms must confirm VM 500 exists in Proxmox so reconcile keeps it
         with patch("backend.api_routes.vm_tracker", mock_tracker), \
+             patch("backend.api_routes.list_vms", return_value={"success": True, "data": [{"vmid": 500, "status": "running"}]}), \
              patch("backend.config.MAX_VMS_PER_USER", 1):
             resp = client.post("/api/vms/create", json={})
 
         assert resp.status_code == 429
+
+    def test_stale_tracker_entry_cleared_before_quota_check(self, client_with_rl):
+        """孤儿 VM 回归：tracker 中有 VM 500 但 Proxmox 中不存在时，
+        配额检查前应自动清除该条目，创建应成功而非返回 429（回归）。"""
+        client, _ = client_with_rl
+        mock_tracker = MagicMock()
+        # Simulate dynamic tracker: untrack_vm actually removes from tracked set
+        tracked = [500]
+        mock_tracker.get_user_vms.side_effect = lambda _user: list(tracked)
+        mock_tracker.untrack_vm.side_effect = lambda vm_id: tracked.remove(vm_id) if vm_id in tracked else None
+        mock_tracker.get_all_tracked_vms.return_value = []
+
+        with patch("backend.api_routes.vm_tracker", mock_tracker), \
+             patch("backend.api_routes.list_vms", return_value={"success": True, "data": []}), \
+             patch("backend.api_routes.create_vm", return_value={"success": True, "data": {"vm_id": 501}}), \
+             patch("backend.config.MAX_VMS_PER_USER", 1):
+            resp = client.post("/api/vms/create", json={})
+
+        assert resp.status_code == 201, (
+            f"Expected 201 but got {resp.status_code}: stale tracker entry not reconciled before quota check"
+        )
+        mock_tracker.untrack_vm.assert_called_with(500)
 
     def test_system_quota_exceeded_returns_503(self, client_with_rl):
         client, _ = client_with_rl
@@ -122,6 +146,7 @@ class TestCreateVM:
         mock_tracker.get_all_tracked_vms.return_value = list(range(12))  # at system limit
 
         with patch("backend.api_routes.vm_tracker", mock_tracker), \
+             patch("backend.api_routes.list_vms", return_value={"success": True, "data": []}), \
              patch("backend.config.MAX_VMS_PER_USER", 5), \
              patch("backend.config.MAX_TOTAL_VMS", 12):
             resp = client.post("/api/vms/create", json={})
@@ -136,7 +161,8 @@ class TestCreateVM:
         mock_rl.is_allowed.return_value = False
         mock_rl.retry_after.return_value = 1800
 
-        with patch("backend.api_routes.vm_tracker", mock_tracker):
+        with patch("backend.api_routes.vm_tracker", mock_tracker), \
+             patch("backend.api_routes.list_vms", return_value={"success": True, "data": []}):
             resp = client.post("/api/vms/create", json={})
 
         assert resp.status_code == 429

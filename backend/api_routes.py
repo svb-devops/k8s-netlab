@@ -129,6 +129,24 @@ async def api_create_vm(
         HTTPException: If creation fails or not authenticated
     """
     try:
+        # Reconcile tracker with Proxmox before quota check.
+        # Remove stale tracker entries for VMs that no longer exist in Proxmox,
+        # preventing false "quota exceeded" errors from orphaned entries.
+        loop_reconcile = asyncio.get_running_loop()
+        try:
+            proxmox_check = await loop_reconcile.run_in_executor(None, list_vms)
+            if proxmox_check.get("success"):
+                existing_ids = {vm["vmid"] for vm in proxmox_check["data"]}
+                for stale_id in list(vm_tracker.get_user_vms(current_user)):
+                    if stale_id not in existing_ids:
+                        logger.warning(
+                            f"Quota reconcile: VM {stale_id} in tracker but not in Proxmox "
+                            f"(user='{current_user}'), removing stale entry"
+                        )
+                        vm_tracker.untrack_vm(stale_id)
+        except Exception as reconcile_err:
+            logger.warning(f"Quota reconcile failed, using tracker as-is: {reconcile_err}")
+
         # Quota check: per-user and system-wide limits
         user_vm_count = len(vm_tracker.get_user_vms(current_user))
         if user_vm_count >= config.MAX_VMS_PER_USER:
