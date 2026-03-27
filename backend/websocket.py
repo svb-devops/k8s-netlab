@@ -35,7 +35,7 @@ class SSHTerminal:
         password = password or config.VM_SSH_PASSWORD
         try:
             self.ssh_client = paramiko.SSHClient()
-            self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507 — internal lab VMs only
 
             # Connect to VM
             client = self.ssh_client  # local ref so mypy knows it's non-None in lambda
@@ -301,7 +301,7 @@ async def wait_for_k3s(terminal: SSHTerminal, websocket: WebSocket, max_wait: in
             ssh = terminal.ssh_client
             _, stdout, _ = await loop.run_in_executor(
                 None,
-                lambda: ssh.exec_command(
+                lambda: ssh.exec_command(  # nosec B601 — hardcoded command, no user input
                     "kubectl get pods -n kube-system --no-headers 2>/dev/null"
                     " | grep -cE '(Running|Completed)'",
                     timeout=5,
