@@ -175,17 +175,25 @@ class K8SNetLabApp {
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
                 ${vm.status === 'running' ? `
-                <button onclick="app.handleConnectTerminal(${vm.vmid})"
+                <button data-action="terminal" data-vmid="${vm.vmid}"
                         class="text-blue-600 hover:text-blue-900 transition duration-150">
                     终端
                 </button>
                 ` : ''}
-                <button onclick="app.handleDeleteVM(${vm.vmid})"
+                <button data-action="delete" data-vmid="${vm.vmid}"
                         class="text-red-600 hover:text-red-900 transition duration-150">
                     删除
                 </button>
             </td>
         `;
+
+        // Attach event listeners via addEventListener to comply with CSP (no inline handlers)
+        const termBtn = row.querySelector('[data-action="terminal"]');
+        if (termBtn) {
+            termBtn.addEventListener('click', () => this.handleConnectTerminal(vm.vmid));
+        }
+        row.querySelector('[data-action="delete"]')
+            .addEventListener('click', () => this.handleDeleteVM(vm.vmid));
 
         return row;
     }
