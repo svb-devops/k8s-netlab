@@ -231,7 +231,9 @@ class TestVMContract:
 
     def test_vm_status_response_schema(self):
         client = _api_client()
-        with patch("backend.api_routes.connect_proxmox") as mock_pve:
+        with patch("backend.api_routes.connect_proxmox") as mock_pve, \
+             patch("backend.api_routes.vm_tracker") as mock_tracker:
+            mock_tracker.get_vm_owner.return_value = "testuser"
             mock_pve.return_value.nodes.return_value.__getitem__ \
                 .return_value.qemu.return_value.__getitem__ \
                 .return_value.status.current.get.return_value = {

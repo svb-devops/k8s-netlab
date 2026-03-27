@@ -200,8 +200,10 @@ class TestServiceDegradation:
 
     def test_vm_status_proxmox_error_returns_500(self):
         client = _api_client()
-        with patch("backend.api_routes.connect_proxmox",
+        with patch("backend.api_routes.vm_tracker") as mock_tracker, \
+             patch("backend.api_routes.connect_proxmox",
                    side_effect=Exception("internal server error")):
+            mock_tracker.get_vm_owner.return_value = "testuser"
             resp = client.get("/api/vms/500/status")
         assert resp.status_code == 500
 

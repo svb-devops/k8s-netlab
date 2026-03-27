@@ -346,20 +346,30 @@ async def api_list_vms(
     description="Get the current status of a specific VM"
 )
 async def api_get_vm_status(
-    vm_id: int = Path(..., ge=100, le=999999, description="VM ID")
+    vm_id: int = Path(..., ge=100, le=999999, description="VM ID"),
+    current_user: str = Depends(get_current_user),
 ) -> VMResponse:
     """
     Get VM status.
 
     Args:
         vm_id: ID of the VM
+        current_user: Authenticated user (injected by dependency)
 
     Returns:
         VMResponse with VM status details
 
     Raises:
-        HTTPException: If VM not found or status retrieval fails
+        HTTPException: If VM not found, not owned by user, or status retrieval fails
     """
+    # Ownership check — only VM owner may query status
+    owner = vm_tracker.get_vm_owner(vm_id)
+    if owner != current_user:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not own this VM"
+        )
+
     try:
         logger.info(f"API: Getting status for VM {vm_id}")
 

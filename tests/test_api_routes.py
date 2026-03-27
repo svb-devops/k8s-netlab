@@ -317,7 +317,9 @@ class TestVMStatus:
             "maxmem": 8192, "cpus": 4, "name": "k8s-lab-500",
         }
 
-        with patch("backend.api_routes.connect_proxmox", return_value=mock_proxmox):
+        with patch("backend.api_routes.connect_proxmox", return_value=mock_proxmox), \
+             patch("backend.api_routes.vm_tracker") as mock_tracker:
+            mock_tracker.get_vm_owner.return_value = "testuser"  # client fixture uses testuser
             resp = client.get("/api/vms/500/status")
 
         assert resp.status_code == 200
@@ -325,9 +327,23 @@ class TestVMStatus:
         assert resp.json()["data"]["vm_id"] == 500
 
     def test_vm_not_found_returns_404(self, client):
-        with patch("backend.api_routes.connect_proxmox", side_effect=Exception("does not exist")):
+        with patch("backend.api_routes.vm_tracker") as mock_tracker, \
+             patch("backend.api_routes.connect_proxmox", side_effect=Exception("does not exist")):
+            mock_tracker.get_vm_owner.return_value = "testuser"
             resp = client.get("/api/vms/500/status")
         assert resp.status_code == 404
+
+    def test_unauthenticated_returns_401(self, unauthed_client):
+        """未登录用户不得查询任意 VM 状态（P0 安全回归）"""
+        resp = unauthed_client.get("/api/vms/500/status")
+        assert resp.status_code == 401
+
+    def test_non_owner_returns_403(self, client):
+        """已登录但非 VM 归属用户不得查询状态（P0 归属校验回归）"""
+        with patch("backend.api_routes.vm_tracker") as mock_tracker:
+            mock_tracker.get_vm_owner.return_value = "other_user"  # VM 属于其他人
+            resp = client.get("/api/vms/500/status")
+        assert resp.status_code == 403
 
 
 # ============================================================

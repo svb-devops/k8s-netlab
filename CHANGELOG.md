@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Security
+- fix: GET /api/vms/{vm_id}/status 无认证 — 加 `get_current_user` 依赖 + 归属校验，未登录返回 401，非归属用户返回 403；补 2 个回归测试防止重现
 - feat: HTTP 安全响应头 — `SecurityHeadersMiddleware` 全局注入 X-Content-Type-Options/X-Frame-Options/Referrer-Policy/CSP；5 个测试覆盖
 - fix: 升级 CVE 依赖 — fastapi 0.104.1→0.135.2, starlette 0.27→0.52.1, python-multipart 0.0.6→0.0.22, requests 2.31→2.33.0, pydantic 2.5→2.12.5；清除 9 个 CVE（pygments CVE-2026-4539 暂无修复版本）
 - fix: 重新生成 requirements.lock 锁定所有传递依赖版本
