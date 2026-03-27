@@ -39,7 +39,8 @@ class SSHTerminal:
 
             # Connect to VM
             client = self.ssh_client  # local ref so mypy knows it's non-None in lambda
-            await asyncio.get_event_loop().run_in_executor(
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
                 None,
                 lambda: client.connect(
                     self.vm_ip,
@@ -72,9 +73,8 @@ class SSHTerminal:
         if self.channel:
             # Paramiko channel.send() requires bytes, not string
             data_bytes = data.encode('utf-8') if isinstance(data, str) else data
-            await asyncio.get_event_loop().run_in_executor(
-                None, self.channel.send, data_bytes
-            )
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, self.channel.send, data_bytes)
 
     async def receive(self) -> Optional[str]:
         """Receive data from SSH channel."""
@@ -204,7 +204,7 @@ async def reset_k3s_via_agent(vm_id: int, websocket: WebSocket) -> None:
     """
     import time as _time
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     def _check_and_reset() -> str:
         proxmox = connect_proxmox()
@@ -222,8 +222,8 @@ async def reset_k3s_via_agent(vm_id: int, websocket: WebSocket) -> None:
                 s = agent.get("exec-status", pid=pid)
                 if s.get("exited"):
                     break
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"VM {vm_id}: hostname setup failed (non-fatal): {e}")
 
         # Step 2: Configure registry mirror so K3s pulls via local cache, not directly from internet
         mirror_url = config.VM_REGISTRY_MIRROR or f"http://{config.VM_GATEWAY}:5000"
@@ -245,8 +245,8 @@ async def reset_k3s_via_agent(vm_id: int, websocket: WebSocket) -> None:
                 s = agent.get("exec-status", pid=pid)
                 if s.get("exited"):
                     break
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"VM {vm_id}: registry mirror setup failed (non-fatal): {e}")
 
         # Check K3s health via agent exec
         try:
@@ -260,8 +260,8 @@ async def reset_k3s_via_agent(vm_id: int, websocket: WebSocket) -> None:
                     if s.get("out-data", "").strip() == "ok":
                         return "healthy"
                     break
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"VM {vm_id}: K3s health check via agent failed (will proceed to reset): {e}")
 
         # K3s unhealthy — wipe etcd and restart via agent
         r = agent.post("exec", command=["bash", "-c",
@@ -293,7 +293,7 @@ async def reset_k3s_via_agent(vm_id: int, websocket: WebSocket) -> None:
 
 async def wait_for_k3s(terminal: SSHTerminal, websocket: WebSocket, max_wait: int = 150) -> bool:
     """Wait until K3s API is stable: core pods Running/Completed, confirmed twice."""
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     consecutive_ok = 0
     for elapsed in range(0, max_wait, 5):
         try:

@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Fixed
+- fix: websocket.py 静默异常（except Exception: pass）改为记录 warning（C1）；get_event_loop() 改为 get_running_loop()（S）；补回归测试防止重现
 - fix: ADMIN_TOKEN 长度不足 32 字符时启动抛 RuntimeError，防止弱 token 被暴力破解（H3）；补回归测试防止重现
 - fix: Cookie SameSite 从 lax 改为 strict，消除 CSRF 攻击面（I2）；补回归测试防止重现
 - fix: proxmox_api INFO 日志移除 token_user/token_name，防止凭据泄漏到日志系统（A1）；补回归测试防止重现
