@@ -40,10 +40,7 @@ def connect_proxmox() -> ProxmoxAPI:
                     f"got: {config.PROXMOX_TOKEN_ID}"
                 )
             token_user, token_name = parts
-            logger.info(
-                f"Connecting to Proxmox at {host} "
-                f"(token: {token_user}!{token_name})"
-            )
+            logger.info(f"Connecting to Proxmox at {host} (token auth)")
             proxmox = ProxmoxAPI(
                 config.PROXMOX_HOST,
                 port=config.PROXMOX_PORT,
@@ -55,10 +52,7 @@ def connect_proxmox() -> ProxmoxAPI:
             )
         else:
             # Password auth (legacy fallback)
-            logger.info(
-                f"Connecting to Proxmox at {host} "
-                f"(password auth: {config.PROXMOX_USER})"
-            )
+            logger.info(f"Connecting to Proxmox at {host} (password auth)")
             proxmox = ProxmoxAPI(
                 config.PROXMOX_HOST,
                 port=config.PROXMOX_PORT,

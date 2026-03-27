@@ -136,6 +136,17 @@ class TestLogin:
         assert resp.status_code == 429
         assert resp.headers.get("retry-after") == "42"
 
+    def test_login_cookie_samesite_strict(self, auth_setup):
+        """Login cookie 必须使用 SameSite=strict 以防 CSRF（I2 回归）。"""
+        client, mgr, _ = auth_setup
+        mgr.register_user("alice", "secret1")
+        resp = client.post("/api/auth/login", json={"username": "alice", "password": "secret1"})
+        assert resp.status_code == 200
+        set_cookie = resp.headers.get("set-cookie", "")
+        assert "samesite=strict" in set_cookie.lower(), (
+            f"Expected SameSite=strict in cookie, got: {set_cookie}"
+        )
+
     def test_ipv6_mapped_ipv4_normalized(self, auth_setup):
         """::ffff:1.2.3.4 must be stripped to 1.2.3.4 for rate limiting key."""
         client, mgr, mock_rl = auth_setup

@@ -7,6 +7,11 @@
 ## [Unreleased]
 
 ### Fixed
+- fix: ADMIN_TOKEN 长度不足 32 字符时启动抛 RuntimeError，防止弱 token 被暴力破解（H3）；补回归测试防止重现
+- fix: Cookie SameSite 从 lax 改为 strict，消除 CSRF 攻击面（I2）；补回归测试防止重现
+- fix: proxmox_api INFO 日志移除 token_user/token_name，防止凭据泄漏到日志系统（A1）；补回归测试防止重现
+- fix: GET /api/vms/{vm_id}/status 非归属用户返回 Forbidden 而非 "You do not own this VM"，防止 VM ID 枚举（A2）；补回归测试防止重现
+- fix: VM_REGISTRY_MIRROR 未配置时记录 WARNING，提示 HTTP fallback 不安全（H1）；补回归测试防止重现
 - fix: CSP 移除 'unsafe-inline' — 将三个 HTML 页面内联脚本/样式提取到外部文件（tailwind-config.js、app.css、ui-init.js、admin.js），SecurityHeadersMiddleware CSP 不再含 script-src/style-src unsafe-inline；补回归测试防止重现
 - fix: health 不健康时不暴露原始异常（改为通用错误字符串），同时清理 version_info 死代码
 - fix: auto_cleanup_task 中 asyncio.get_event_loop() 改为 get_running_loop()（避免 Python 3.10 废弃警告）

@@ -140,6 +140,11 @@ VM_REGISTRY_MIRROR: str = os.getenv("VM_REGISTRY_MIRROR", "")
 ADMIN_TOKEN: str = os.getenv("ADMIN_TOKEN", "")
 if not ADMIN_TOKEN:
     logger.warning("ADMIN_TOKEN not set — admin API (/api/admin/status) will be disabled")
+elif len(ADMIN_TOKEN) < 32:
+    raise RuntimeError(
+        f"ADMIN_TOKEN must be at least 32 characters for brute-force resistance "
+        f"(current length: {len(ADMIN_TOKEN)})."
+    )
 
 # Comma-separated list of usernames that have admin privileges.
 # Admins are shown an admin badge in the UI.
@@ -186,4 +191,14 @@ if MAX_VMS_PER_USER > MAX_TOTAL_VMS:
         f"MAX_VMS_PER_USER ({MAX_VMS_PER_USER}) cannot exceed MAX_TOTAL_VMS ({MAX_TOTAL_VMS})."
     )
 
+def _warn_insecure_defaults() -> None:
+    """Log warnings for insecure default configuration values."""
+    if not VM_REGISTRY_MIRROR:
+        logger.warning(
+            "VM_REGISTRY_MIRROR not set — VM setup will use insecure HTTP fallback "
+            f"http://{VM_GATEWAY}:5000. Set VM_REGISTRY_MIRROR to an HTTPS endpoint in production."
+        )
+
+
+_warn_insecure_defaults()
 logger.info("Configuration loaded successfully")

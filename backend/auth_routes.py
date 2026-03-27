@@ -154,7 +154,7 @@ async def login(credentials: LoginRequest, response: Response, request: Request)
             httponly=True,
             secure=SESSION_COOKIE_SECURE,
             max_age=86400,  # 24 hours
-            samesite="lax"
+            samesite="strict"
         )
 
         return AuthResponse(
@@ -202,7 +202,7 @@ async def logout(
             key="session_token",
             httponly=True,
             secure=SESSION_COOKIE_SECURE,
-            samesite="lax",
+            samesite="strict",
         )
 
         return AuthResponse(

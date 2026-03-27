@@ -106,6 +106,35 @@ class TestConfigCrossValidation:
         with pytest.raises(RuntimeError, match="MAX_VMS_PER_USER"):
             import backend.config  # noqa: F401
 
+    def test_short_admin_token_raises(self, monkeypatch):
+        """ADMIN_TOKEN 短于 32 字符时应在启动时抛 RuntimeError（H3 回归）。"""
+        self._pop_config(monkeypatch)
+        monkeypatch.setenv("ADMIN_TOKEN", "tooshort")  # < 32 chars
+        with pytest.raises(RuntimeError, match="ADMIN_TOKEN"):
+            import backend.config  # noqa: F401
+
+
+def test_http_registry_mirror_logs_warning(monkeypatch, caplog):
+    """VM_REGISTRY_MIRROR 未设置时应记录不安全 HTTP fallback 警告（H1 回归）。"""
+    import logging
+    from backend import config
+    monkeypatch.setattr(config, "VM_REGISTRY_MIRROR", "")
+    with caplog.at_level(logging.WARNING, logger="backend.config"):
+        config._warn_insecure_defaults()
+    assert "VM_REGISTRY_MIRROR" in caplog.text
+    assert "insecure" in caplog.text.lower()
+
+
+def test_https_registry_mirror_no_warning(monkeypatch, caplog):
+    """VM_REGISTRY_MIRROR 已设置时不应产生不安全警告（H1 回归）。"""
+    import logging
+    from backend import config
+    monkeypatch.setattr(config, "VM_REGISTRY_MIRROR", "https://registry.example.com")
+    with caplog.at_level(logging.WARNING, logger="backend.config"):
+        config._warn_insecure_defaults()
+    assert "insecure" not in caplog.text.lower()
+
+
 class TestModuleLoadFailsFast:
     """Test that importing config module fails without required env vars."""
 

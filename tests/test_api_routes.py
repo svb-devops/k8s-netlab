@@ -380,6 +380,17 @@ class TestVMStatus:
             resp = client.get("/api/vms/500/status")
         assert resp.status_code == 403
 
+    def test_non_owner_status_does_not_disclose_vm_existence(self, client):
+        """非 VM 持有者查询状态时，响应不得泄露 VM 归属（A2 回归，防 VM ID 枚举）。"""
+        with patch("backend.api_routes.vm_tracker") as mock_tracker:
+            mock_tracker.get_vm_owner.return_value = "other_user"
+            resp = client.get("/api/vms/500/status")
+        assert resp.status_code == 403
+        detail = resp.json().get("detail", "")
+        assert "own" not in detail.lower(), (
+            f"Error detail must not reveal VM ownership, got: {detail!r}"
+        )
+
 
 # ============================================================
 # GET /api/health

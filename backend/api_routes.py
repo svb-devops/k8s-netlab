@@ -385,7 +385,7 @@ async def api_get_vm_status(
     if owner != current_user:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You do not own this VM"
+            detail="Forbidden"
         )
 
     try:

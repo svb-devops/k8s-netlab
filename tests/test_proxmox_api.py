@@ -56,6 +56,21 @@ class TestConnectProxmox:
             connect_proxmox()
 
     @patch("backend.proxmox_api.ProxmoxAPI")
+    def test_connect_log_does_not_leak_token_id(self, mock_pve_cls, caplog):
+        """connect_proxmox INFO 日志不得暴露 token_user 或 token_name（A1 回归）。"""
+        import logging
+        mock_instance = MagicMock()
+        mock_instance.version.get.return_value = {"version": "8.1.3"}
+        mock_pve_cls.return_value = mock_instance
+
+        from backend.proxmox_api import connect_proxmox
+        with caplog.at_level(logging.INFO, logger="backend.proxmox_api"):
+            connect_proxmox()
+
+        assert "testuser@pve" not in caplog.text, "Token user must not appear in logs"
+        assert "mytoken" not in caplog.text, "Token name must not appear in logs"
+
+    @patch("backend.proxmox_api.ProxmoxAPI")
     def test_validation_failure_raises(self, mock_pve_cls):
         """Raises ConnectionError when API validation fails."""
         mock_instance = MagicMock()
