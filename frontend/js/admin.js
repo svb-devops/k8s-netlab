@@ -1,3 +1,16 @@
+/**
+ * Escape HTML special characters to prevent XSS in innerHTML contexts.
+ * @param {string|number} value
+ * @returns {string}
+ */
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
 // ── Experiment title map (matches docs_routes.py) ──────────────────────────
 const EXP_TITLES = {
     '01': 'Kubernetes 网络基础',
@@ -113,8 +126,8 @@ function renderSessions(sessions) {
             : '<span class="text-gray-300">—</span>';
 
         const ipDisplay = s.login_ip
-            ? `<span class="font-mono">${s.login_ip}</span>
-               ${s.login_location ? `<span class="text-gray-400 block">${s.login_location}</span>` : ''}`
+            ? `<span class="font-mono">${escapeHtml(s.login_ip)}</span>
+               ${s.login_location ? `<span class="text-gray-400 block">${escapeHtml(s.login_location)}</span>` : ''}`
             : '<span class="text-gray-300">—</span>';
 
         return `<tr class="hover:bg-gray-50 transition">

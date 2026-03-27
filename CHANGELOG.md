@@ -7,6 +7,10 @@
 ## [Unreleased]
 
 ### Fixed
+- fix: 注册接口无速率限制 — POST /register 加 3次/IP/60s 限制，防 bcrypt CPU 耗尽 DoS；补回归测试防止重现
+- fix: SmartLogger 重复创建同名实例会累积 FileHandler 泄漏 FD — _setup_logging() 先 close/remove 旧 handler 再添新 handler；补回归测试防止重现
+- fix: CI ADMIN_TOKEN 仅 14 字符，与 config.py ≥32 校验不符 — 改为 38 字符占位值
+- fix: app.js vm.name + admin.js login_ip/login_location 直接插入 innerHTML — 加 escapeHtml() 防第三方数据注入
 - fix: DOMPurify 加入 marked.js 渲染管道 — index.html 引入 DOMPurify@3.2.6（SRI sha384），docs.js renderMarkdown() 用 DOMPurify.sanitize() 包裹输出，防御 Markdown 注入的非脚本 payload（meta refresh 等）
 - fix: bootstrap.sh + cleanup_test_vms.sh 改用 set -euo pipefail，与其余脚本保持一致，管道失败不再静默忽略
 - fix: SSHTerminal.receive() 中 asyncio.get_event_loop() 改为 get_running_loop()（S1，第七轮漏网之鱼）；补回归测试防止重现

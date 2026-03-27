@@ -16,7 +16,7 @@ jobs:
       PROXMOX_TOKEN_ID: "ci@pam!ci-token"
       PROXMOX_TOKEN_SECRET: "00000000-0000-0000-0000-000000000000"
       VM_SSH_PASSWORD: "ci-placeholder"
-      ADMIN_TOKEN: "ci-admin-token"
+      ADMIN_TOKEN: "ci-admin-token-placeholder-32chars!!"
 
     steps:
       - uses: actions/checkout@v4

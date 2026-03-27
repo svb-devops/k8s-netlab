@@ -83,6 +83,30 @@ class TestRegister:
         resp = client.post("/api/auth/register", json={"username": "a" * 21, "password": "secret1"})
         assert resp.status_code == 422
 
+    def test_register_rate_limit_returns_429(self, auth_setup):
+        """注册接口超出速率限制时应返回 429（register DoS 防护回归）。"""
+        client, _, mock_rl = auth_setup
+        mock_rl.is_over_limit.return_value = True
+        mock_rl.retry_after.return_value = 60
+
+        resp = client.post("/api/auth/register", json={"username": "alice", "password": "secret1"})
+        assert resp.status_code == 429, (
+            f"Expected 429 when register rate limit exceeded, got {resp.status_code}"
+        )
+        assert resp.headers.get("retry-after") == "60"
+
+    def test_register_records_rate_limit_on_success(self, auth_setup):
+        """注册成功时应向 rate_limiter 记录本次请求（register DoS 防护回归）。"""
+        client, _, mock_rl = auth_setup
+        mock_rl.is_over_limit.return_value = False
+
+        client.post("/api/auth/register", json={"username": "alice", "password": "secret1"})
+        mock_rl.record.assert_called_once()
+        call_key = mock_rl.record.call_args[0][0]
+        assert call_key.startswith("register:"), (
+            f"Rate limit key should start with 'register:', got '{call_key}'"
+        )
+
 
 # ============================================================
 # POST /api/auth/login

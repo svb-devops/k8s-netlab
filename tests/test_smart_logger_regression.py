@@ -36,3 +36,32 @@ def test_smart_logger_creates_log_file_when_root_has_handlers(tmp_path, monkeypa
         assert log_file.stat().st_size > 0, "日志文件存在但为空"
     finally:
         logging.root.removeHandler(dummy_handler)
+
+
+def test_smart_logger_no_duplicate_handlers_on_reuse(tmp_path, monkeypatch):
+    """SmartLogger 对同一 task_name 创建两次时不得累积重复 FileHandler（FD 泄漏回归）。"""
+    monkeypatch.chdir(tmp_path)
+    import logging
+    from backend.smart_logger import SmartLogger
+
+    task_name = "create_vm_101_fd_test"
+
+    # 第一次创建
+    sl1 = SmartLogger(task_name)
+    sl1.info("first instance")
+
+    # 第二次创建（模拟 VM 101 被再次创建的场景）
+    sl2 = SmartLogger(task_name)
+    sl2.info("second instance")
+
+    logger = logging.getLogger(task_name)
+    handler_count = len(logger.handlers)
+    assert handler_count == 1, (
+        f"Expected exactly 1 FileHandler after creating SmartLogger twice for '{task_name}', "
+        f"got {handler_count}. Each extra handler is a leaked file descriptor."
+    )
+
+    # 清理
+    for h in logger.handlers[:]:
+        h.close()
+        logger.removeHandler(h)

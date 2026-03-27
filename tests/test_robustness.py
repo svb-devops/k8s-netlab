@@ -31,6 +31,7 @@ def auth_client(tmp_path):
         mgr = AuthManager()
         mock_rl = MagicMock()
         mock_rl.is_allowed.return_value = True
+        mock_rl.is_over_limit.return_value = False  # not over limit by default
 
         with patch("backend.auth_routes.auth_manager", mgr), \
              patch("backend.auth_routes.rate_limiter", mock_rl):

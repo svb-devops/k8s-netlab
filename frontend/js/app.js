@@ -156,10 +156,10 @@ class K8SNetLabApp {
 
         row.innerHTML = `
             <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                ${vm.vmid}
+                ${escapeHtml(vm.vmid)}
             </td>
             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                ${vm.name}
+                ${escapeHtml(vm.name)}
             </td>
             <td class="px-6 py-4 whitespace-nowrap">
                 <div class="flex items-center space-x-2">
@@ -455,6 +455,19 @@ class K8SNetLabApp {
             window.location.href = '/login.html';
         }
     }
+}
+
+/**
+ * Escape HTML special characters to prevent XSS in innerHTML contexts.
+ * @param {string|number} value
+ * @returns {string}
+ */
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
 }
 
 // Initialize app when DOM is ready

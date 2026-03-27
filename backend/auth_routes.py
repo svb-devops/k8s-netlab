@@ -67,23 +67,37 @@ def _normalize_ip(ip: str) -> str:
     status_code=status.HTTP_201_CREATED,
     summary="Register a new user"
 )
-async def register(request: RegisterRequest) -> AuthResponse:
+async def register(http_request: Request, request: RegisterRequest) -> AuthResponse:
     """
     Register a new user.
 
     Args:
+        http_request: FastAPI request (for IP-based rate limiting)
         request: Username and password
 
     Returns:
         AuthResponse with registration status
     """
     try:
+        # Rate limit: 3 registration attempts per IP per 60 seconds.
+        # bcrypt cost (~250ms/hash) makes this endpoint a CPU-exhaustion target without limiting.
+        client_ip = _normalize_ip(http_request.client.host if http_request.client else "unknown")
+        rl_key = f"register:{client_ip}"
+        if rate_limiter.is_over_limit(rl_key, max_requests=3, window_seconds=60):
+            wait = rate_limiter.retry_after(rl_key, window_seconds=60)
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"注册请求过于频繁，请 {wait} 秒后重试",
+                headers={"Retry-After": str(wait)},
+            )
+
         success = auth_manager.register_user(
             username=request.username,
             password=request.password
         )
 
         if success:
+            rate_limiter.record(rl_key)
             return AuthResponse(
                 success=True,
                 message="User registered successfully",

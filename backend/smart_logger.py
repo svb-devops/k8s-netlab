@@ -43,6 +43,14 @@ class SmartLogger:
         self.logger = logging.getLogger(self.task_name)
         self.logger.setLevel(logging.INFO)
 
+        # Close and remove any handlers from a previous use of this logger name to
+        # prevent file descriptor leaks — Python's logging module caches loggers
+        # globally, so the same task_name (e.g. create_vm_101) reused across VM
+        # lifecycle cycles would otherwise accumulate one FileHandler per call.
+        for old_handler in self.logger.handlers[:]:
+            old_handler.close()
+            self.logger.removeHandler(old_handler)
+
         # Directly attach a FileHandler to this logger so it always writes its
         # task log file, regardless of whether the root logger already has handlers
         # (logging.basicConfig is a no-op when root already has handlers).
