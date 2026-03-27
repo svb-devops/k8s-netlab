@@ -155,6 +155,25 @@ class TestCreateVM:
 
         assert resp.status_code == 500
 
+    def test_create_vm_proxmox_timeout_returns_504(self, client_with_rl):
+        """Proxmox 挂起时 create_vm 应在超时后返回 504（B2 回归）。"""
+        import asyncio as _asyncio
+        client, _ = client_with_rl
+        mock_tracker = MagicMock()
+        mock_tracker.get_user_vms.return_value = []
+        mock_tracker.get_all_tracked_vms.return_value = []
+
+        async def _timeout(*args, **kwargs):
+            raise _asyncio.TimeoutError()
+
+        with patch("backend.api_routes.vm_tracker", mock_tracker), \
+             patch("backend.api_routes.list_vms", return_value={"success": True, "data": []}), \
+             patch("backend.api_routes.asyncio.wait_for", _timeout):
+            resp = client.post("/api/vms/create", json={})
+
+        assert resp.status_code == 504
+        assert "timed out" in resp.json()["detail"].lower()
+
     def test_vm_id_range_validation(self, client_with_rl):
         client, _ = client_with_rl
         resp = client.post("/api/vms/create", json={"vm_id": 50})
@@ -214,6 +233,22 @@ class TestCreateVM:
 # ============================================================
 
 class TestDeleteVM:
+    def test_delete_vm_proxmox_timeout_returns_504(self, client):
+        """Proxmox 挂起时 delete_vm 应在超时后返回 504（B2 回归）。"""
+        import asyncio as _asyncio
+        mock_tracker = MagicMock()
+        mock_tracker.is_owner.return_value = True
+
+        async def _timeout(*args, **kwargs):
+            raise _asyncio.TimeoutError()
+
+        with patch("backend.api_routes.vm_tracker", mock_tracker), \
+             patch("backend.api_routes.asyncio.wait_for", _timeout):
+            resp = client.delete("/api/vms/500")
+
+        assert resp.status_code == 504
+        assert "timed out" in resp.json()["detail"].lower()
+
     def test_success_returns_200(self, client):
         mock_tracker = MagicMock()
         mock_tracker.is_owner.return_value = True

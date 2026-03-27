@@ -173,7 +173,14 @@ async def api_create_vm(
 
         # Create VM using vm_manager (run in thread — blocks up to 300s polling Proxmox)
         loop = asyncio.get_running_loop()
-        result = await register_task(loop.run_in_executor(None, create_vm, vm_id, config.VM_TEMPLATE_ID))
+        try:
+            result = await asyncio.wait_for(
+                register_task(loop.run_in_executor(None, create_vm, vm_id, config.VM_TEMPLATE_ID)),
+                timeout=360,
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"API: VM {vm_id} creation timed out after 360s")
+            raise HTTPException(status_code=504, detail="VM creation timed out")
 
         if result['success']:
             logger.info(f"API: VM {vm_id} created successfully by '{current_user}'")
@@ -244,7 +251,14 @@ async def api_delete_vm(
 
         # Delete VM using vm_manager (run in thread — blocks while polling Proxmox)
         loop = asyncio.get_running_loop()
-        result = await register_task(loop.run_in_executor(None, lambda: delete_vm(vm_id=vm_id, force=force)))
+        try:
+            result = await asyncio.wait_for(
+                register_task(loop.run_in_executor(None, lambda: delete_vm(vm_id=vm_id, force=force))),
+                timeout=120,
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"API: VM {vm_id} deletion timed out after 120s")
+            raise HTTPException(status_code=504, detail="VM deletion timed out")
 
         if result['success']:
             logger.info(f"API: VM {vm_id} deleted successfully")
