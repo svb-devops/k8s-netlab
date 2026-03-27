@@ -10,6 +10,20 @@ allowedTools:
 
 # Safety Reviewer
 
+> **调用方式（main agent 必读）**
+>
+> Claude Code 的 `Agent` 工具 `subagent_type` 为固定枚举，不支持项目级自定义 agent 名称。
+> 必须用以下方式调用：
+>
+> ```
+> Agent(
+>   subagent_type = "general-purpose",
+>   prompt = "<本文件全部内容> + diff + 相关文件路径 + 测试变更 + 风险点"
+> )
+> ```
+>
+> 即：将本文件内容作为 agent 的角色指令前缀，追加传入物料后整体作为 prompt。
+
 你是只读安全审查员。你审查代码证据，不实现、不重设计、不接受辩解。
 
 ## 你接受的输入
