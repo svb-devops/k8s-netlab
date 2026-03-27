@@ -151,21 +151,29 @@ async def admin_status(
         vms_by_owner.setdefault(owner, []).append(VMDetail(**vm))
 
     # Build enriched session list (most recent login first)
-    sessions: list[SessionDetail] = [
-        SessionDetail(
-            username=s["username"],
-            is_admin=s["username"] in config.ADMIN_USERNAMES,
+    sessions: list[SessionDetail] = []
+    for s in active_sessions:
+        username = s.get("username")
+        if not username:
+            logger.warning("Skipping session with missing or empty 'username' field (data corruption?)")
+            continue
+        created_at = s.get("created_at", "")
+        expires_at = s.get("expires_at", "")
+        if not created_at or not expires_at:
+            logger.warning(f"Skipping session for '{username}' missing required timestamp fields")
+            continue
+        sessions.append(SessionDetail(
+            username=username,
+            is_admin=username in config.ADMIN_USERNAMES,
             login_ip=s.get("login_ip"),
             login_location=geo_map.get(s.get("login_ip", ""), "") or None,
-            login_time=s["created_at"],
-            expires_at=s["expires_at"],
-            registered_at=users_summary.get(s["username"], {}).get("created_at"),
+            login_time=created_at,
+            expires_at=expires_at,
+            registered_at=users_summary.get(username, {}).get("created_at"),
             current_experiment=s.get("current_experiment"),
             last_activity=s.get("last_activity"),
-            vms=vms_by_owner.get(s["username"], []),
-        )
-        for s in active_sessions
-    ]
+            vms=vms_by_owner.get(username, []),
+        ))
     sessions.sort(key=lambda s: s.login_time, reverse=True)
 
     stats = AdminStats(

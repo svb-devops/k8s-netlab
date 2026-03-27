@@ -169,3 +169,50 @@ class TestAutoCleanupTaskSessionPurge:
 
         mock_auth.cleanup_expired_sessions.assert_called_once()
 
+    async def test_auto_cleanup_vm_not_found_warning_includes_error_string(self):
+        """auto_cleanup_task 匹配到 VM 不存在时，warning 日志必须包含原始错误串（第13轮回归）。"""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch, call
+
+        from backend.main import auto_cleanup_task
+
+        delete_error = "Configuration file 'nodes/pve/qemu-server/101.conf' does not exist"
+        delete_result = {"success": False, "error": delete_error}
+
+        mock_auth = MagicMock()
+        mock_tracker = MagicMock()
+        mock_tracker.get_expired_vms.return_value = [101]
+
+        mock_loop = MagicMock()
+        mock_loop.run_in_executor = AsyncMock(return_value=delete_result)
+
+        sleep_calls = [None, asyncio.CancelledError()]
+
+        async def fake_sleep(_):
+            val = sleep_calls.pop(0)
+            if isinstance(val, type) and issubclass(val, BaseException):
+                raise val()
+            if isinstance(val, BaseException):
+                raise val
+
+        with patch("backend.main.auth_manager", mock_auth), \
+             patch("backend.main.vm_tracker", mock_tracker), \
+             patch("backend.main.config") as mock_config, \
+             patch("asyncio.get_running_loop", return_value=mock_loop), \
+             patch("asyncio.sleep", side_effect=fake_sleep), \
+             patch("backend.main.logger") as mock_logger:
+            mock_config.VM_SESSION_TIMEOUT_MIN = 30
+            mock_config.VM_TEMPLATE_ID = 100
+            try:
+                await auto_cleanup_task()
+            except asyncio.CancelledError:
+                pass
+
+        # 检查 logger.warning 被调用，且调用参数包含原始错误串
+        warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
+        assert any("101" in c for c in warning_calls), \
+            f"Expected VM 101 in warning calls. Got: {warning_calls}"
+        assert any("does not exist" in c or "101.conf" in c for c in warning_calls), (
+            f"Warning call must include original error string. Got: {warning_calls}"
+        )
+

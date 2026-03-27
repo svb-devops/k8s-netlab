@@ -7,6 +7,9 @@
 ## [Unreleased]
 
 ### Fixed
+- fix: admin_routes.py GET /api/admin/status 当 sessions.json 存在损坏条目（缺 username/created_at/expires_at）时整个端点 500 崩溃 — 改为跳过损坏条目并记录 warning，正常条目继续返回；补回归测试防止重现
+- fix: main.py auto_cleanup_task 匹配 "VM 不存在" 时 warning 日志缺失原始 Proxmox 错误串 — 加入 reason 字段便于跨版本调试；补回归测试防止重现
+
 - fix: 登录/注册 IP 提取忽略 Cloudflare Tunnel 转发头 — _get_client_ip() 在受信任代理（loopback）连接时优先读 CF-Connecting-IP/X-Forwarded-For，防止速率限制所有用户共享同一个 IP 桶；补 6 条回归测试防止重现
 - refactor: api_health_check() 去掉重复 Proxmox version.get() 调用（connect_proxmox 内部已验证，改为直接调 connect_proxmox）
 - refactor: 删除 get_node_status() 死代码及其 3 个测试（proxmox_api.py，无 API endpoint 无调用者）

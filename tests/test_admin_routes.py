@@ -137,6 +137,30 @@ class TestAdminStatus:
 # POST /api/admin/reset-password
 # ============================================================
 
+    def test_session_with_missing_username_does_not_crash(self, client):
+        """sessions.json 中 username 字段缺失时，admin status 应跳过该 session 而非 500 崩溃（第13轮回归）。"""
+        mock_sessions = [
+            {},  # 损坏的 session，缺少 username
+            {
+                "username": "alice",
+                "login_ip": None,
+                "created_at": "2026-03-11T09:00:00",
+                "expires_at": "2026-03-12T09:00:00",
+            },
+        ]
+        with patch("backend.config.ADMIN_TOKEN", TEST_TOKEN), \
+             patch("backend.admin_routes.auth_manager.get_active_sessions", return_value=mock_sessions), \
+             patch("backend.admin_routes.auth_manager.get_users_summary", return_value={}), \
+             patch("backend.admin_routes.vm_tracker.get_all_vms_with_details", return_value=[]):
+            resp = client.get("/api/admin/status", headers={"X-Admin-Token": TEST_TOKEN})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        # 损坏的 session 应被跳过，仅 alice 出现
+        assert data["stats"]["active_sessions"] == 1
+        assert data["sessions"][0]["username"] == "alice"
+
+
 class TestAdminResetPassword:
     def test_success_resets_password(self, client):
         with patch("backend.config.ADMIN_TOKEN", TEST_TOKEN), \
