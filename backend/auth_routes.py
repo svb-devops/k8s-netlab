@@ -11,6 +11,7 @@ from fastapi import APIRouter, Cookie, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 
 from backend.auth import auth_manager
+from backend.config import SESSION_COOKIE_SECURE
 from backend.rate_limiter import rate_limiter
 
 logger = logging.getLogger(__name__)
@@ -146,12 +147,12 @@ async def login(credentials: LoginRequest, response: Response, request: Request)
         # Create session (record login IP for admin observability)
         token = auth_manager.create_session(credentials.username, login_ip=client_ip)
 
-        # Set session cookie (httponly; secure=False — service runs over HTTP)
+        # Set session cookie
         response.set_cookie(
             key="session_token",
             value=token,
             httponly=True,
-            secure=False,
+            secure=SESSION_COOKIE_SECURE,
             max_age=86400,  # 24 hours
             samesite="lax"
         )
@@ -200,7 +201,7 @@ async def logout(
         response.delete_cookie(
             key="session_token",
             httponly=True,
-            secure=False,
+            secure=SESSION_COOKIE_SECURE,
             samesite="lax",
         )
 

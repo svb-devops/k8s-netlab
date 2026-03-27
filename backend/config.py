@@ -147,6 +147,11 @@ if not ADMIN_TOKEN:
 _admin_usernames_raw = os.getenv("ADMIN_USERNAMES", "")
 ADMIN_USERNAMES: set = {u.strip() for u in _admin_usernames_raw.split(",") if u.strip()}
 
+# --- Session Cookie Configuration ---
+# Set to True in production (HTTPS). False only for local HTTP dev.
+# Default True — production runs behind HTTPS.
+SESSION_COOKIE_SECURE: bool = _get_env_bool("SESSION_COOKIE_SECURE", True)
+
 # --- VM Quota Configuration ---
 # Maximum number of VMs a single user can own simultaneously.
 # Default 1 (one VM per user). Increase for instructors/admins.

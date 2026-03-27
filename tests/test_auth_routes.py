@@ -97,6 +97,18 @@ class TestLogin:
         assert resp.json()["success"] is True
         assert "session_token" in resp.cookies
 
+    def test_cookie_secure_flag_follows_config(self, auth_setup):
+        """SESSION_COOKIE_SECURE=True 时 login cookie 必须带 secure 属性（P2 回归）"""
+        client, mgr, _ = auth_setup
+        mgr.register_user("alice", "secret1")
+        with patch("backend.auth_routes.SESSION_COOKIE_SECURE", True):
+            resp = client.post("/api/auth/login", json={"username": "alice", "password": "secret1"})
+        assert resp.status_code == 200
+        set_cookie_header = resp.headers.get("set-cookie", "")
+        assert "secure" in set_cookie_header.lower(), (
+            "Cookie must carry Secure attribute when SESSION_COOKIE_SECURE=True"
+        )
+
     def test_wrong_password_returns_401(self, auth_setup):
         client, mgr, _ = auth_setup
         mgr.register_user("alice", "secret1")
