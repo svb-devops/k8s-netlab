@@ -42,17 +42,9 @@ class AuthManager:
         """Load users from file."""
         return safe_read_json(USERS_FILE, default={})
 
-    def _save_users(self, users: Dict):
-        """Save users to file."""
-        safe_write_json(USERS_FILE, users)
-
     def _load_sessions(self) -> Dict:
         """Load sessions from file."""
         return safe_read_json(SESSIONS_FILE, default={})
-
-    def _save_sessions(self, sessions: Dict):
-        """Save sessions to file."""
-        safe_write_json(SESSIONS_FILE, sessions)
 
     def register_user(self, username: str, password: str) -> bool:
         """

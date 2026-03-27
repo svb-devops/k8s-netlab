@@ -263,7 +263,7 @@ async def api_delete_vm(
             logger.warning(f"API: User '{current_user}' tried to delete VM {vm_id} owned by '{owner}'")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"You don't have permission to delete this VM (owned by {owner})"
+                detail="You don't have permission to delete this VM"
             )
 
         logger.info(f"API: User '{current_user}' deleting VM {vm_id} (force={force})")

@@ -301,6 +301,18 @@ class TestDeleteVM:
         assert resp.status_code == 403
         assert "permission" in resp.json()["detail"].lower()
 
+    def test_not_owner_403_does_not_reveal_owner_username(self, client):
+        """403 response must not disclose the VM owner's username — info disclosure (N 回归)."""
+        mock_tracker = MagicMock()
+        mock_tracker.is_owner.return_value = False
+        mock_tracker.get_vm_owner.return_value = "secretuser"
+
+        with patch("backend.api_routes.vm_tracker", mock_tracker):
+            resp = client.delete("/api/vms/500")
+
+        assert resp.status_code == 403
+        assert "secretuser" not in resp.json()["detail"]
+
     def test_proxmox_failure_returns_500(self, client):
         mock_tracker = MagicMock()
         mock_tracker.is_owner.return_value = True

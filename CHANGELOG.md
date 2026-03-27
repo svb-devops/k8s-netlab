@@ -7,6 +7,8 @@
 ## [Unreleased]
 
 ### Fixed
+- fix: DELETE /api/vms/{id} 403 响应泄露 VM owner 用户名 — 从 detail 中移除 owner 用户名（信息泄露），owner 仍记录在服务端日志；补回归测试防止重现
+- refactor: 移除 auth.py 中从未被调用的 _save_users / _save_sessions 死代码（全部写操作均走 safe_update_json）
 - fix: test_serial_second_creation_blocked_by_quota 死锁 — iter([...]) side_effect 耗尽抛 StopIteration，Python 3.7+ 禁止将 StopIteration 设入 asyncio.Future，导致 run_in_executor await 永不返回；改为 side_effect 函数避免抛 StopIteration；同时补充第 3 次 list_vms 调用（req1-_find_available_vm_id 遗漏）
 - feat: 引入 safety-reviewer subagent — 9 项检查清单 + A/B/C 分级触发 + 硬/软失败策略 + 外部升级条件
 - fix: create_vm 配额检查前对账 tracker 与 Proxmox，自动清除孤儿条目，彻底杜绝假性 429 配额超限（孤儿 VM 回归，出现两次）；补回归测试防止重现
