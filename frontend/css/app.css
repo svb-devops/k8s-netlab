@@ -1,0 +1,139 @@
+/* ── Terminal & status indicators ── */
+.terminal-container {
+    background: #1e1e1e;
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.status-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.status-running {
+    background-color: #10b981;
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.status-stopped {
+    background-color: #6b7280;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.5; }
+}
+
+.loading {
+    border: 3px solid #f3f4f6;
+    border-top: 3px solid #326CE5;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0%   { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* ── Markdown content rendering ── */
+.doc-content h1 { font-size: 1.4rem; font-weight: 700; margin: 1rem 0 0.5rem; color: #111827; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.4rem; }
+.doc-content h2 { font-size: 1.15rem; font-weight: 700; margin: 1.2rem 0 0.4rem; color: #1f2937; }
+.doc-content h3 { font-size: 1rem; font-weight: 600; margin: 1rem 0 0.3rem; color: #374151; }
+.doc-content h4 { font-size: 0.9rem; font-weight: 600; margin: 0.75rem 0 0.25rem; color: #4b5563; }
+.doc-content p { margin: 0.4rem 0; color: #374151; line-height: 1.65; }
+.doc-content ul { margin: 0.4rem 0 0.4rem 1.25rem; list-style-type: disc; }
+.doc-content ol { margin: 0.4rem 0 0.4rem 1.25rem; list-style-type: decimal; }
+.doc-content li { margin: 0.2rem 0; color: #374151; line-height: 1.6; }
+.doc-content li > ul, .doc-content li > ol { margin-top: 0.2rem; }
+.doc-content code:not(pre code) {
+    background: #f3f4f6;
+    padding: 0.1em 0.35em;
+    border-radius: 0.25rem;
+    font-size: 0.82rem;
+    color: #c0392b;
+    font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+}
+.doc-content pre {
+    background: #0d1117;
+    border-radius: 0.5rem;
+    margin: 0.6rem 0;
+    overflow: hidden;
+    position: relative;
+}
+.doc-content pre code {
+    padding: 0.85rem 1rem;
+    display: block;
+    overflow-x: auto;
+    font-size: 0.78rem;
+    line-height: 1.55;
+    background: transparent;
+    color: #e6edf3;
+}
+.doc-content blockquote {
+    border-left: 3px solid #326CE5;
+    padding: 0.4rem 0.75rem;
+    margin: 0.6rem 0;
+    background: #eff6ff;
+    border-radius: 0 0.25rem 0.25rem 0;
+    color: #374151;
+}
+.doc-content table { width: 100%; border-collapse: collapse; margin: 0.6rem 0; font-size: 0.82rem; }
+.doc-content th { background: #f3f4f6; border: 1px solid #d1d5db; padding: 0.4rem 0.6rem; text-align: left; font-weight: 600; }
+.doc-content td { border: 1px solid #d1d5db; padding: 0.4rem 0.6rem; }
+.doc-content hr { border: none; border-top: 1px solid #e5e7eb; margin: 0.8rem 0; }
+.doc-content strong { font-weight: 600; color: #111827; }
+.doc-content a { color: #326CE5; text-decoration: underline; }
+
+/* ── Copy button inside code blocks ── */
+.copy-btn {
+    position: absolute;
+    top: 0.4rem;
+    right: 0.4rem;
+    background: rgba(255,255,255,0.12);
+    color: #adbac7;
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 0.25rem;
+    padding: 0.2rem 0.55rem;
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    font-family: system-ui, sans-serif;
+    line-height: 1.4;
+}
+.copy-btn:hover { background: rgba(255,255,255,0.22); color: #fff; }
+
+/* ── Lab section layout ── */
+.lab-panel { height: calc(100vh - 200px); min-height: 520px; }
+
+/* ── Step navigation pills ── */
+.step-pill {
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 2px 8px 2px 5px; border-radius: 9999px;
+    font-size: 0.68rem; font-weight: 500; cursor: pointer;
+    border: 1px solid #d1d5db; background: #fff; color: #6b7280;
+    transition: all 0.15s; white-space: nowrap; user-select: none; line-height: 1.6;
+}
+.step-pill:hover { border-color: #326CE5; color: #326CE5; }
+.step-pill.sp-active { background: #326CE5; border-color: #326CE5; color: #fff; }
+.step-pill.sp-done { background: #ecfdf5; border-color: #10b981; color: #059669; }
+.step-pill.sp-done.sp-active { background: #059669; border-color: #047857; color: #fff; }
+.step-pill input[type="checkbox"] {
+    width: 10px; height: 10px; flex-shrink: 0;
+    pointer-events: none; accent-color: #10b981;
+}
+
+/* ── Responsive: stack panels vertically on mobile ── */
+@media (max-width: 768px) {
+    .lab-split-body { flex-direction: column !important; }
+    .lab-doc-panel {
+        width: 100% !important; height: 45%;
+        border-right: none !important; border-bottom: 1px solid #e5e7eb;
+    }
+    .lab-terminal-panel { width: 100% !important; height: 55%; }
+    .lab-panel { height: calc(100vh - 140px); min-height: 480px; }
+}

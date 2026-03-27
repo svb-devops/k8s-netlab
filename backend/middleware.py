@@ -60,10 +60,8 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 
 _CSP = (
     "default-src 'self'; "
-    # CDN scripts + inline scripts (Tailwind config, admin badge IIFE in index.html)
-    "script-src 'self' cdn.tailwindcss.com cdn.jsdelivr.net 'unsafe-inline'; "
-    # CDN styles + inline <style> blocks
-    "style-src 'self' cdn.jsdelivr.net 'unsafe-inline'; "
+    "script-src 'self' cdn.tailwindcss.com cdn.jsdelivr.net; "
+    "style-src 'self' cdn.jsdelivr.net; "
     # same-origin fetch + WebSocket (ws/wss to the same host)
     "connect-src 'self' ws: wss:; "
     "img-src 'self' data:; "

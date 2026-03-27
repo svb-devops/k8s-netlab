@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Fixed
+- fix: CSP 移除 'unsafe-inline' — 将三个 HTML 页面内联脚本/样式提取到外部文件（tailwind-config.js、app.css、ui-init.js、admin.js），SecurityHeadersMiddleware CSP 不再含 script-src/style-src unsafe-inline；补回归测试防止重现
 - fix: health 不健康时不暴露原始异常（改为通用错误字符串），同时清理 version_info 死代码
 - fix: auto_cleanup_task 中 asyncio.get_event_loop() 改为 get_running_loop()（避免 Python 3.10 废弃警告）
 - fix: GET /api/vms 和 GET /api/vms/{vm_id}/status 中阻塞 Proxmox I/O 改用 run_in_executor，防止高并发时阻塞 event loop
