@@ -163,6 +163,14 @@ def test_security_headers_csp_blocks_objects(app_with_security_headers):
     assert "object-src 'none'" in csp
 
 
+def test_csp_does_not_contain_unsafe_inline(app_with_security_headers):
+    """CSP 不得包含 'unsafe-inline'——inline JS/CSS 允许攻击者注入任意脚本（N 回归）。"""
+    client = TestClient(app_with_security_headers)
+    resp = client.get("/ping")
+    csp = resp.headers.get("content-security-policy", "")
+    assert "'unsafe-inline'" not in csp
+
+
 # ============================================================
 # M 回归：请求日志包含 duration_ms 和 status_code
 # ============================================================
