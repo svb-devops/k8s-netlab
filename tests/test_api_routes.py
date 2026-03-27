@@ -299,6 +299,25 @@ class TestListVMs:
         assert resp.status_code == 200
         mock_tracker.track_vm.assert_not_called()
 
+    def test_auto_claim_respects_per_user_quota(self, client):
+        """孤儿 VM 认领不得突破 MAX_VMS_PER_USER 配额（P1 回归）"""
+        mock_tracker = MagicMock()
+        # 用户已满配额（1/1）
+        mock_tracker.get_user_vms.return_value = [501]
+        mock_tracker.get_vm_owner.return_value = None  # VM 502 是孤儿
+
+        orphan = {"vmid": 502, "name": "k8s-lab-502", "template": False}
+
+        with patch("backend.api_routes.vm_tracker", mock_tracker), \
+             patch("backend.api_routes.list_vms", return_value={"success": True, "data": [orphan]}), \
+             patch("backend.config.VM_TEMPLATE_ID", 100), \
+             patch("backend.config.MAX_VMS_PER_USER", 1):
+            resp = client.get("/api/vms")
+
+        assert resp.status_code == 200
+        # 配额已满时，孤儿 VM 不应被认领
+        mock_tracker.track_vm.assert_not_called()
+
     def test_proxmox_failure_returns_500(self, client):
         with patch("backend.api_routes.list_vms", return_value={"success": False, "error": "timeout"}):
             resp = client.get("/api/vms")

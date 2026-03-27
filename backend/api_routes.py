@@ -304,12 +304,18 @@ async def api_list_vms(
                 if vm.get('template') or vm_id == config.VM_TEMPLATE_ID:
                     continue
 
-                # If VM has no owner, assign it to current user
+                # If VM has no owner, assign it to current user (only if quota allows)
                 owner = vm_tracker.get_vm_owner(vm_id)
                 if owner is None:
-                    logger.info(f"Auto-claiming orphaned VM {vm_id} for user '{current_user}'")
-                    vm_tracker.track_vm(vm_id, owner=current_user)
-                    user_vm_ids.add(vm_id)
+                    if len(user_vm_ids) >= config.MAX_VMS_PER_USER:
+                        logger.warning(
+                            f"Auto-claim skipped: VM {vm_id} orphaned but user '{current_user}' "
+                            f"is at quota ({len(user_vm_ids)}/{config.MAX_VMS_PER_USER})"
+                        )
+                    else:
+                        logger.info(f"Auto-claiming orphaned VM {vm_id} for user '{current_user}'")
+                        vm_tracker.track_vm(vm_id, owner=current_user)
+                        user_vm_ids.add(vm_id)
 
             # Only include VMs owned by current user
             user_vms = [vm for vm in all_vms if vm['vmid'] in user_vm_ids]
