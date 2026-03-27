@@ -188,10 +188,11 @@ async def api_create_vm(
     except HTTPException:
         raise
     except Exception as e:
-        logger.critical(f"API: Unexpected error creating VM: {e}")
+        logger.critical(f"API: Unexpected error creating VM: {e}", exc_info=True)
+        detail = str(e) if config.APP_DEBUG else "Internal server error"
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unexpected error: {str(e)}"
+            detail=detail
         )
 
 
@@ -258,10 +259,11 @@ async def api_delete_vm(
     except HTTPException:
         raise
     except Exception as e:
-        logger.critical(f"API: Unexpected error deleting VM {vm_id}: {e}")
+        logger.critical(f"API: Unexpected error deleting VM {vm_id}: {e}", exc_info=True)
+        detail = str(e) if config.APP_DEBUG else "Internal server error"
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unexpected error: {str(e)}"
+            detail=detail
         )
 
 
@@ -337,10 +339,11 @@ async def api_list_vms(
     except HTTPException:
         raise
     except Exception as e:
-        logger.critical(f"API: Unexpected error listing VMs: {e}")
+        logger.critical(f"API: Unexpected error listing VMs: {e}", exc_info=True)
+        detail = str(e) if config.APP_DEBUG else "Internal server error"
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unexpected error: {str(e)}"
+            detail=detail
         )
 
 
@@ -413,9 +416,10 @@ async def api_get_vm_status(
                 detail=f"VM {vm_id} not found"
             )
 
+        detail = f"Failed to get VM status: {str(e)}" if config.APP_DEBUG else "Internal server error"
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get VM status: {str(e)}"
+            detail=detail
         )
 
 

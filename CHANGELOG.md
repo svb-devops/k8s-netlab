@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Fixed
+- fix: 生产环境 500 响应泄露内部异常信息 — `APP_DEBUG=False` 时统一返回 `"Internal server error"`，细节只写入日志；补 2 个回归测试防止重现
 - fix: LoginRequest.username 缺 pattern 校验 — 登录接口补齐与注册相同的 `^[a-zA-Z0-9_-]+$` 约束，特殊字符返回 422；补 1 个回归测试防止重现
 - fix: vm_tracker 旧格式迁移 bug — `track_vm()` 对已有条目覆盖 `created_at` 为 `now()`，改为保留原始时间戳；补 3 个回归测试防止重现
 

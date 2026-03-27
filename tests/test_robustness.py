@@ -278,3 +278,29 @@ class TestIdempotency:
                             json={"username": "alice", "password": "secret1"})
         assert resp1.status_code == 201
         assert resp2.status_code == 400
+
+
+class TestErrorInfoLeakage:
+    """C 回归：生产模式下 500 响应体不得泄露内部异常信息。"""
+
+    def test_create_vm_500_hides_internal_error(self):
+        """APP_DEBUG=False 时，create VM 的 500 响应不应包含原始异常文本（C 回归）"""
+        client = _api_client()
+        secret_msg = "super_secret_internal_token_xyz"
+        with patch("backend.api_routes.create_vm", side_effect=Exception(secret_msg)), \
+             patch("backend.config.APP_DEBUG", False):
+            resp = client.post("/api/vms/create", json={})
+        assert resp.status_code == 500
+        assert secret_msg not in resp.text
+
+    def test_delete_vm_500_hides_internal_error(self):
+        """APP_DEBUG=False 时，delete VM 的 500 响应不应包含原始异常文本（C 回归）"""
+        client = _api_client()
+        secret_msg = "super_secret_internal_token_xyz"
+        with patch("backend.api_routes.delete_vm", side_effect=Exception(secret_msg)), \
+             patch("backend.api_routes.vm_tracker") as mock_tracker, \
+             patch("backend.config.APP_DEBUG", False):
+            mock_tracker.get_vm_owner.return_value = "testuser"
+            resp = client.delete("/api/vms/500")
+        assert resp.status_code == 500
+        assert secret_msg not in resp.text
