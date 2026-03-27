@@ -319,3 +319,20 @@ class TestChangePassword:
             json={"old_password": "old_pass", "new_password": "new_pass_123"},
         )
         assert resp.status_code == 401
+
+    def test_change_password_invalidates_existing_sessions(self, auth_setup):
+        """密码修改后所有旧 session 应失效（防止泄露的 cookie 继续使用）。"""
+        client, mgr, _ = auth_setup
+        mgr.register_user("alice", "old_pass")
+        old_token = mgr.create_session("alice")
+
+        # 用旧 token 修改密码
+        client.cookies.set("session_token", old_token)
+        resp = client.post(
+            "/api/auth/change-password",
+            json={"old_password": "old_pass", "new_password": "new_pass_123"},
+        )
+        assert resp.status_code == 200
+
+        # 旧 token 应已作废
+        assert mgr.verify_session(old_token) is None

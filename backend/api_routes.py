@@ -167,7 +167,8 @@ async def api_create_vm(
                 )
             vm_id = request.vm_id
         else:
-            vm_id = _find_available_vm_id()
+            loop = asyncio.get_running_loop()
+            vm_id = await loop.run_in_executor(None, _find_available_vm_id)
 
         logger.info(f"API: User '{current_user}' creating VM {vm_id} from template {config.VM_TEMPLATE_ID}")
 
@@ -461,7 +462,8 @@ async def api_health_check() -> Dict[str, Any]:
         dict: Health status with Proxmox connection info
     """
     try:
-        connect_proxmox().version.get()  # probe; raises on failure
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, lambda: connect_proxmox().version.get())
         return {
             "status": "healthy",
             "proxmox": {"connected": True}

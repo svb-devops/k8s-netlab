@@ -180,7 +180,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 app = FastAPI(
     title="K8S NetLab API",
     description="RESTful API for managing Kubernetes learning lab VMs",
-    version="0.1.0",
+    version="1.1.0",
     lifespan=lifespan,
     debug=config.APP_DEBUG
 )
@@ -204,7 +204,7 @@ if config.ALLOWED_ORIGINS:
         allow_origins=config.ALLOWED_ORIGINS,
         allow_credentials=True,
         allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Cookie", "Authorization"],
+        allow_headers=["Content-Type", "Cookie"],
     )
     logger.info(f"CORS middleware enabled for: {config.ALLOWED_ORIGINS}")
 else:

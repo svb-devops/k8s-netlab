@@ -7,6 +7,13 @@
 ## [Unreleased]
 
 ### Fixed
+- fix: change_password/reset_password 后未作废现有 session — 密码变更后立即清除该用户所有 session，防止泄露的 cookie 在 24h 内继续有效；补回归测试防止重现
+- refactor: 删除 start_vm() 死代码 — 无 API endpoint 无调用点，vm_manager.py 覆盖率从 72% 升至 90%
+- refactor: _find_available_vm_id() 和 api_health_check() 改走 run_in_executor，避免同步 Proxmox HTTP 请求阻塞 asyncio 事件循环
+- refactor: FastAPI app version 从 "0.1.0" 改为 "1.1.0"，与 git tag 一致
+- refactor: CORS allow_headers 移除 Authorization（本应用不使用该 header）
+
+### Fixed
 - fix: 注册接口无速率限制 — POST /register 加 3次/IP/60s 限制，防 bcrypt CPU 耗尽 DoS；补回归测试防止重现
 - fix: SmartLogger 重复创建同名实例会累积 FileHandler 泄漏 FD — _setup_logging() 先 close/remove 旧 handler 再添新 handler；补回归测试防止重现
 - fix: CI ADMIN_TOKEN 仅 14 字符，与 config.py ≥32 校验不符 — 改为 38 字符占位值

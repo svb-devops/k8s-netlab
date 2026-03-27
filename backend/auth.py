@@ -189,6 +189,16 @@ class AuthManager:
             for username, info in users.items()
         }
 
+    def _invalidate_user_sessions(self, username: str) -> None:
+        """Delete all sessions for a user (called after any password change)."""
+        def _cleanup(sessions: Dict) -> Dict:
+            to_delete = [k for k, v in sessions.items() if v.get("username") == username]
+            for k in to_delete:
+                del sessions[k]
+            return sessions
+        safe_update_json(SESSIONS_FILE, _cleanup)
+        logger.info(f"All sessions invalidated for '{username}' (password changed)")
+
     def change_password(self, username: str, old_password: str, new_password: str) -> bool:
         """
         Change password after verifying the old one.
@@ -205,6 +215,7 @@ class AuthManager:
             return users
 
         safe_update_json(USERS_FILE, _update)
+        self._invalidate_user_sessions(username)
         logger.info(f"Password changed for '{username}'")
         return True
 
@@ -225,6 +236,7 @@ class AuthManager:
             return u
 
         safe_update_json(USERS_FILE, _update)
+        self._invalidate_user_sessions(username)
         logger.info(f"Password reset for '{username}' by admin")
         return True
 
