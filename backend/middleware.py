@@ -61,7 +61,10 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
 _CSP = (
     "default-src 'self'; "
     "script-src 'self' cdn.tailwindcss.com cdn.jsdelivr.net; "
-    "style-src 'self' cdn.jsdelivr.net; "
+    # 'unsafe-inline' required: Tailwind Play CDN injects styles via <style> tags at runtime.
+    # Removing it causes all Tailwind utility classes to be ignored (page renders unstyled).
+    # script-src remains strict — this only relaxes CSS injection, not script execution.
+    "style-src 'self' cdn.jsdelivr.net 'unsafe-inline'; "
     # same-origin fetch + WebSocket (ws/wss to the same host)
     "connect-src 'self' ws: wss:; "
     "img-src 'self' data:; "

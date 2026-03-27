@@ -163,12 +163,29 @@ def test_security_headers_csp_blocks_objects(app_with_security_headers):
     assert "object-src 'none'" in csp
 
 
-def test_csp_does_not_contain_unsafe_inline(app_with_security_headers):
-    """CSP 不得包含 'unsafe-inline'——inline JS/CSS 允许攻击者注入任意脚本（N 回归）。"""
+def test_csp_script_src_does_not_contain_unsafe_inline(app_with_security_headers):
+    """script-src 不得包含 'unsafe-inline'——防止 XSS 脚本注入（N 回归）。
+    注：style-src 允许 'unsafe-inline' 以支持 Tailwind CDN 动态样式注入。"""
     client = TestClient(app_with_security_headers)
     resp = client.get("/ping")
     csp = resp.headers.get("content-security-policy", "")
-    assert "'unsafe-inline'" not in csp
+    # 提取 script-src 指令并单独检查
+    script_src = next((d.strip() for d in csp.split(";") if "script-src" in d), "")
+    assert "'unsafe-inline'" not in script_src, (
+        f"script-src must not contain 'unsafe-inline'. Got: {script_src}"
+    )
+
+
+def test_csp_style_src_allows_unsafe_inline_for_tailwind(app_with_security_headers):
+    """style-src 必须包含 'unsafe-inline' — Tailwind Play CDN 通过动态注入 <style> 标签工作，
+    缺少此指令会导致所有 Tailwind 样式被 CSP 拦截，页面视觉完全崩溃（回归）。"""
+    client = TestClient(app_with_security_headers)
+    resp = client.get("/ping")
+    csp = resp.headers.get("content-security-policy", "")
+    style_src = next((d.strip() for d in csp.split(";") if "style-src" in d), "")
+    assert "'unsafe-inline'" in style_src, (
+        f"style-src must contain 'unsafe-inline' for Tailwind CDN. Got: {style_src}"
+    )
 
 
 # ============================================================
