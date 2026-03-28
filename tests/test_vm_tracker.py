@@ -57,6 +57,35 @@ class TestExpiry:
         assert 500 not in expired
 
 
+class TestGetVmAgeMinutes:
+    def test_returns_positive_age_for_tracked_vm(self, tracker):
+        """get_vm_age_minutes 对已追踪的 VM 返回正数分钟数。"""
+        old_time = (datetime.now() - timedelta(minutes=5)).isoformat()
+        tracker.track_vm(500, owner="alice", created_at=old_time)
+        age = tracker.get_vm_age_minutes(500)
+        assert age >= 5.0
+
+    def test_returns_zero_for_untracked_vm(self, tracker):
+        """get_vm_age_minutes 对未追踪的 VM 返回 0.0，不抛异常。"""
+        assert tracker.get_vm_age_minutes(999) == 0.0
+
+    def test_returns_zero_for_invalid_created_at(self, tracker):
+        """get_vm_age_minutes 遇到无效 created_at 时返回 0.0，不抛异常（回归）。"""
+        import json
+        tracker.data_file.write_text(json.dumps({
+            "500": {"created_at": "NOT_A_DATE", "owner": "alice"}
+        }))
+        assert tracker.get_vm_age_minutes(500) == 0.0
+
+    def test_legacy_string_format_returns_positive_age(self, tracker):
+        """旧格式（纯字符串 created_at）时 get_vm_age_minutes 也应返回正确年龄。"""
+        import json
+        old_time = (datetime.now() - timedelta(minutes=3)).isoformat()
+        tracker.data_file.write_text(json.dumps({"500": old_time}))
+        age = tracker.get_vm_age_minutes(500)
+        assert age >= 3.0
+
+
 class TestGetAllVmsWithDetails:
     def test_returns_owner_and_age(self, tracker):
         old = (datetime.now() - timedelta(minutes=10)).isoformat()
@@ -76,6 +105,25 @@ class TestGetAllVmsWithDetails:
 
     def test_empty_tracker_returns_empty_list(self, tracker):
         assert tracker.get_all_vms_with_details() == []
+
+    def test_legacy_string_format_owner_is_unknown(self, tracker):
+        """旧格式（纯字符串值）的 VM 在 get_all_vms_with_details 中 owner 应为 'unknown'。"""
+        import json
+        old_time = (datetime.now() - timedelta(minutes=2)).isoformat()
+        tracker.data_file.write_text(json.dumps({"500": old_time}))
+        details = tracker.get_all_vms_with_details()
+        assert len(details) == 1
+        assert details[0]["owner"] == "unknown"
+        assert details[0]["created_at"] == old_time
+
+    def test_invalid_created_at_yields_zero_age(self, tracker):
+        """get_all_vms_with_details 遇到无效 created_at 时 age_minutes 为 0.0，不抛异常。"""
+        import json
+        tracker.data_file.write_text(json.dumps({
+            "500": {"created_at": "INVALID", "owner": "alice"}
+        }))
+        details = tracker.get_all_vms_with_details()
+        assert details[0]["age_minutes"] == 0.0
 
 
 class TestTemplateSafety:

@@ -1,5 +1,7 @@
 """Tests for AuthManager — new methods added in Phase 1 admin observability work."""
 
+import hashlib
+import json
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
@@ -216,3 +218,100 @@ class TestAutoCleanupTaskSessionPurge:
             f"Warning call must include original error string. Got: {warning_calls}"
         )
 
+
+# ============================================================
+# SHA-256 → bcrypt 自动升级（L2 回归）
+# ============================================================
+
+class TestPasswordAutoUpgrade:
+    def test_sha256_hash_upgraded_to_bcrypt_on_login(self, auth, tmp_path):
+        """
+        登录时若存储的是 SHA-256 明文哈希，必须自动升级为 bcrypt（回归：
+        旧用户首次在新版本登录后哈希格式应透明升级，防止旧弱哈希长期留存）。
+        """
+        import backend.auth as auth_module
+
+        # 直接注入 SHA-256 哈希的用户
+        sha256_hash = hashlib.sha256("secret".encode()).hexdigest()
+        users_file = auth_module.USERS_FILE
+        from backend.storage_utils import safe_write_json
+        safe_write_json(users_file, {
+            "legacy_user": {
+                "password_hash": sha256_hash,
+                "created_at": "2025-01-01T00:00:00",
+            }
+        })
+
+        # 登录成功
+        assert auth.verify_credentials("legacy_user", "secret") is True
+
+        # 升级后哈希应为 bcrypt 格式
+        from backend.storage_utils import safe_read_json
+        upgraded = safe_read_json(users_file)
+        new_hash = upgraded["legacy_user"]["password_hash"]
+        assert new_hash.startswith("$2b$"), (
+            f"SHA-256 哈希未升级为 bcrypt，当前值: {new_hash!r}"
+        )
+
+
+# ============================================================
+# reset_password（管理员强制重置）
+# ============================================================
+
+class TestResetPassword:
+    def test_reset_existing_user_returns_true(self, auth):
+        """reset_password 对已有用户必须返回 True 并更新密码。"""
+        auth.register_user("alice", "oldpass")
+        result = auth.reset_password("alice", "newpass")
+        assert result is True
+        assert auth.verify_credentials("alice", "newpass") is True
+
+    def test_reset_nonexistent_user_returns_false(self, auth):
+        """reset_password 对不存在的用户必须返回 False，不抛异常。"""
+        result = auth.reset_password("ghost", "anypass")
+        assert result is False
+
+    def test_reset_invalidates_existing_sessions(self, auth):
+        """reset_password 后旧 session 必须失效（安全回归）。"""
+        auth.register_user("alice", "oldpass")
+        old_token = auth.create_session("alice")
+        assert auth.verify_session(old_token) == "alice"
+
+        auth.reset_password("alice", "newpass")
+        assert auth.verify_session(old_token) is None
+
+
+# ============================================================
+# cleanup_expired_sessions
+# ============================================================
+
+class TestCleanupExpiredSessions:
+    def test_removes_expired_keeps_valid(self, auth):
+        """cleanup_expired_sessions 必须删除过期 session，保留有效 session。"""
+        import backend.auth as auth_module
+        from backend.storage_utils import safe_update_json
+
+        auth.register_user("alice", "pass")
+        valid_token = auth.create_session("alice")
+
+        # 注入已过期的 session
+        def _inject(sessions):
+            sessions["expired-tok"] = {
+                "username": "alice",
+                "created_at": "2020-01-01T00:00:00",
+                "expires_at": "2020-01-02T00:00:00",
+                "login_ip": None,
+            }
+            return sessions
+
+        safe_update_json(auth_module.SESSIONS_FILE, _inject)
+
+        auth.cleanup_expired_sessions()
+
+        sessions = auth._load_sessions()
+        assert "expired-tok" not in sessions
+        assert valid_token in sessions
+
+    def test_no_error_when_no_sessions(self, auth):
+        """cleanup_expired_sessions 在没有任何 session 时不抛异常。"""
+        auth.cleanup_expired_sessions()  # must not raise
