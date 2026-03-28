@@ -107,6 +107,19 @@ class TestRegister:
             f"Rate limit key should start with 'register:', got '{call_key}'"
         )
 
+    def test_register_records_rate_limit_on_failed_attempt(self, auth_setup):
+        """注册失败（用户名已存在）时也必须记录 rate limit，防止无限探测用户名枚举攻击（回归）。"""
+        client, mgr, mock_rl = auth_setup
+        mock_rl.is_over_limit.return_value = False
+        mgr.register_user("alice", "secret1")  # pre-create the user
+
+        resp = client.post("/api/auth/register", json={"username": "alice", "password": "secret2"})
+        assert resp.status_code == 400
+        assert mock_rl.record.call_count == 1, (
+            "rate_limiter.record() must be called even when registration fails — "
+            "otherwise unlimited failed attempts bypass rate limiting, enabling username enumeration"
+        )
+
 
 # ============================================================
 # POST /api/auth/login

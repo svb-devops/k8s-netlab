@@ -121,4 +121,4 @@ class JsonFormatter(logging.Formatter):
         for key, value in record.__dict__.items():
             if key not in _LOGRECORD_ATTRS and not key.startswith("_"):
                 payload[key] = value
-        return json.dumps(payload, ensure_ascii=False)
+        return json.dumps(payload, ensure_ascii=False, default=str)

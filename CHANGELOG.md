@@ -7,6 +7,8 @@
 ## [Unreleased]
 
 ### Fixed
+- fix: auth_routes.py register 接口速率限制仅在注册成功时记录，注册失败（用户名已存在）不消耗限速槽 — 允许攻击者无限探测用户名；将 rate_limiter.record() 移至 register_user() 调用之前，无论结果均记录；补回归测试防止重现
+- fix: middleware.py JsonFormatter.format() 缺少 default=str — 当 extra 包含非 JSON 可序列化字段（如 datetime）时 json.dumps 抛 TypeError，Python logging 静默丢弃整条记录；补回归测试防止重现
 - fix: websocket.py get_vm_ip/sync_vm_password 直接在 event loop 调用阻塞 Proxmox I/O — 提取同步 helper，通过 run_in_executor + wait_for(timeout) 包裹，防止终端建立期间阻塞所有请求；SSHTerminal.connect() 的 invoke_shell() 同样移入 executor；修复 invoke_shell 失败时 SSH 连接泄漏；补4条回归测试防止重现
 - fix: smart_logger.py generate_report() 调用 print() 破坏结构化 JSON 日志一致性 — 改为 self.logger.info()；补回归测试防止重现
 - fix: DELETE /api/vms/{id} 403 响应泄露 VM owner 用户名 — 从 detail 中移除 owner 用户名（信息泄露），owner 仍记录在服务端日志；补回归测试防止重现

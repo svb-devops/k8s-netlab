@@ -129,13 +129,16 @@ async def register(http_request: Request, request: RegisterRequest) -> AuthRespo
                 headers={"Retry-After": str(wait)},
             )
 
+        # Record this attempt unconditionally — failed attempts (username already exists)
+        # must also consume a rate-limit slot to prevent username enumeration via unlimited probing.
+        rate_limiter.record(rl_key)
+
         success = auth_manager.register_user(
             username=request.username,
             password=request.password
         )
 
         if success:
-            rate_limiter.record(rl_key)
             return AuthResponse(
                 success=True,
                 message="User registered successfully",

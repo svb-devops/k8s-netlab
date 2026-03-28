@@ -232,6 +232,33 @@ def test_request_log_includes_duration_ms_and_status_code():
     assert http_log["duration_ms"] >= 0
 
 
+def test_json_formatter_does_not_raise_on_non_serializable_extra():
+    """JsonFormatter.format() 对非 JSON 可序列化的 extra 字段不得抛 TypeError，
+    否则 Python logging 会静默丢弃整条日志记录（日志丢失回归）。"""
+    from datetime import datetime as _dt
+
+    stream = StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(JsonFormatter())
+    log = logging.getLogger("test.non_serializable_extra")
+    log.addHandler(handler)
+    log.setLevel(logging.DEBUG)
+    log.propagate = False
+
+    # datetime is not JSON-serializable by default; must not crash
+    log.info("timestamp event", extra={"ts": _dt.now()})
+    log.removeHandler(handler)
+
+    output = stream.getvalue().strip()
+    assert output, (
+        "Log record was silently dropped — JsonFormatter likely raised TypeError "
+        "on non-serializable extra field. Add default=str to json.dumps."
+    )
+    parsed = json.loads(output)
+    assert parsed["message"] == "timestamp event"
+    assert "ts" in parsed
+
+
 def test_json_formatter_includes_extra_fields():
     """JsonFormatter 必须将 logger.info(extra={...}) 中的字段合并到输出 JSON（M 回归）。"""
     from io import StringIO
