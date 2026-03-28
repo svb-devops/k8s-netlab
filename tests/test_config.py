@@ -125,6 +125,79 @@ def test_http_registry_mirror_logs_warning(monkeypatch, caplog):
     assert "insecure" in caplog.text.lower()
 
 
+def _pop_config(monkeypatch):
+    """
+    Remove backend.config from sys.modules so next import re-executes module-level code.
+
+    Also saves/restores the `config` attribute on the `backend` package object, which
+    Python updates as a side-effect of `import backend.config`. Without this,
+    `from backend import config` in other modules would get the freshly-created module
+    object instead of the original, causing cross-test fixture patching to target the
+    wrong object.
+    """
+    import sys
+    import backend as _backend_pkg
+    if "backend.config" in sys.modules:
+        monkeypatch.setitem(sys.modules, "backend.config", sys.modules["backend.config"])
+    # Preserve the package-level attribute so it is restored after the test
+    if hasattr(_backend_pkg, "config"):
+        monkeypatch.setattr(_backend_pkg, "config", _backend_pkg.config)
+    sys.modules.pop("backend.config", None)
+
+
+def _base_env(monkeypatch):
+    """Set minimal env vars required for a clean config import."""
+    monkeypatch.setenv("PROXMOX_HOST", "10.0.0.1")
+    monkeypatch.setenv("PROXMOX_TOKEN_ID", "user@pve!tok")
+    monkeypatch.setenv("PROXMOX_TOKEN_SECRET", "secret-token")
+    monkeypatch.delenv("PROXMOX_USER", raising=False)
+    monkeypatch.delenv("PROXMOX_PASSWORD", raising=False)
+    monkeypatch.setenv("VM_SSH_PASSWORD", "ssh-pass")
+    monkeypatch.setenv("ADMIN_TOKEN", "a" * 32)
+    monkeypatch.delenv("ALLOWED_ORIGINS", raising=False)
+
+
+def test_proxmox_password_auth_path(monkeypatch):
+    """PROXMOX_USER + PROXMOX_PASSWORD（无 token）时 config 应正常加载（旧版认证回归）。"""
+    _pop_config(monkeypatch)
+    monkeypatch.setenv("PROXMOX_HOST", "10.0.0.1")
+    monkeypatch.setenv("VM_SSH_PASSWORD", "ssh-pass")
+    monkeypatch.setenv("ADMIN_TOKEN", "a" * 32)
+    monkeypatch.delenv("PROXMOX_TOKEN_ID", raising=False)
+    monkeypatch.delenv("PROXMOX_TOKEN_SECRET", raising=False)
+    monkeypatch.setenv("PROXMOX_USER", "root@pam")
+    monkeypatch.setenv("PROXMOX_PASSWORD", "proxmox-pass")
+
+    import backend.config as cfg
+    assert cfg._proxmox_auth_method == "password"
+
+
+def test_allowed_origins_logs_info(monkeypatch, caplog):
+    """ALLOWED_ORIGINS 已设置时 config 应记录 info 日志（CORS 配置生效回归）。"""
+    import logging
+    _pop_config(monkeypatch)
+    _base_env(monkeypatch)
+    monkeypatch.setenv("ALLOWED_ORIGINS", "https://lab.example.com")
+
+    with caplog.at_level(logging.INFO, logger="backend.config"):
+        import backend.config  # noqa: F401
+
+    assert "lab.example.com" in caplog.text
+
+
+def test_admin_token_not_set_logs_warning(monkeypatch, caplog):
+    """ADMIN_TOKEN 未设置时 config 应记录 warning（管理端点禁用提示回归）。"""
+    import logging
+    _pop_config(monkeypatch)
+    _base_env(monkeypatch)
+    monkeypatch.setenv("ADMIN_TOKEN", "")  # not set
+
+    with caplog.at_level(logging.WARNING, logger="backend.config"):
+        import backend.config  # noqa: F401
+
+    assert "ADMIN_TOKEN" in caplog.text
+
+
 def test_https_registry_mirror_no_warning(monkeypatch, caplog):
     """VM_REGISTRY_MIRROR 已设置时不应产生不安全警告（H1 回归）。"""
     import logging

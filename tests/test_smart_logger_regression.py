@@ -10,6 +10,24 @@ import logging
 from pathlib import Path
 
 
+def test_smart_logger_generate_report_includes_warnings_section(tmp_path, monkeypatch):
+    """
+    SmartLogger.generate_report() 在有 warning 时必须包含警告段落（覆盖率回归）。
+    """
+    monkeypatch.chdir(tmp_path)
+    from backend.smart_logger import SmartLogger
+
+    sl = SmartLogger("warn_report_test")
+    sl.warning("磁盘空间不足 10%")
+    sl.warning("连接超时，已重试")
+    report_path = sl.generate_report()
+
+    content = (tmp_path / report_path).read_text(encoding="utf-8")
+    assert "磁盘空间不足" in content, (
+        "generate_report() 有 warnings 时报告文件内容必须包含警告信息"
+    )
+
+
 def test_smart_logger_creates_log_file_when_root_has_handlers(tmp_path, monkeypatch):
     """
     SmartLogger 在 root logger 已有 handler（即 main.py 已初始化）的情况下，

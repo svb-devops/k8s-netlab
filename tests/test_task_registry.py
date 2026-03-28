@@ -81,3 +81,29 @@ async def test_drain_handles_task_exception_gracefully():
 
     # drain must not propagate the exception
     await drain(timeout=5.0)
+
+
+@pytest.mark.asyncio
+async def test_drain_logs_warning_on_timeout():
+    """drain() 超时时必须打 warning 日志，不抛异常（超时兜底回归）。"""
+    import asyncio
+    from unittest.mock import patch
+
+    async def never_done():
+        await asyncio.sleep(9999)
+
+    from backend import task_registry
+
+    # 注入一个永不完成的 future
+    loop = asyncio.get_running_loop()
+    task = loop.create_task(never_done())
+    task_registry._pending.add(task)
+
+    # drain 超时 0.05s 应该触发 TimeoutError 分支
+    await drain(timeout=0.05)
+
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass

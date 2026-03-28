@@ -219,3 +219,69 @@ class TestAdminResetPassword:
                 headers={"X-Admin-Token": TEST_TOKEN},
             )
         assert resp.status_code == 422
+
+
+# ============================================================
+# geo lookup 异常兜底 + 损坏 session 过滤
+# ============================================================
+
+class TestAdminEdgeCases:
+    """admin_routes 的防御性兜底分支。"""
+
+    def _patch_all(self, sessions=None):
+        import contextlib
+        sessions = sessions or []
+        from unittest.mock import patch as _patch
+        return contextlib.ExitStack()
+
+    def test_geo_lookup_exception_does_not_crash_status(self, client):
+        """_get_geo() 内部抛异常时 /api/admin/status 必须正常返回，不传播异常。"""
+        session = {
+            "username": "alice",
+            "created_at": "2026-01-01T00:00:00",
+            "expires_at": "2099-01-01T00:00:00",
+            "login_ip": "1.2.3.4",
+            "last_activity": "2026-01-01T01:00:00",
+        }
+        with patch("backend.config.ADMIN_TOKEN", TEST_TOKEN), \
+             patch("backend.admin_routes.auth_manager") as mock_auth, \
+             patch("backend.admin_routes.vm_tracker") as mock_tracker, \
+             patch("backend.admin_routes.httpx.AsyncClient") as mock_client_cls:
+            mock_auth.get_active_sessions.return_value = [session]
+            mock_auth.get_users_summary.return_value = {}
+            mock_tracker.get_all_vms_with_details.return_value = []
+
+            # httpx 抛异常模拟 geo 失败
+            mock_client_cls.return_value.__aenter__.side_effect = Exception("network error")
+
+            resp = client.get("/api/admin/status", headers={"X-Admin-Token": TEST_TOKEN})
+        assert resp.status_code == 200
+
+    def test_session_missing_timestamps_is_skipped(self, client):
+        """created_at 或 expires_at 缺失的 session 必须被静默跳过，不崩溃（数据损坏防御）。"""
+        corrupt_session = {
+            "username": "bob",
+            # created_at and expires_at intentionally absent
+        }
+        valid_session = {
+            "username": "alice",
+            "created_at": "2026-01-01T00:00:00",
+            "expires_at": "2099-01-01T00:00:00",
+            "login_ip": None,
+            "last_activity": "2026-01-01T01:00:00",
+        }
+        with patch("backend.config.ADMIN_TOKEN", TEST_TOKEN), \
+             patch("backend.admin_routes.auth_manager") as mock_auth, \
+             patch("backend.admin_routes.vm_tracker") as mock_tracker, \
+             patch("backend.admin_routes.httpx.AsyncClient"):
+            mock_auth.get_active_sessions.return_value = [corrupt_session, valid_session]
+            mock_auth.get_users_summary.return_value = {}
+            mock_tracker.get_all_vms_with_details.return_value = []
+            resp = client.get("/api/admin/status", headers={"X-Admin-Token": TEST_TOKEN})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        # 只有 alice（有效 session）被包含，bob（损坏）被跳过
+        usernames = [s["username"] for s in data["sessions"]]
+        assert "alice" in usernames
+        assert "bob" not in usernames
