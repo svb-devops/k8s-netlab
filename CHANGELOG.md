@@ -7,6 +7,8 @@
 ## [Unreleased]
 
 ### Fixed
+- fix: websocket.py get_vm_ip/sync_vm_password 直接在 event loop 调用阻塞 Proxmox I/O — 提取同步 helper，通过 run_in_executor + wait_for(timeout) 包裹，防止终端建立期间阻塞所有请求；SSHTerminal.connect() 的 invoke_shell() 同样移入 executor；修复 invoke_shell 失败时 SSH 连接泄漏；补4条回归测试防止重现
+- fix: smart_logger.py generate_report() 调用 print() 破坏结构化 JSON 日志一致性 — 改为 self.logger.info()；补回归测试防止重现
 - fix: DELETE /api/vms/{id} 403 响应泄露 VM owner 用户名 — 从 detail 中移除 owner 用户名（信息泄露），owner 仍记录在服务端日志；补回归测试防止重现
 - refactor: 移除 auth.py 中从未被调用的 _save_users / _save_sessions 死代码（全部写操作均走 safe_update_json）
 - fix: test_serial_second_creation_blocked_by_quota 死锁 — iter([...]) side_effect 耗尽抛 StopIteration，Python 3.7+ 禁止将 StopIteration 设入 asyncio.Future，导致 run_in_executor await 永不返回；改为 side_effect 函数避免抛 StopIteration；同时补充第 3 次 list_vms 调用（req1-_find_available_vm_id 遗漏）

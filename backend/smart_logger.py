@@ -179,6 +179,6 @@ class SmartLogger:
         report_content = '\n'.join(lines)
         report_path.write_text(report_content, encoding='utf-8')
 
-        print(f"\n📄 Report: {report_path}\n")
+        self.logger.info(f"Report generated: {report_path}")
 
         return str(report_path)

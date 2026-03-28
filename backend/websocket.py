@@ -37,27 +37,24 @@ class SSHTerminal:
             self.ssh_client = paramiko.SSHClient()
             self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())  # nosec B507 — internal lab VMs only
 
-            # Connect to VM
-            client = self.ssh_client  # local ref so mypy knows it's non-None in lambda
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(
-                None,
-                lambda: client.connect(
-                    self.vm_ip,
+            # Both connect() and invoke_shell() are blocking Paramiko calls.
+            # Run them together in the executor so neither blocks the event loop.
+            client = self.ssh_client  # local ref so mypy knows it's non-None in closure
+            vm_ip = self.vm_ip
+
+            def _connect_and_open_shell():
+                client.connect(
+                    vm_ip,
                     username=username,
                     password=password,
                     timeout=10,
                     allow_agent=False,
                     look_for_keys=False,
-                ),
-            )
+                )
+                return client.invoke_shell(term="xterm-256color", width=120, height=30)
 
-            # Get interactive shell
-            self.channel = self.ssh_client.invoke_shell(
-                term="xterm-256color",
-                width=120,
-                height=30
-            )
+            loop = asyncio.get_running_loop()
+            self.channel = await loop.run_in_executor(None, _connect_and_open_shell)
             self.channel.setblocking(False)
 
             logger.info(f"SSH connected to VM {self.vm_id} at {self.vm_ip}")
@@ -65,6 +62,13 @@ class SSHTerminal:
 
         except Exception as e:
             logger.error(f"SSH connection failed to VM {self.vm_id} ({self.vm_ip}): {e}")
+            # Close any partially-established SSH connection to avoid leaking the socket
+            # (e.g. connect() succeeded but invoke_shell() raised)
+            if self.ssh_client:
+                try:
+                    self.ssh_client.close()
+                except Exception:
+                    pass
             self.last_error = str(e)
             return False
 
@@ -96,13 +100,10 @@ class SSHTerminal:
         logger.info(f"SSH connection closed for VM {self.vm_id}")
 
 
-async def get_vm_ip(vm_id: int) -> Optional[str]:
+def _get_vm_ip_sync(vm_id: int) -> Optional[str]:
     """
-    Get VM IP address from Proxmox QEMU agent.
-
-    Filters to return only IPs within the configured VM_NETWORK range
-    (e.g. 172.16.100.0/24), skipping k3s/flannel/CNI virtual interfaces
-    that would not be reachable from the host.
+    Sync helper: get VM IP from Proxmox QEMU agent.
+    Must be called via run_in_executor — contains blocking network I/O.
     """
     try:
         proxmox = connect_proxmox()
@@ -148,14 +149,29 @@ async def get_vm_ip(vm_id: int) -> Optional[str]:
         return None
 
 
-async def sync_vm_password(vm_id: int) -> bool:
+async def get_vm_ip(vm_id: int) -> Optional[str]:
     """
-    Set the VM user's SSH password via QEMU guest agent so it matches
-    VM_SSH_PASSWORD in config, regardless of what was on the template.
+    Get VM IP address from Proxmox QEMU agent.
 
-    Called after the QEMU agent is confirmed running (i.e. after get_vm_ip
-    succeeds).  Failure is non-fatal: SSH is still attempted with the
-    configured credentials.
+    Runs the blocking Proxmox API call in a thread executor so the
+    event loop is not blocked while waiting for the QEMU agent response.
+    Returns None on timeout so the caller's retry loop can advance.
+    """
+    loop = asyncio.get_running_loop()
+    try:
+        return await asyncio.wait_for(
+            loop.run_in_executor(None, _get_vm_ip_sync, vm_id),
+            timeout=10.0,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(f"VM {vm_id} IP lookup timed out after 10s")
+        return None
+
+
+def _sync_vm_password_sync(vm_id: int) -> bool:
+    """
+    Sync helper: set VM SSH password via QEMU guest agent.
+    Must be called via run_in_executor — contains blocking network I/O.
 
     Note: Proxmox 8.x proxmoxer sets the password value as-is (no
     base64 decoding on the server side despite what older API docs say).
@@ -188,6 +204,26 @@ async def sync_vm_password(vm_id: int) -> bool:
 
     except Exception as e:
         logger.warning(f"VM {vm_id} QEMU agent password sync failed: {e}")
+        return False
+
+
+async def sync_vm_password(vm_id: int) -> bool:
+    """
+    Set the VM user's SSH password via QEMU guest agent so it matches
+    VM_SSH_PASSWORD in config, regardless of what was on the template.
+
+    Runs the blocking Proxmox API call in a thread executor so the
+    event loop is not blocked. Failure is non-fatal: SSH is still
+    attempted with the configured credentials.
+    """
+    loop = asyncio.get_running_loop()
+    try:
+        return await asyncio.wait_for(
+            loop.run_in_executor(None, _sync_vm_password_sync, vm_id),
+            timeout=15.0,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(f"VM {vm_id} password sync timed out after 15s (non-fatal)")
         return False
 
 

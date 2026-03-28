@@ -65,3 +65,19 @@ def test_smart_logger_no_duplicate_handlers_on_reuse(tmp_path, monkeypatch):
     for h in logger.handlers[:]:
         h.close()
         logger.removeHandler(h)
+
+
+def test_generate_report_does_not_print_to_stdout(tmp_path, monkeypatch, capsys):
+    """generate_report() 不得调用 print()，应通过 logger 输出（结构化日志一致性，N 回归）。"""
+    monkeypatch.chdir(tmp_path)
+    from backend.smart_logger import SmartLogger
+
+    sl = SmartLogger("test_no_print")
+    sl.info("test message")
+    sl.generate_report()
+
+    captured = capsys.readouterr()
+    assert captured.out == "", (
+        "generate_report() called print() — must use logger instead to maintain "
+        "structured JSON logging consistency"
+    )

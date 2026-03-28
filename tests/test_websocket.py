@@ -4,6 +4,7 @@ Tests for backend/websocket.py — SSHTerminal and VM setup helpers.
 
 import asyncio
 import logging
+import threading
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -131,3 +132,98 @@ async def test_wait_for_k3s_none_ssh_client_returns_false():
     result = await wait_for_k3s(terminal, mock_ws, max_wait=5)
 
     assert result is False, "Expected False when ssh_client is None"
+
+
+# ============================================================
+# A 类回归：get_vm_ip / sync_vm_password 不得阻塞 event loop
+# ============================================================
+
+@pytest.mark.asyncio
+async def test_get_vm_ip_does_not_block_event_loop():
+    """get_vm_ip() 必须通过 run_in_executor 调用 Proxmox API，不得在 event loop 线程执行阻塞 I/O（A 类异步安全）。"""
+    main_thread_id = threading.get_ident()
+    proxmox_call_thread_ids: list[int] = []
+
+    def recording_get(*args, **kwargs):
+        proxmox_call_thread_ids.append(threading.get_ident())
+        return {"result": []}
+
+    mock_agent = MagicMock()
+    mock_agent.get.side_effect = recording_get
+    mock_proxmox = MagicMock()
+    mock_proxmox.nodes.return_value.qemu.return_value.agent = mock_agent
+
+    from backend.websocket import get_vm_ip
+    with patch("backend.websocket.connect_proxmox", return_value=mock_proxmox):
+        await get_vm_ip(500)
+
+    assert proxmox_call_thread_ids, "connect_proxmox was never called"
+    assert main_thread_id not in proxmox_call_thread_ids, (
+        "get_vm_ip() called Proxmox API on the event loop thread — "
+        "must use run_in_executor to avoid blocking all requests"
+    )
+
+
+@pytest.mark.asyncio
+async def test_sync_vm_password_does_not_block_event_loop():
+    """sync_vm_password() 必须通过 run_in_executor 调用 Proxmox API，不得在 event loop 线程执行阻塞 I/O（A 类异步安全）。"""
+    main_thread_id = threading.get_ident()
+    proxmox_call_thread_ids: list[int] = []
+
+    def recording_post(*args, **kwargs):
+        proxmox_call_thread_ids.append(threading.get_ident())
+        return {}
+
+    mock_agent = MagicMock()
+    mock_agent.post.side_effect = recording_post
+    mock_proxmox = MagicMock()
+    mock_proxmox.nodes.return_value.qemu.return_value.agent = mock_agent
+
+    from backend.websocket import sync_vm_password
+    with patch("backend.websocket.connect_proxmox", return_value=mock_proxmox), \
+         patch("backend.websocket.config") as mock_config:
+        mock_config.PROXMOX_NODE = "pve"
+        mock_config.VM_SSH_USER = "user"
+        mock_config.VM_SSH_PASSWORD = "example"
+        await sync_vm_password(500)
+
+    assert proxmox_call_thread_ids, "connect_proxmox was never called"
+    assert main_thread_id not in proxmox_call_thread_ids, (
+        "sync_vm_password() called Proxmox API on the event loop thread — "
+        "must use run_in_executor to avoid blocking all requests"
+    )
+
+
+@pytest.mark.asyncio
+async def test_ssh_terminal_connect_invoke_shell_does_not_block_event_loop():
+    """SSHTerminal.connect() 的 invoke_shell() 必须在 executor 线程执行，不得阻塞 event loop（A 类异步安全）。"""
+    main_thread_id = threading.get_ident()
+    invoke_shell_thread_ids: list[int] = []
+
+    mock_channel = MagicMock()
+
+    def recording_invoke_shell(**kwargs):
+        invoke_shell_thread_ids.append(threading.get_ident())
+        return mock_channel
+
+    mock_client = MagicMock()
+    mock_client.connect.return_value = None
+    mock_client.invoke_shell.side_effect = recording_invoke_shell
+
+    from backend.websocket import SSHTerminal
+    terminal = SSHTerminal.__new__(SSHTerminal)
+    terminal.vm_id = 500
+    terminal.vm_ip = "172.16.100.50"
+    terminal.ssh_client = None
+    terminal.channel = None
+    terminal.last_error = None
+
+    with patch("backend.websocket.paramiko") as mock_paramiko:
+        mock_paramiko.SSHClient.return_value = mock_client
+        mock_paramiko.AutoAddPolicy.return_value = MagicMock()
+        await terminal.connect(username="root", password="example")
+
+    assert invoke_shell_thread_ids, "invoke_shell() was never called"
+    assert main_thread_id not in invoke_shell_thread_ids, (
+        "invoke_shell() called on event loop thread — must be inside run_in_executor"
+    )
