@@ -407,3 +407,68 @@ class TestGetClientIP:
         req.client = None
         req.headers = {}
         assert _get_client_ip(req) == "unknown"
+
+    def test_x_real_ip_used_when_cf_and_xff_absent(self):
+        """loopback 来源且无 CF-Connecting-IP / X-Forwarded-For 时，X-Real-IP 作为兜底（回归）。"""
+        from backend.auth_routes import _get_client_ip
+        req = self._make_request("127.0.0.1", {"X-Real-IP": "198.51.100.99"})
+        assert _get_client_ip(req) == "198.51.100.99"
+
+
+# ============================================================
+# 500 错误处理 — register / login / logout 意外异常兜底
+# ============================================================
+
+class TestUnexpectedErrorHandling:
+    """验证各 auth 端点的 except Exception 兜底分支：意外异常返回 500，不泄露内部错误。"""
+
+    def test_register_returns_500_on_unexpected_error(self, auth_setup):
+        """register 内部意外抛异常时必须返回 500，不泄露错误细节（回归）。"""
+        client, _, mock_rl = auth_setup
+        mock_rl.is_over_limit.return_value = False
+        with patch("backend.auth_routes.auth_manager") as mock_mgr:
+            mock_mgr.register_user.side_effect = RuntimeError("db crash")
+            resp = client.post(
+                "/api/auth/register",
+                json={"username": "alice", "password": "secret1"},
+            )
+        assert resp.status_code == 500
+
+    def test_login_returns_500_on_unexpected_error(self, auth_setup):
+        """login 内部意外抛异常时必须返回 500，不泄露错误细节（回归）。"""
+        client, _, mock_rl = auth_setup
+        mock_rl.is_over_limit.return_value = False
+        with patch("backend.auth_routes.auth_manager") as mock_mgr:
+            mock_mgr.verify_credentials.side_effect = RuntimeError("db crash")
+            resp = client.post(
+                "/api/auth/login",
+                json={"username": "alice", "password": "secret1"},
+            )
+        assert resp.status_code == 500
+
+    def test_logout_returns_500_on_unexpected_error(self, auth_setup):
+        """logout 内部意外抛异常时必须返回 500，不泄露错误细节（回归）。"""
+        client, _, _ = auth_setup
+        client.cookies.set("session_token", "some-token")
+        with patch("backend.auth_routes.auth_manager") as mock_mgr:
+            mock_mgr.delete_session.side_effect = RuntimeError("io error")
+            resp = client.post("/api/auth/logout")
+        assert resp.status_code == 500
+
+
+# ============================================================
+# change-password — expired session
+# ============================================================
+
+class TestChangePasswordExpiredSession:
+    def test_expired_session_returns_401(self, auth_setup):
+        """change-password 提交已失效的 session_token 时必须返回 401（回归）。"""
+        client, _, _ = auth_setup
+        client.cookies.set("session_token", "expired-or-invalid-token")
+        with patch("backend.auth_routes.auth_manager") as mock_mgr:
+            mock_mgr.verify_session.return_value = None  # session expired
+            resp = client.post(
+                "/api/auth/change-password",
+                json={"old_password": "old", "new_password": "new_pass_long"},
+            )
+        assert resp.status_code == 401
