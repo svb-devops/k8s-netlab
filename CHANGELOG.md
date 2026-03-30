@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### Changed
+- test: 补全 storage_utils 锁模式和嵌套路径测试 — 验证读用 LOCK_SH、写用 LOCK_EX、父目录自动创建
+
 ### Fixed
 - test: 补全 storage_utils/rate_limiter/auth_deps 未覆盖路径 — 覆盖率 88.84% → 91.19%（storage_utils 错误路径全覆盖、rate_limiter is_over_limit/record 独立单元测试、auth_deps invalid session/optional 依赖新增 test_auth_deps.py）
 - fix: auth_routes.py register 接口速率限制仅在注册成功时记录，注册失败（用户名已存在）不消耗限速槽 — 允许攻击者无限探测用户名；将 rate_limiter.record() 移至 register_user() 调用之前，无论结果均记录；补回归测试防止重现

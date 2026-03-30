@@ -6,14 +6,17 @@ Covers:
   - missing-file defaults
   - atomic write (no partial reads)
   - concurrent writers don't corrupt data
+  - lock mode: reads use LOCK_SH, writes use LOCK_EX
+  - parent directory auto-creation (nested paths)
 """
 
+import fcntl
 import json
 import os
 import tempfile
 import threading
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pytest
 
@@ -48,6 +51,22 @@ class TestSafeReadJson:
         tmp_json.write_text("{ not valid json !!!")
         result = safe_read_json(tmp_json, default={"fallback": True})
         assert result == {"fallback": True}
+
+    def test_uses_shared_lock_for_reads(self, tmp_json):
+        """safe_read_json 必须以 LOCK_SH 加锁，允许并发读取不互相阻塞。"""
+        tmp_json.write_text(json.dumps({"x": 1}))
+        lock_calls = []
+        original_flock = fcntl.flock
+
+        def capture_flock(fd, op):
+            lock_calls.append(op)
+            return original_flock(fd, op)
+
+        with patch("backend.storage_utils.fcntl.flock", side_effect=capture_flock):
+            safe_read_json(tmp_json)
+
+        assert fcntl.LOCK_SH in lock_calls, "safe_read_json 必须使用 LOCK_SH"
+        assert fcntl.LOCK_EX not in lock_calls, "safe_read_json 不应使用 LOCK_EX"
 
 
 class TestSafeWriteJson:
@@ -87,6 +106,29 @@ class TestSafeWriteJson:
              patch("pathlib.Path.unlink", side_effect=OSError("unlink failed")):
             result = safe_write_json(tmp_json, {"v": 1})
         assert result is False
+
+    def test_creates_parent_directories(self, tmp_path):
+        """safe_write_json 对不存在的嵌套路径必须自动创建父目录（parents=True）。"""
+        nested = tmp_path / "a" / "b" / "data.json"
+        result = safe_write_json(nested, {"nested": True})
+        assert result is True
+        assert nested.exists()
+        assert json.loads(nested.read_text()) == {"nested": True}
+
+    def test_uses_exclusive_lock_for_writes(self, tmp_json):
+        """safe_write_json 必须以 LOCK_EX 加锁，防止并发写入数据竞争。"""
+        lock_calls = []
+        original_flock = fcntl.flock
+
+        def capture_flock(fd, op):
+            lock_calls.append(op)
+            return original_flock(fd, op)
+
+        with patch("backend.storage_utils.fcntl.flock", side_effect=capture_flock):
+            safe_write_json(tmp_json, {"v": 1})
+
+        assert fcntl.LOCK_EX in lock_calls, "safe_write_json 必须使用 LOCK_EX"
+        assert fcntl.LOCK_SH not in lock_calls, "safe_write_json 不应使用 LOCK_SH"
 
 
 class TestSafeUpdateJson:
@@ -130,6 +172,14 @@ class TestSafeUpdateJson:
              patch("pathlib.Path.unlink", side_effect=OSError("unlink failed")):
             result = safe_update_json(tmp_json, lambda d: d)
         assert result is False
+
+    def test_creates_parent_directories(self, tmp_path):
+        """safe_update_json 对不存在的嵌套路径必须自动创建父目录（parents=True）。"""
+        nested = tmp_path / "a" / "b" / "data.json"
+        result = safe_update_json(nested, lambda d: {**d, "created": True})
+        assert result is True
+        assert nested.exists()
+        assert json.loads(nested.read_text())["created"] is True
 
 
 # ---------------------------------------------------------------------------
