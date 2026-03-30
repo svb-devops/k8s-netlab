@@ -1,5 +1,14 @@
 {
   "permissions": {
+    "deny": [
+      "Bash(qm destroy*)",
+      "Bash(qm delete*)",
+      "Bash(git reset --hard*)",
+      "Bash(git push --force*)",
+      "Bash(rm -rf /*)",
+      "Bash(DROP TABLE*)",
+      "Bash(DROP DATABASE*)"
+    ],
     "allow": [
       "Bash(git *)",
       "Bash(pytest *)",

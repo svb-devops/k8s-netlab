@@ -26,7 +26,7 @@ import logging
 import os
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, cast
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def safe_read_json(path: Path, default: Optional[Dict] = None) -> Dict:
     try:
         with _file_lock(path, exclusive=False):
             with open(path, "r") as f:
-                return json.load(f)
+                return cast(Dict, json.load(f))
     except Exception as e:
         logger.error(f"safe_read_json({path.name}): {e}")
         return default

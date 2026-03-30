@@ -7,7 +7,7 @@ All routes use vm_manager functions and return standardized JSON responses.
 
 import asyncio
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -427,7 +427,7 @@ async def api_get_vm_status(
         # Connect to Proxmox and get VM status (run in thread — blocking network I/O)
         def _fetch_status() -> dict:
             px = connect_proxmox()
-            return px.nodes(config.PROXMOX_NODE).qemu(vm_id).status.current.get()
+            return cast(dict, px.nodes(config.PROXMOX_NODE).qemu(vm_id).status.current.get())
 
         loop = asyncio.get_running_loop()
         status_data = await loop.run_in_executor(None, _fetch_status)

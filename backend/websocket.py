@@ -7,7 +7,7 @@ Provides WebSocket-based SSH terminal access to VMs.
 import asyncio
 import ipaddress
 import logging
-from typing import Optional
+from typing import Optional, cast
 
 import paramiko  # type: ignore[import-untyped]
 from fastapi import WebSocket, WebSocketDisconnect
@@ -55,6 +55,7 @@ class SSHTerminal:
 
             loop = asyncio.get_running_loop()
             self.channel = await loop.run_in_executor(None, _connect_and_open_shell)
+            assert self.channel is not None
             self.channel.setblocking(False)
 
             logger.info(f"SSH connected to VM {self.vm_id} at {self.vm_ip}")
@@ -88,7 +89,7 @@ class SSHTerminal:
             data = await loop.run_in_executor(
                 None, self.channel.recv, 8192
             )
-            return data.decode("utf-8", errors="replace")
+            return cast(str, data.decode("utf-8", errors="replace"))
         return None
 
     def close(self):
@@ -135,12 +136,12 @@ def _get_vm_ip_sync(vm_id: int) -> Optional[str]:
                     try:
                         if ipaddress.ip_address(ip) in vm_network:
                             logger.info(f"VM {vm_id} IP found: {ip} (iface: {iface.get('name')})")
-                            return ip
+                            return cast(str, ip)
                     except ValueError:
                         pass
                 elif not ip.startswith("127."):
                     # Fallback when VM_NETWORK is not configured
-                    return ip
+                    return cast(str, ip)
 
         return None
 

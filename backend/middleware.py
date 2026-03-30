@@ -10,6 +10,7 @@ import logging
 import time
 import traceback
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -38,7 +39,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
     - Echoes it back in the X-Request-ID response header.
     """
 
-    async def dispatch(self, request: Request, call_next) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
         request.state.request_id = request_id
         start = time.perf_counter()
@@ -86,7 +87,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
       - Content-Security-Policy                — restrict resource origins
     """
 
-    async def dispatch(self, request: Request, call_next) -> Response:
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"

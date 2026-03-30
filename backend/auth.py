@@ -8,7 +8,7 @@ import logging
 import secrets
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, cast
 
 from backend.password_utils import hash_password, needs_upgrade, verify_password
 from backend.storage_utils import safe_read_json, safe_update_json, safe_write_json
@@ -278,7 +278,7 @@ class AuthManager:
             logger.info(f"Session expired and removed: {token[:10]}...")
             return None
 
-        return session["username"]
+        return cast(str, session["username"])
 
     def delete_session(self, token: str):
         """

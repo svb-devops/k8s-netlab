@@ -8,6 +8,7 @@
 
 ### Changed
 - test: 补全 storage_utils 锁模式和嵌套路径测试 — 验证读用 LOCK_SH、写用 LOCK_EX、父目录自动创建
+- chore: 对齐 opsreplay 最佳实践 — settings.json 加 deny 列表、CI 覆盖率门禁提升至 90%、mypy 加严 warn_return_any/check_untyped_defs、新增 smoke-test skill 和 Makefile
 
 ### Fixed
 - test: 补全 storage_utils/rate_limiter/auth_deps 未覆盖路径 — 覆盖率 88.84% → 91.19%（storage_utils 错误路径全覆盖、rate_limiter is_over_limit/record 独立单元测试、auth_deps invalid session/optional 依赖新增 test_auth_deps.py）
