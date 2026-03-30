@@ -12,7 +12,7 @@ proxmoxer==2.0.1
 requests==2.33.0
 
 # SSH and Terminal
-paramiko==3.4.0
+paramiko==4.0.0
 websockets==12.0
 
 # Data Validation
