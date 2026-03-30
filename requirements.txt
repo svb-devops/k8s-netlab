@@ -3,7 +3,7 @@
 # Web Framework
 fastapi==0.135.2
 starlette==0.52.1
-uvicorn[standard]==0.24.0
+uvicorn[standard]==0.42.0
 python-multipart==0.0.22
 aiofiles==23.2.1
 
