@@ -16,13 +16,20 @@
 
 **pre-commit hook 会检查**：有代码文件变更但 CHANGELOG 未更新 → 阻断 commit。
 
-### 4. commit + push
+### 4. 调用 safety-reviewer（A/B 类变更必须，C 类豁免）
+
+- **A 类**（硬阻断）：auth / VM 操作 / shell 命令构造 / CSP / asyncio / tracker 变更
+- **B 类**（常规审查）：新 endpoint / 新 feature / 测试基础设施
+- **C 类**（豁免）：纯文档 / 注释 / 格式
+
+详见 [safety-review-policy.md](safety-review-policy.md)，收到 BLOCKER 不得自行忽略。
+
+### 5. commit + push
 pre-push hook 自动跑：8 项安全扫描 + pytest 全量 + Codex（quota 激活后）。
 
 ---
 
 ## 延伸（建议，非强制）
 
-- **safety-reviewer**（A/B 类变更）：参见 [safety-review-policy.md](safety-review-policy.md)
 - **codex review**（quota 激活后）：`codex review --base main`，发现 BLOCKER 必须修复
 - **写入知识库**：功能有跨项目复用价值时 → `/root/kb/`

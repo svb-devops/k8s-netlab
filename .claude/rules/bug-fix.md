@@ -13,6 +13,16 @@
 
 ---
 
+### 4. 调用 safety-reviewer（A/B 类变更必须，C 类豁免）
+
+- **A 类**（硬阻断）：auth / VM 操作 / shell 命令构造 / CSP / asyncio / tracker 变更
+- **B 类**（常规审查）：其他 bugfix / 新 endpoint / 测试基础设施
+- **C 类**（豁免）：纯文档 / 注释 / 格式
+
+详见 [safety-review-policy.md](safety-review-policy.md)，收到 BLOCKER 不得自行忽略。
+
+---
+
 commit message 格式：`fix: <描述> — 补回归测试防止重现`
 
 push 后 pre-push hook 自动跑：8 项安全扫描 + pytest 全量。
@@ -21,6 +31,5 @@ push 后 pre-push hook 自动跑：8 项安全扫描 + pytest 全量。
 
 ## 延伸（建议，非强制）
 
-- **safety-reviewer**（A/B 类变更）：参见 [safety-review-policy.md](safety-review-policy.md)
 - **codex review**（quota 激活后）：`codex review --base main`，发现 BLOCKER 必须修复
 - **push 后查错误日志**：`journalctl -u k8s-netlab -p err --since "5 minutes ago" --no-pager`
