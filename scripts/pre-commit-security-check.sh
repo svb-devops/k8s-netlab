@@ -154,6 +154,23 @@ else
 fi
 
 # ----------------------------------------------------------
+# 9. CHANGELOG.md must be updated when code changes
+# ----------------------------------------------------------
+echo "【9/9】检查 CHANGELOG.md 已更新..."
+STAGED_CODE=$(git diff --cached --name-only | grep -E '\.(py|html|js|sh)$' || true)
+if [ -n "$STAGED_CODE" ]; then
+    if git diff --cached --name-only | grep -q "CHANGELOG.md"; then
+        echo "✅ 通过"
+    else
+        echo "❌ 代码文件已改动但 CHANGELOG.md 未更新"
+        echo "  请在 CHANGELOG.md 的 [Unreleased] 段追加一行描述，再重新 git add CHANGELOG.md"
+        ISSUES=$((ISSUES + 1))
+    fi
+else
+    echo "✅ 通过（无代码文件变更，豁免）"
+fi
+
+# ----------------------------------------------------------
 # Result
 # ----------------------------------------------------------
 echo ""

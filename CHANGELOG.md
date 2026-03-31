@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- refactor: pre-commit hook 加 CHANGELOG 机械门禁（有代码变更未更新 CHANGELOG 则阻断 commit）；bug-fix.md / feature.md 重构为"3-4 项必做 + 延伸阅读"结构，区分机械门禁和 Claude 自律，消除安全感幻觉
 - test: 补全 storage_utils 锁模式和嵌套路径测试 — 验证读用 LOCK_SH、写用 LOCK_EX、父目录自动创建
 - chore: 对齐 opsreplay 最佳实践 — settings.json 加 deny 列表、CI 覆盖率门禁提升至 90%、mypy 加严 warn_return_any/check_untyped_defs、新增 smoke-test skill 和 Makefile
 
