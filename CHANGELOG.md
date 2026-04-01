@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- feat: 双层审查体系 — safety-review-policy.md 重构为 safety-reviewer（第一层）+ Codex gpt-5.3-codex（第二层）；pre-push hook 集成 Codex 独立审查（BLOCKER 自动阻断，quota 问题跳过不阻断）
 - refactor: pre-commit hook 加 CHANGELOG 机械门禁（有代码变更未更新 CHANGELOG 则阻断 commit）；bug-fix.md / feature.md 重构为"必做 + 延伸阅读"结构；修复精简过度问题——safety-reviewer 恢复为 A/B 类变更条件必做（非可选），防止安全审查质量衰减
 - test: 补全 storage_utils 锁模式和嵌套路径测试 — 验证读用 LOCK_SH、写用 LOCK_EX、父目录自动创建
 - chore: 对齐 opsreplay 最佳实践 — settings.json 加 deny 列表、CI 覆盖率门禁提升至 90%、mypy 加严 warn_return_any/check_untyped_defs、新增 smoke-test skill 和 Makefile

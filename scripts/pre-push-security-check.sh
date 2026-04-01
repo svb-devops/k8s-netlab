@@ -217,6 +217,27 @@ else
 fi
 
 # ----------------------------------------------------------------
+# Codex 独立代码审查（OpenAI 模型，真正独立于 Claude）
+# ----------------------------------------------------------------
+if [ "$ISSUES" -eq 0 ] && command -v codex &>/dev/null; then
+    echo ""
+    echo "  [Codex] 独立代码审查（gpt-5.3-codex）..."
+    CODEX_OUTPUT=$(timeout 120 codex review --base main 2>&1 || true)
+    if echo "$CODEX_OUTPUT" | grep -qi "quota exceeded\|unauthorized\|401\|rate limit"; then
+        echo "  ⚠️  Codex 账户未就绪（配额/认证问题），跳过独立审查"
+        echo "  请检查 platform.openai.com 账户余额后重新 push"
+    elif echo "$CODEX_OUTPUT" | grep -qiE "^[-*]?\s*Severity:\s*BLOCKER|^\s*BLOCKER:"; then
+        echo "  ❌ Codex 发现 BLOCKER，push 已阻止："
+        echo "$CODEX_OUTPUT" | grep -iE "^[-*]?\s*Severity:\s*BLOCKER|^\s*BLOCKER:" | sed 's/^/     /'
+        ISSUES=$((ISSUES + 1))
+    elif echo "$CODEX_OUTPUT" | grep -qi "error\|failed\|interrupted"; then
+        echo "  ⚠️  Codex 运行异常，跳过（不阻断 push）"
+    else
+        echo "  ✅ Codex 审查通过"
+    fi
+fi
+
+# ----------------------------------------------------------------
 # 测试门禁：有 tests/ 目录则必须通过
 # ----------------------------------------------------------------
 if [ -d "tests" ] && [ "$ISSUES" -eq 0 ]; then
