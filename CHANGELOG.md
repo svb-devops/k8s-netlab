@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- feat: 里程碑1 部署案例基础设施 — 新增 backend/deployments_routes.py（/api/deployments），注册路由到 main.py，前端加 Tab 切换（网络实验/部署案例），docs.js 扩展 mode 属性和 switchMode()，补 tests/test_deployments_routes.py（10个测试，覆盖率93%），redis:7-alpine 已在 registry mirror
 - docs: 重写 docs/experiments/README.md — 对齐实际文件内容（11个实验全部完成），修正旧版规划中的标题/状态错误，按 Phase 分组，补充各实验前置条件和学习目标摘要
 - docs: 新增 docs/DEPLOYMENT-CASES-DEV-GUIDE.md — 部署案例栏目完整开发指南，含 5 个案例规划、后端路由设计、前端 Tab UI 方案、测试要求和实施计划
 - feat: 双层审查体系 — safety-review-policy.md 重构为 safety-reviewer（第一层）+ Codex gpt-5.3-codex（第二层）；pre-push hook 集成 Codex 独立审查（BLOCKER 自动阻断，quota 问题跳过不阻断）

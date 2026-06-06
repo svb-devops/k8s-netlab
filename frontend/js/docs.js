@@ -11,6 +11,7 @@ class ExperimentDocs {
         this.currentExpId = null;
         this.activeVmId = null;         // set by app when terminal connects
         this._pendingJumpExpId = null;  // experiment awaiting jump confirmation
+        this.mode = 'experiments';      // 'experiments' | 'deployments'
 
         // DOM refs
         this.selectEl       = document.getElementById('experiment-select');
@@ -64,31 +65,47 @@ class ExperimentDocs {
     }
 
     /**
-     * Fetch experiment list from API and populate the selector.
+     * Fetch experiment/deployment list from API and populate the selector.
      */
     async loadExperimentList() {
+        const endpoint = this.mode === 'deployments' ? '/api/deployments' : '/api/experiments';
         try {
-            const resp = await fetch('/api/experiments');
+            const resp = await fetch(endpoint);
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const data = await resp.json();
-            this.experiments = data.experiments || [];
+            this.experiments = data.experiments || data.deployments || [];
             this.populateSelector();
         } catch (err) {
-            console.error('[ExperimentDocs] Failed to load experiment list:', err);
+            console.error('[ExperimentDocs] Failed to load list:', err);
         }
     }
 
     /**
-     * Populate the <select> dropdown with experiment options.
+     * Populate the <select> dropdown with experiment/deployment options.
      */
     populateSelector() {
+        const prefix = this.mode === 'deployments' ? '案例' : '实验';
         this.experiments.forEach(exp => {
             const opt = document.createElement('option');
             opt.value = exp.id;
             const stars = '⭐'.repeat(exp.difficulty);
-            opt.textContent = `实验 ${exp.id}: ${exp.title}  ${stars}`;
+            opt.textContent = `${prefix} ${exp.id}: ${exp.title}  ${stars}`;
             this.selectEl.appendChild(opt);
         });
+    }
+
+    /**
+     * Switch between 'experiments' and 'deployments' mode.
+     * @param {string} mode
+     */
+    async switchMode(mode) {
+        if (this.mode === mode) return;
+        this.mode = mode;
+        this.currentExpId = null;
+        this.showPlaceholder();
+        while (this.selectEl.options.length > 1) this.selectEl.remove(1);
+        await this.loadExperimentList();
+        this._updateNavButtons();
     }
 
     /**
@@ -115,6 +132,25 @@ class ExperimentDocs {
         const cancelBtn  = document.getElementById('exp-jump-cancel');
         if (confirmBtn) confirmBtn.addEventListener('click', () => this._confirmJump());
         if (cancelBtn)  cancelBtn.addEventListener('click',  () => this._cancelJump());
+
+        const tabExp = document.getElementById('tab-experiments');
+        const tabDep = document.getElementById('tab-deployments');
+
+        tabExp?.addEventListener('click', () => {
+            this.switchMode('experiments');
+            tabExp.classList.add('border-k8s-blue', 'text-k8s-blue');
+            tabExp.classList.remove('border-transparent', 'text-gray-500');
+            tabDep.classList.remove('border-k8s-blue', 'text-k8s-blue');
+            tabDep.classList.add('border-transparent', 'text-gray-500');
+        });
+
+        tabDep?.addEventListener('click', () => {
+            this.switchMode('deployments');
+            tabDep.classList.add('border-k8s-blue', 'text-k8s-blue');
+            tabDep.classList.remove('border-transparent', 'text-gray-500');
+            tabExp.classList.remove('border-k8s-blue', 'text-k8s-blue');
+            tabExp.classList.add('border-transparent', 'text-gray-500');
+        });
     }
 
     /**
@@ -237,7 +273,8 @@ class ExperimentDocs {
         this.showLoading();
 
         try {
-            const resp = await fetch(`/api/experiments/${expId}`);
+            const apiBase = this.mode === 'deployments' ? '/api/deployments' : '/api/experiments';
+            const resp = await fetch(`${apiBase}/${expId}`);
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const data = await resp.json();
 
