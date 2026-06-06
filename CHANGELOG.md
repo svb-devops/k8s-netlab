@@ -8,6 +8,7 @@
 
 ### Changed
 - docs: 重写 docs/experiments/README.md — 对齐实际文件内容（11个实验全部完成），修正旧版规划中的标题/状态错误，按 Phase 分组，补充各实验前置条件和学习目标摘要
+- docs: 新增 docs/DEPLOYMENT-CASES-DEV-GUIDE.md — 部署案例栏目完整开发指南，含 5 个案例规划、后端路由设计、前端 Tab UI 方案、测试要求和实施计划
 - feat: 双层审查体系 — safety-review-policy.md 重构为 safety-reviewer（第一层）+ Codex gpt-5.3-codex（第二层）；pre-push hook 集成 Codex 独立审查（BLOCKER 自动阻断，quota 问题跳过不阻断）
 - refactor: pre-commit hook 加 CHANGELOG 机械门禁（有代码变更未更新 CHANGELOG 则阻断 commit）；bug-fix.md / feature.md 重构为"必做 + 延伸阅读"结构；修复精简过度问题——safety-reviewer 恢复为 A/B 类变更条件必做（非可选），防止安全审查质量衰减
 - test: 补全 storage_utils 锁模式和嵌套路径测试 — 验证读用 LOCK_SH、写用 LOCK_EX、父目录自动创建
