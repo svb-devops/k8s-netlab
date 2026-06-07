@@ -52,6 +52,12 @@ class TerminalManager {
         // calling them while the parent is display:none causes silent failure.
         document.getElementById('terminal-section').classList.remove('hidden');
 
+        // Make drawer available now that terminal is active (was display:none before).
+        const drawerEl   = document.getElementById('doc-drawer');
+        const backdropEl = document.getElementById('doc-drawer-backdrop');
+        if (drawerEl)   drawerEl.style.display   = 'flex';
+        if (backdropEl) backdropEl.style.display  = 'block';
+
         // Mount to DOM
         const terminalContainer = document.getElementById('terminal');
         terminalContainer.innerHTML = ''; // Clear
@@ -150,6 +156,18 @@ class TerminalManager {
         }
 
         this.currentVMId = null;
+
+        // Hide drawer and reset its state before hiding terminal section.
+        const drawerEl   = document.getElementById('doc-drawer');
+        const backdropEl = document.getElementById('doc-drawer-backdrop');
+        if (drawerEl) {
+            drawerEl.classList.remove('drawer-open');
+            drawerEl.style.display = 'none';
+        }
+        if (backdropEl) {
+            backdropEl.classList.remove('backdrop-visible');
+            backdropEl.style.display = 'none';
+        }
 
         // Hide terminal section
         document.getElementById('terminal-section').classList.add('hidden');
