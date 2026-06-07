@@ -205,26 +205,26 @@
                     </div>
                 </div>
 
-                <!-- Split Panel Body -->
+                <!-- Split Panel Body: 2-column (doc 38% | terminal 62%) -->
                 <div class="flex flex-1 overflow-hidden lab-split-body">
 
-                    <!-- Left Panel: Experiment Documentation (30%) -->
-                    <div class="flex flex-col border-r border-gray-200 lab-doc-panel" style="width: 30%; min-width: 0;">
+                    <!-- Left Panel: Experiment Documentation (38%) -->
+                    <div class="flex flex-col border-r border-gray-200 lab-doc-panel" style="width: 38%; min-width: 0;">
 
-                        <!-- Tab Switch: 网络实验 / 部署案例 -->
-                        <div class="flex-shrink-0 flex border-b border-gray-200 px-2 pt-1 gap-1">
+                        <!-- Row 1: Mode tabs — 网络实验 / 部署案例 -->
+                        <div class="flex-shrink-0 flex border-b border-gray-200 bg-gray-50">
                             <button id="tab-experiments"
-                                    class="tab-btn text-xs px-3 py-1.5 rounded-t font-medium border-b-2 border-k8s-blue text-k8s-blue bg-white">
+                                    class="tab-btn text-xs px-4 py-2.5 font-medium border-b-2 border-k8s-blue text-k8s-blue bg-white">
                                 网络实验
                             </button>
                             <button id="tab-deployments"
-                                    class="tab-btn text-xs px-3 py-1.5 rounded-t font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700">
+                                    class="tab-btn text-xs px-4 py-2.5 font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition">
                                 部署案例
                             </button>
                         </div>
 
-                        <!-- Experiment Selector with Prev/Next navigation -->
-                        <div class="flex-shrink-0 flex items-center px-2 py-2 bg-gray-50 border-b border-gray-200 gap-1">
+                        <!-- Row 2: Experiment selector + prev/next -->
+                        <div class="flex-shrink-0 flex items-center px-3 py-2 bg-gray-50 border-b border-gray-200 gap-1">
                             <button id="btn-prev-exp" title="上一实验" disabled
                                     class="flex-shrink-0 p-1 text-gray-400 hover:text-k8s-blue disabled:opacity-30 disabled:cursor-not-allowed transition rounded">
                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -233,7 +233,7 @@
                             </button>
                             <select id="experiment-select"
                                     class="flex-1 text-sm bg-transparent text-gray-700 focus:outline-none cursor-pointer border-none min-w-0">
-                                <option value="">-- 选择实验文档 --</option>
+                                <option value="">-- 选择实验 --</option>
                             </select>
                             <button id="btn-next-exp" title="下一实验" disabled
                                     class="flex-shrink-0 p-1 text-gray-400 hover:text-k8s-blue disabled:opacity-30 disabled:cursor-not-allowed transition rounded">
@@ -246,14 +246,43 @@
                             </span>
                         </div>
 
-                        <!-- Experiment Info Bar (shown after selection) -->
-                        <div id="doc-info-bar" class="hidden flex-shrink-0 px-3 py-1.5 bg-blue-50 border-b border-blue-100 flex items-center space-x-3 text-xs text-blue-700">
-                            <span id="doc-info-difficulty"></span>
-                            <span class="text-blue-300">|</span>
-                            <span id="doc-info-duration"></span>
+                        <!-- Row 3: Info + View switcher (hidden until doc loaded) -->
+                        <div id="doc-info-bar" class="hidden flex-shrink-0 border-b border-gray-200">
+                            <!-- Difficulty / Duration -->
+                            <div class="flex items-center justify-between px-3 py-1.5 bg-blue-50">
+                                <div class="flex items-center gap-2 text-xs text-blue-700">
+                                    <span id="doc-info-difficulty"></span>
+                                    <span class="text-blue-200">|</span>
+                                    <span id="doc-info-duration"></span>
+                                </div>
+                            </div>
+                            <!-- View toggle: 文档 / 背景 / AI -->
+                            <div class="flex border-t border-gray-100 text-xs">
+                                <button id="view-tab-doc"
+                                        class="flex-1 flex items-center justify-center gap-1 py-1.5 font-medium text-k8s-blue border-b-2 border-k8s-blue bg-white transition">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                    </svg>
+                                    实验文档
+                                </button>
+                                <button id="view-tab-bg"
+                                        class="flex-1 flex items-center justify-center gap-1 py-1.5 text-gray-500 hover:text-gray-700 border-b-2 border-transparent bg-white transition">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    实验背景
+                                </button>
+                                <button id="view-tab-ai"
+                                        class="flex-1 flex items-center justify-center gap-1 py-1.5 text-gray-500 hover:text-gray-700 border-b-2 border-transparent bg-white transition">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-3 3v-3z"/>
+                                    </svg>
+                                    AI 助教
+                                </button>
+                            </div>
                         </div>
 
-                        <!-- Jump-ahead warning (shown when user skips experiments via dropdown) -->
+                        <!-- Jump-ahead warning -->
                         <div id="exp-jump-warning" class="hidden flex-shrink-0 px-3 py-2 bg-amber-50 border-b border-amber-200">
                             <div class="flex items-start gap-2 text-xs text-amber-800">
                                 <svg class="w-3.5 h-3.5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
@@ -269,7 +298,7 @@
                             </div>
                         </div>
 
-                        <!-- Step Navigation (shown when experiment has step headings) -->
+                        <!-- Step Navigation (only visible in 文档 view) -->
                         <div id="step-nav" class="hidden flex-shrink-0 border-b border-gray-200 bg-gray-50">
                             <div class="px-3 pt-2 pb-1">
                                 <div class="flex items-center justify-between mb-1">
@@ -285,85 +314,63 @@
                             <div id="step-pills" class="flex flex-wrap gap-1 px-3 pb-2 max-h-16 overflow-y-auto"></div>
                         </div>
 
-                        <!-- Markdown Content Area -->
+                        <!-- View: 实验文档 -->
                         <div id="doc-content" class="doc-content flex-1 overflow-y-auto p-4 text-sm">
                             <div class="flex flex-col items-center justify-center h-full text-gray-400 space-y-3">
                                 <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                                         d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
                                 </svg>
-                                <p class="text-sm">从上方选择实验文档开始学习</p>
+                                <p class="text-sm">从上方选择实验开始学习</p>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- Middle Panel: Background + AI Tutor (25%) -->
-                    <div id="ai-tutor-panel" class="flex flex-col border-r border-gray-200" style="width: 25%; min-width: 0;">
-
-                        <!-- Panel Header -->
-                        <div class="flex-shrink-0 flex items-center justify-between px-3 py-2 bg-indigo-50 border-b border-indigo-100">
-                            <div class="flex items-center space-x-1.5">
-                                <svg class="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
-                                </svg>
-                                <span class="text-xs font-medium text-indigo-700">AI 助教</span>
-                            </div>
-                            <button id="btn-clear-chat" title="清除对话记录"
-                                    class="text-indigo-400 hover:text-indigo-600 transition text-xs px-1.5 py-0.5 rounded hover:bg-indigo-100">
-                                清除
-                            </button>
-                        </div>
-
-                        <!-- Tab: 背景 / 对话 -->
-                        <div class="flex-shrink-0 flex border-b border-gray-100 text-xs">
-                            <button id="ai-tab-bg" class="flex-1 py-1.5 font-medium text-indigo-600 border-b-2 border-indigo-500 bg-white">
-                                案例背景
-                            </button>
-                            <button id="ai-tab-chat" class="flex-1 py-1.5 text-gray-500 hover:text-gray-700 border-b-2 border-transparent bg-white">
-                                AI 对话
-                            </button>
-                        </div>
-
-                        <!-- Background Sub-panel -->
-                        <div id="ai-bg-panel" class="flex-1 overflow-y-auto p-3">
-                            <div id="ai-bg-content" class="doc-content text-xs text-gray-600">
-                                <div class="flex flex-col items-center justify-center h-full text-gray-400 space-y-2 pt-12">
-                                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <!-- View: 实验背景 -->
+                        <div id="ai-bg-panel" class="hidden flex-1 overflow-y-auto p-4">
+                            <div id="ai-bg-content" class="doc-content text-sm text-gray-700">
+                                <div class="flex flex-col items-center justify-center h-full text-gray-400 space-y-3 pt-16">
+                                    <svg class="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                                     </svg>
-                                    <p class="text-xs text-center">选择案例后显示背景介绍</p>
+                                    <p class="text-sm">选择实验后显示背景介绍</p>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Chat Sub-panel -->
+                        <!-- View: AI 助教 -->
                         <div id="ai-chat-panel" class="hidden flex-col flex-1 overflow-hidden">
-                            <!-- Message history -->
-                            <div id="ai-chat-messages" class="flex-1 overflow-y-auto p-3 space-y-2 text-xs">
-                                <div class="text-center text-gray-400 text-xs py-4">
+                            <div id="ai-chat-messages" class="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                                <div class="text-center text-gray-400 text-sm py-8">
+                                    <svg class="w-10 h-10 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-3 3v-3z"/>
+                                    </svg>
                                     <p>有疑问？随时问我</p>
-                                    <p class="mt-1 text-gray-300">仅回答 K8s 相关问题</p>
+                                    <p class="text-xs text-gray-300 mt-1">仅回答 K8s 相关问题</p>
                                 </div>
                             </div>
-
-                            <!-- Input area -->
-                            <div class="flex-shrink-0 border-t border-gray-100 p-2">
-                                <div class="flex items-end gap-1.5">
+                            <div class="flex-shrink-0 border-t border-gray-200 p-3 bg-gray-50">
+                                <div class="flex items-end gap-2">
                                     <textarea id="ai-chat-input" rows="2"
-                                              placeholder="输入问题... (Enter 发送)"
-                                              class="flex-1 text-xs px-2 py-1.5 border border-gray-200 rounded resize-none focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200"></textarea>
-                                    <button id="ai-chat-send"
-                                            class="flex-shrink-0 bg-indigo-500 hover:bg-indigo-600 text-white px-2.5 py-1.5 rounded text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed">
-                                        发送
-                                    </button>
+                                              placeholder="输入问题... (Enter 发送，Shift+Enter 换行)"
+                                              class="flex-1 text-sm px-3 py-2 border border-gray-200 rounded-lg resize-none focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition"></textarea>
+                                    <div class="flex flex-col gap-1.5">
+                                        <button id="ai-chat-send"
+                                                class="bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-2 rounded-lg text-sm font-medium transition disabled:opacity-40 disabled:cursor-not-allowed">
+                                            发送
+                                        </button>
+                                        <button id="btn-clear-chat"
+                                                class="text-xs text-gray-400 hover:text-gray-600 px-3 py-1 rounded border border-gray-200 hover:bg-white transition">
+                                            清除
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                    </div><!-- end AI Tutor Panel -->
+                    </div><!-- end Left Panel -->
 
-                    <!-- Right Panel: Terminal (45%) -->
-                    <div class="flex flex-col lab-terminal-panel" style="width: 45%; min-width: 0;">
+                    <!-- Right Panel: Terminal (62%) -->
+                    <div class="flex flex-col lab-terminal-panel" style="width: 62%; min-width: 0;">
 
                         <!-- Terminal Title Bar (macOS style) -->
                         <div class="flex-shrink-0 flex items-center px-3 py-2 bg-gray-900 border-b border-gray-700">
@@ -446,7 +453,7 @@
     <!-- Scripts -->
     <script src="/js/api.js?v=20260223d"></script>
     <script src="/js/terminal.js?v=20260327"></script>
-    <script src="/js/docs.js?v=20260223d"></script>
+    <script src="/js/docs.js?v=20260607"></script>
     <script src="/js/ai-tutor.js?v=20260606"></script>
     <script src="/js/app.js?v=20260327"></script>
 </body>
