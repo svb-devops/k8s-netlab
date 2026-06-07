@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- feat: 三栏 AI 助教布局 — 实验学习台改为三栏（30% 文档 | 25% 背景+AI对话 | 45% 终端），新增案例背景介绍（5个部署案例均已录入），集成 DeepSeek SSE 多轮对话助教，backend/ai_tutor_routes.py 提供 /api/ai/chat 端点，前端 ai-tutor.js 实现流式渲染
 - fix: 对齐官方 K8s 文档——D01 使用官方 gb-frontend:v5 + gb-redis-follower:v2（真实 PHP 留言板），D02 加 Recreate 策略 + Headless Service，D04 精简回官方原版，D05 对齐 development/production 命名空间 + context 切换 + serve_hostname 镜像
 - feat: 新增 registry-custom（端口 5001）支持非 docker.io 镜像推送；vm registries.yaml 增加 us-docker.pkg.dev 和 registry.k8s.io 镜像配置；config 增加 VM_REGISTRY_MIRROR_CUSTOM 字段
 - fix: D01 Guestbook 补完整主从架构 — 1 Leader + 2 Follower（--replicaof），独立 Service 实现读写分离，补 Step 4 验证 Follower 拒绝写入、Step 5 验证负载均衡

@@ -27,6 +27,7 @@ from backend.admin_routes import router as admin_router
 from backend.api_routes import router as api_router
 from backend.auth import auth_manager
 from backend.auth_routes import router as auth_router
+from backend.ai_tutor_routes import router as ai_tutor_router
 from backend.deployments_routes import router as deployments_router
 from backend.docs_routes import router as docs_router
 from backend.middleware import JsonFormatter, RequestIDMiddleware, SecurityHeadersMiddleware
@@ -219,6 +220,7 @@ app.include_router(auth_router)   # Authentication routes
 app.include_router(api_router)    # VM management routes
 app.include_router(docs_router)        # Experiment documentation routes
 app.include_router(deployments_router) # Deployment cases routes
+app.include_router(ai_tutor_router)    # AI tutor chat routes
 app.include_router(admin_router)  # Admin observability routes
 
 

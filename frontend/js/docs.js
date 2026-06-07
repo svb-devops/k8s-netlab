@@ -282,6 +282,14 @@ class ExperimentDocs {
             this.renderMarkdown(data.content);
             this.showInfoBar(data.difficulty, data.duration);
 
+            // Notify AI tutor panel about the loaded case (background content)
+            document.dispatchEvent(new CustomEvent('experiment-loaded', {
+                detail: {
+                    caseId: expId,
+                    background: data.background || '',
+                },
+            }));
+
             // Sync dropdown selection (covers navigation via prev/next buttons)
             if (this.selectEl) this.selectEl.value = expId;
 

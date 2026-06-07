@@ -208,8 +208,8 @@
                 <!-- Split Panel Body -->
                 <div class="flex flex-1 overflow-hidden lab-split-body">
 
-                    <!-- Left Panel: Experiment Documentation (40%) -->
-                    <div class="flex flex-col border-r border-gray-200 lab-doc-panel" style="width: 40%; min-width: 0;">
+                    <!-- Left Panel: Experiment Documentation (30%) -->
+                    <div class="flex flex-col border-r border-gray-200 lab-doc-panel" style="width: 30%; min-width: 0;">
 
                         <!-- Tab Switch: 网络实验 / 部署案例 -->
                         <div class="flex-shrink-0 flex border-b border-gray-200 px-2 pt-1 gap-1">
@@ -297,8 +297,73 @@
                         </div>
                     </div>
 
-                    <!-- Right Panel: Terminal (60%) -->
-                    <div class="flex flex-col lab-terminal-panel" style="width: 60%; min-width: 0;">
+                    <!-- Middle Panel: Background + AI Tutor (25%) -->
+                    <div id="ai-tutor-panel" class="flex flex-col border-r border-gray-200" style="width: 25%; min-width: 0;">
+
+                        <!-- Panel Header -->
+                        <div class="flex-shrink-0 flex items-center justify-between px-3 py-2 bg-indigo-50 border-b border-indigo-100">
+                            <div class="flex items-center space-x-1.5">
+                                <svg class="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                                </svg>
+                                <span class="text-xs font-medium text-indigo-700">AI 助教</span>
+                            </div>
+                            <button id="btn-clear-chat" title="清除对话记录"
+                                    class="text-indigo-400 hover:text-indigo-600 transition text-xs px-1.5 py-0.5 rounded hover:bg-indigo-100">
+                                清除
+                            </button>
+                        </div>
+
+                        <!-- Tab: 背景 / 对话 -->
+                        <div class="flex-shrink-0 flex border-b border-gray-100 text-xs">
+                            <button id="ai-tab-bg" class="flex-1 py-1.5 font-medium text-indigo-600 border-b-2 border-indigo-500 bg-white">
+                                案例背景
+                            </button>
+                            <button id="ai-tab-chat" class="flex-1 py-1.5 text-gray-500 hover:text-gray-700 border-b-2 border-transparent bg-white">
+                                AI 对话
+                            </button>
+                        </div>
+
+                        <!-- Background Sub-panel -->
+                        <div id="ai-bg-panel" class="flex-1 overflow-y-auto p-3">
+                            <div id="ai-bg-content" class="doc-content text-xs text-gray-600">
+                                <div class="flex flex-col items-center justify-center h-full text-gray-400 space-y-2 pt-12">
+                                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                    <p class="text-xs text-center">选择案例后显示背景介绍</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Chat Sub-panel -->
+                        <div id="ai-chat-panel" class="hidden flex-col flex-1 overflow-hidden">
+                            <!-- Message history -->
+                            <div id="ai-chat-messages" class="flex-1 overflow-y-auto p-3 space-y-2 text-xs">
+                                <div class="text-center text-gray-400 text-xs py-4">
+                                    <p>有疑问？随时问我</p>
+                                    <p class="mt-1 text-gray-300">仅回答 K8s 相关问题</p>
+                                </div>
+                            </div>
+
+                            <!-- Input area -->
+                            <div class="flex-shrink-0 border-t border-gray-100 p-2">
+                                <div class="flex items-end gap-1.5">
+                                    <textarea id="ai-chat-input" rows="2"
+                                              placeholder="输入问题... (Enter 发送)"
+                                              class="flex-1 text-xs px-2 py-1.5 border border-gray-200 rounded resize-none focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200"></textarea>
+                                    <button id="ai-chat-send"
+                                            class="flex-shrink-0 bg-indigo-500 hover:bg-indigo-600 text-white px-2.5 py-1.5 rounded text-xs font-medium transition disabled:opacity-40 disabled:cursor-not-allowed">
+                                        发送
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div><!-- end AI Tutor Panel -->
+
+                    <!-- Right Panel: Terminal (45%) -->
+                    <div class="flex flex-col lab-terminal-panel" style="width: 45%; min-width: 0;">
 
                         <!-- Terminal Title Bar (macOS style) -->
                         <div class="flex-shrink-0 flex items-center px-3 py-2 bg-gray-900 border-b border-gray-700">
@@ -382,6 +447,7 @@
     <script src="/js/api.js?v=20260223d"></script>
     <script src="/js/terminal.js?v=20260327"></script>
     <script src="/js/docs.js?v=20260223d"></script>
+    <script src="/js/ai-tutor.js?v=20260606"></script>
     <script src="/js/app.js?v=20260327"></script>
 </body>
 </html>

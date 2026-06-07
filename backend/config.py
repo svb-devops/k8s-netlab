@@ -194,6 +194,16 @@ if MAX_VMS_PER_USER > MAX_TOTAL_VMS:
         f"MAX_VMS_PER_USER ({MAX_VMS_PER_USER}) cannot exceed MAX_TOTAL_VMS ({MAX_TOTAL_VMS})."
     )
 
+# --- AI Tutor Configuration ---
+DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_MODEL: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+# Maximum turns to keep in per-session chat history (older turns are pruned)
+AI_TUTOR_MAX_TURNS: int = _get_env_int("AI_TUTOR_MAX_TURNS", 20)
+
+if not DEEPSEEK_API_KEY:
+    logger.warning("DEEPSEEK_API_KEY not set — AI tutor (/api/ai/chat) will be unavailable")
+
+
 def _warn_insecure_defaults() -> None:
     """Log warnings for insecure default configuration values."""
     if not VM_REGISTRY_MIRROR:
