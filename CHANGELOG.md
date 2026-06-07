@@ -7,6 +7,8 @@
 ## [Unreleased]
 
 ### Changed
+- fix: 对齐官方 K8s 文档——D01 使用官方 gb-frontend:v5 + gb-redis-follower:v2（真实 PHP 留言板），D02 加 Recreate 策略 + Headless Service，D04 精简回官方原版，D05 对齐 development/production 命名空间 + context 切换 + serve_hostname 镜像
+- feat: 新增 registry-custom（端口 5001）支持非 docker.io 镜像推送；vm registries.yaml 增加 us-docker.pkg.dev 和 registry.k8s.io 镜像配置；config 增加 VM_REGISTRY_MIRROR_CUSTOM 字段
 - fix: D01 Guestbook 补完整主从架构 — 1 Leader + 2 Follower（--replicaof），独立 Service 实现读写分离，补 Step 4 验证 Follower 拒绝写入、Step 5 验证负载均衡
 - docs: 里程碑3 完成全部 5 个部署案例 — D02（MySQL + PVC + Secret，数据持久化验证）、D04（CronJob 定时任务，concurrencyPolicy/超时/手动触发）、D05（多命名空间隔离，跨 namespace DNS + NetworkPolicy + ResourceQuota）；同步更新 deployments_routes.py D02 标题和 README 状态
 - docs: 里程碑2 部署案例首批内容 — 新增 D01（留言板 Guestbook，nginx + redis:7-alpine，多副本 Deployment + ClusterIP Service）和 D03（蓝绿部署与滚动更新，nginx:1.24/1.25，Service 选择器切换 + rollout history/undo），两案例均可独立使用 kubectl apply 直接运行

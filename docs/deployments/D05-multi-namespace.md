@@ -5,60 +5,50 @@
 - **难度**: ⭐⭐⭐⭐（进阶）
 - **时长**: 40 分钟
 - **环境**: K3s 单节点集群
-- **前置**: 已完成 D01（Service 和 DNS 基础）
+- **前置**: 已完成 D01（了解 Deployment + Service 基础）
 
 ## 🎯 你将完成什么
 
-在同一个 K8s 集群中创建两个独立的团队命名空间，模拟微服务多租户隔离：
+在同一个 K8s 集群中创建 `development` 和 `production` 两个命名空间，演示命名空间隔离机制：
 
-- 创建 `team-alpha` 和 `team-beta` 两个命名空间
-- 各自部署 nginx 服务，互相独立
-- 演示跨命名空间的 DNS 访问格式
-- 用 `NetworkPolicy` 限制命名空间间的通信
-- 用 `ResourceQuota` 限制命名空间的资源用量
+- 用 `kubectl config set-context` 配置 namespace 专属上下文
+- 在不同 namespace 部署同名资源，验证互不干扰
+- 通过切换 context 体验"视野"的变化——在 prod context 下看不到 dev 资源
+- 理解 namespace 作为 K8s 多租户隔离的核心机制
 
 学完本案例，你将理解：
 1. Namespace 是 K8s 的逻辑隔离边界——同名资源在不同 namespace 中互不干扰
-2. 跨 namespace 访问的 DNS 格式：`<service>.<namespace>.svc.cluster.local`
-3. NetworkPolicy 如何在网络层实现命名空间隔离
-4. ResourceQuota 如何在资源层限制命名空间的用量
+2. kubectl context 的 namespace 字段——切换上下文即切换工作命名空间
+3. 为什么生产环境必须将 dev/staging/prod 放在不同 namespace（或集群）
 
 ## 🏗️ 架构图
 
 ```
 cluster.local
-├── namespace: team-alpha
-│       └── alpha-svc（ClusterIP）→ nginx Pod（"Alpha Team"）
+├── namespace: development
+│       └── snowflake Deployment（2 副本）
 │
-├── namespace: team-beta
-│       └── beta-svc（ClusterIP）→ nginx Pod（"Beta Team"）
-│
-└── namespace: default
-        └── test-client Pod（busybox，跨 namespace 访问两个服务）
-```
+└── namespace: production
+        └── cattle Deployment（5 副本）
 
-**NetworkPolicy 效果**（Step 5 后）：
-
-```
-team-alpha Pod ──不能访问──▶ team-beta Pod
-team-beta  Pod ──不能访问──▶ team-alpha Pod
-default    Pod ──可以访问──▶ 两个 namespace（演示用）
+kubectl context:
+  dev  → 操作 development namespace
+  prod → 操作 production namespace
 ```
 
 ## 🐳 使用的镜像
 
-| 镜像 | 用途 | 来源 |
+| 镜像 | 用途 | 说明 |
 |------|------|------|
-| `nginx` | 各团队的 Web 服务 | 本地 registry mirror |
-| `busybox:1.28` | 跨 namespace 网络测试客户端 | 本地 registry mirror |
+| `registry.k8s.io/serve_hostname` | 响应 HTTP 请求时返回 Pod 主机名 | 官方 K8s 测试镜像 |
 
 ## ⚠️ 开始前
 
-确认集群就绪，并查看当前所有命名空间：
+确认集群就绪，查看当前默认命名空间：
 
 ```bash
 kubectl wait --for=condition=Ready node --all --timeout=120s
-kubectl get namespace
+kubectl get namespaces
 ```
 
 预期（K3s 默认命名空间）：
@@ -75,353 +65,258 @@ kube-node-lease   Active   ...
 
 ## 🔬 步骤
 
-### Step 1: 创建两个团队命名空间
-
-**目标**：创建 `team-alpha` 和 `team-beta` 命名空间，并加上标签（NetworkPolicy 会用到）。
+### Step 1: 创建 development 和 production 命名空间
 
 ```bash
-kubectl apply -f - <<'EOF'
+kubectl create -f - <<'EOF'
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: team-alpha
+  name: development
   labels:
-    team: alpha
-    env: lab
----
+    name: development
+EOF
+
+kubectl create -f - <<'EOF'
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: team-beta
+  name: production
   labels:
-    team: beta
-    env: lab
-EOF
-
-kubectl get namespace team-alpha team-beta
-```
-
-预期输出：
-
-```
-NAME         STATUS   AGE
-team-alpha   Active   5s
-team-beta    Active   5s
-```
-
----
-
-### Step 2: 在各命名空间部署 nginx 服务
-
-**目标**：两个命名空间各有一个 nginx，返回不同的页面内容以便区分。
-
-```bash
-# team-alpha：部署 nginx，自定义首页
-kubectl apply -n team-alpha -f - <<'EOF'
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: alpha-web
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: alpha-web
-  template:
-    metadata:
-      labels:
-        app: alpha-web
-    spec:
-      containers:
-      - name: nginx
-        image: nginx
-        ports:
-        - containerPort: 80
-        command: ["/bin/sh", "-c"]
-        args:
-        - |
-          echo "<h1>Alpha Team Service</h1><p>namespace: team-alpha</p>" > /usr/share/nginx/html/index.html
-          nginx -g 'daemon off;'
-        resources:
-          requests:
-            cpu: "50m"
-            memory: "64Mi"
-          limits:
-            cpu: "200m"
-            memory: "128Mi"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: alpha-svc
-spec:
-  type: ClusterIP
-  selector:
-    app: alpha-web
-  ports:
-  - port: 80
-    targetPort: 80
-EOF
-
-# team-beta：同样部署 nginx，不同首页
-kubectl apply -n team-beta -f - <<'EOF'
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: beta-web
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: beta-web
-  template:
-    metadata:
-      labels:
-        app: beta-web
-    spec:
-      containers:
-      - name: nginx
-        image: nginx
-        ports:
-        - containerPort: 80
-        command: ["/bin/sh", "-c"]
-        args:
-        - |
-          echo "<h1>Beta Team Service</h1><p>namespace: team-beta</p>" > /usr/share/nginx/html/index.html
-          nginx -g 'daemon off;'
-        resources:
-          requests:
-            cpu: "50m"
-            memory: "64Mi"
-          limits:
-            cpu: "200m"
-            memory: "128Mi"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: beta-svc
-spec:
-  type: ClusterIP
-  selector:
-    app: beta-web
-  ports:
-  - port: 80
-    targetPort: 80
+    name: production
 EOF
 ```
 
 **验证**：
 
 ```bash
-kubectl wait --for=condition=Available deployment/alpha-web -n team-alpha --timeout=60s
-kubectl wait --for=condition=Available deployment/beta-web -n team-beta --timeout=60s
-kubectl get pod,svc -n team-alpha
-kubectl get pod,svc -n team-beta
-```
-
-预期（两个 namespace 各有 2 个 Pod 和 1 个 Service）：
-
-```
-# team-alpha
-NAME                            READY   STATUS    ...
-pod/alpha-web-xxxxxxxxx-aaaa   1/1     Running
-pod/alpha-web-xxxxxxxxx-bbbb   1/1     Running
-
-NAME            TYPE        PORT(S)
-service/alpha-svc   ClusterIP   80/TCP
-
-# team-beta（同样格式）
-```
-
----
-
-### Step 3: 演示跨命名空间 DNS 访问
-
-**目标**：从 `default` namespace 的测试 Pod，分别访问两个不同命名空间的服务，观察 DNS 格式差异。
-
-```bash
-# 创建测试客户端（在 default namespace）
-kubectl run test-client --image=busybox:1.28 --rm -it --restart=Never -- sh
-```
-
-进入 shell 后，执行：
-
-```bash
-# 在同一 namespace 内，短名访问（default 中没有 alpha-svc）
-wget -qO- http://alpha-svc 2>&1 | head -3
-# 预期失败：nslookup: can't resolve 'alpha-svc'
-
-# 跨 namespace 访问必须用全限定名
-wget -qO- http://alpha-svc.team-alpha.svc.cluster.local
-# 预期输出：<h1>Alpha Team Service</h1>...
-
-wget -qO- http://beta-svc.team-beta.svc.cluster.local
-# 预期输出：<h1>Beta Team Service</h1>...
-
-# 也可以用简短的跨 namespace 格式（省略 .svc.cluster.local）
-wget -qO- http://alpha-svc.team-alpha
-# 预期：同样成功
-
-exit
-```
-
-**关键点**：
-- 同 namespace 内：`http://alpha-svc`（短名）
-- 跨 namespace：`http://alpha-svc.team-alpha`（或完整 FQDN）
-- `<service>.<namespace>.svc.cluster.local` 是 K8s DNS 的完整格式
-
----
-
-### Step 4: 验证同名资源隔离
-
-**目标**：在两个 namespace 中创建同名的 ConfigMap，证明它们互不影响。
-
-```bash
-# 两个 namespace 各有一个同名 ConfigMap
-kubectl create configmap team-config \
-  --from-literal=team_name="Alpha Team" \
-  --from-literal=max_users="50" \
-  -n team-alpha
-
-kubectl create configmap team-config \
-  --from-literal=team_name="Beta Team" \
-  --from-literal=max_users="30" \
-  -n team-beta
-
-# 查看各自的值（互不干扰）
-echo "=== team-alpha 的 team-config ==="
-kubectl get configmap team-config -n team-alpha -o jsonpath='{.data}' && echo
-
-echo "=== team-beta 的 team-config ==="
-kubectl get configmap team-config -n team-beta -o jsonpath='{.data}' && echo
+kubectl get namespaces --show-labels
 ```
 
 预期输出：
 
 ```
-=== team-alpha 的 team-config ===
-{"max_users":"50","team_name":"Alpha Team"}
-
-=== team-beta 的 team-config ===
-{"max_users":"30","team_name":"Beta Team"}
-```
-
-两个 `team-config` 同名，但属于不同 namespace，完全独立。
-
----
-
-### Step 5: 用 NetworkPolicy 限制命名空间间访问
-
-**目标**：给 team-alpha 加 NetworkPolicy，拒绝来自 team-beta 的流量。
-
-```bash
-kubectl apply -n team-alpha -f - <<'EOF'
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: deny-from-beta
-spec:
-  podSelector: {}          # 应用到 team-alpha 所有 Pod
-  policyTypes:
-  - Ingress
-  ingress:
-  - from:
-    - namespaceSelector:
-        matchExpressions:
-        - key: team
-          operator: NotIn
-          values: ["beta"]
-EOF
-```
-
-**测试 NetworkPolicy 效果**：
-
-```bash
-# 从 team-beta 的 Pod 尝试访问 team-alpha（应该被阻止）
-BETA_POD=$(kubectl get pod -n team-beta -l app=beta-web -o jsonpath='{.items[0].metadata.name}')
-
-kubectl exec -n team-beta $BETA_POD -- \
-  wget -qO- --timeout=5 http://alpha-svc.team-alpha.svc.cluster.local 2>&1
-```
-
-预期输出（连接超时，NetworkPolicy 生效）：
-
-```
-wget: download timed out
-```
-
-```bash
-# 从 default namespace 访问 team-alpha（未被限制，应该成功）
-kubectl run verify-access --image=busybox:1.28 --rm -it --restart=Never -- \
-  wget -qO- --timeout=5 http://alpha-svc.team-alpha.svc.cluster.local
-```
-
-预期输出（成功）：
-
-```
-<h1>Alpha Team Service</h1><p>namespace: team-alpha</p>
+NAME          STATUS    AGE       LABELS
+default       Active    32m       <none>
+development   Active    29s       name=development
+production    Active    23s       name=production
 ```
 
 ---
 
-### Step 6: 设置 ResourceQuota 限制命名空间资源
+### Step 2: 配置 kubectl context
 
-**目标**：给 team-beta 设置资源配额，防止单个团队消耗过多集群资源。
+**目标**：为两个 namespace 分别创建 kubectl context，切换 context 就切换工作命名空间。
 
 ```bash
-kubectl apply -n team-beta -f - <<'EOF'
-apiVersion: v1
-kind: ResourceQuota
+# 查看当前集群名和用户名
+kubectl config view | grep -E "cluster:|user:" | head -4
+
+# 配置 dev context（根据实际集群名和用户名替换占位符）
+CLUSTER=$(kubectl config view -o jsonpath='{.clusters[0].name}')
+USER=$(kubectl config view -o jsonpath='{.users[0].name}')
+
+kubectl config set-context dev \
+  --namespace=development \
+  --cluster=$CLUSTER \
+  --user=$USER
+
+kubectl config set-context prod \
+  --namespace=production \
+  --cluster=$CLUSTER \
+  --user=$USER
+
+# 查看已配置的 context
+kubectl config view
+```
+
+预期（config 中出现 dev 和 prod context）：
+
+```
+contexts:
+- context:
+    cluster: default
+    namespace: development
+    user: default
+  name: dev
+- context:
+    cluster: default
+    namespace: production
+    user: default
+  name: prod
+```
+
+---
+
+### Step 3: 在 development namespace 部署应用
+
+**目标**：切换到 dev context，部署 2 副本的 snowflake 应用。
+
+```bash
+# 切换到 dev context
+kubectl config use-context dev
+kubectl config current-context
+```
+
+预期输出：`dev`
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: beta-quota
+  labels:
+    app: snowflake
+  name: snowflake
 spec:
-  hard:
-    pods: "5"
-    requests.cpu: "500m"
-    requests.memory: "512Mi"
-    limits.cpu: "1"
-    limits.memory: "1Gi"
+  replicas: 2
+  selector:
+    matchLabels:
+      app: snowflake
+  template:
+    metadata:
+      labels:
+        app: snowflake
+    spec:
+      containers:
+      - image: registry.k8s.io/serve_hostname
+        imagePullPolicy: Always
+        name: snowflake
 EOF
-
-# 查看配额使用情况
-kubectl describe resourcequota beta-quota -n team-beta
 ```
 
-预期输出（显示当前使用量 vs 配额上限）：
-
-```
-Name:            beta-quota
-Namespace:       team-beta
-Resource         Used    Hard
---------         ----    ----
-limits.cpu       400m    1
-limits.memory    256Mi   1Gi
-pods             2       5
-requests.cpu     100m    500m
-requests.memory  128Mi   512Mi
-```
-
-**测试配额约束**：尝试扩缩到超出配额的副本数：
+**验证**（在 dev context 下，直接 `get` 即操作 development namespace）：
 
 ```bash
-# 尝试扩容到 10 副本（会超过 pods: 5 的限制）
-kubectl scale deployment beta-web --replicas=10 -n team-beta
-kubectl get pod -n team-beta
+kubectl get deployment
+kubectl get pods -l app=snowflake
 ```
 
-预期（只创建了 5 个 Pod，超出部分被 quota 拒绝）：
+预期输出：
 
 ```
-NAME                        READY   STATUS    RESTARTS
-beta-web-xxxxxxxxx-aaaa     1/1     Running
-beta-web-xxxxxxxxx-bbbb     1/1     Running
-...（最多 5 个）
+NAME         READY   UP-TO-DATE   AVAILABLE   AGE
+snowflake    2/2     2            2           2m
+
+NAME                         READY   STATUS    RESTARTS   AGE
+snowflake-3968820950-9dgr8   1/1     Running   0          2m
+snowflake-3968820950-vgc4n   1/1     Running   0          2m
+```
+
+---
+
+### Step 4: 在 production namespace 部署应用
+
+**目标**：切换到 prod context，部署 5 副本的 cattle 应用，验证与 development 完全隔离。
+
+```bash
+# 切换到 prod context
+kubectl config use-context prod
+
+# 验证切换成功（dev 的资源看不见了）
+kubectl get deployment
+```
+
+预期输出（production namespace 中没有任何 Deployment）：
+
+```
+No resources found in production namespace.
 ```
 
 ```bash
-# 查看 ReplicaSet 事件，可以看到 quota 拒绝信息
-kubectl describe replicaset -n team-beta | grep -A5 "Warning"
+# 在 production 部署 cattle
+kubectl create deployment cattle \
+  --image=registry.k8s.io/serve_hostname \
+  --replicas=5
+
+kubectl get deployment
+kubectl get pods -l app=cattle
+```
+
+预期输出：
+
+```
+NAME     READY   UP-TO-DATE   AVAILABLE   AGE
+cattle   5/5     5            5           10s
+
+NAME                      READY   STATUS    RESTARTS   AGE
+cattle-2263376956-41xy6   1/1     Running   0          34s
+cattle-2263376956-kw466   1/1     Running   0          34s
+cattle-2263376956-n4v97   1/1     Running   0          34s
+cattle-2263376956-p5p3i   1/1     Running   0          34s
+cattle-2263376956-sxpth   1/1     Running   0          34s
+```
+
+---
+
+### Step 5: 验证命名空间隔离
+
+**目标**：反复切换 context，观察"视野"随之切换——每个 context 只看到自己 namespace 的资源。
+
+```bash
+# 切回 dev，只看到 snowflake
+kubectl config use-context dev
+kubectl get all
+
+# 切到 prod，只看到 cattle
+kubectl config use-context prod
+kubectl get all
+```
+
+**跨 namespace 查看**（需要加 `-n` 或 `--all-namespaces`）：
+
+```bash
+# 切回 dev context，用 -n 查看 production 的资源
+kubectl config use-context dev
+kubectl get deployment -n production
+
+# 查看所有 namespace 的 Pod
+kubectl get pods --all-namespaces | grep -E "snowflake|cattle"
+```
+
+预期输出：
+
+```
+# -n production 下看到 cattle
+NAME     READY   UP-TO-DATE   AVAILABLE
+cattle   5/5     5            5
+
+# --all-namespaces 下两者并列
+NAMESPACE     NAME                       READY   STATUS
+development   snowflake-xxx-aaaa         1/1     Running
+development   snowflake-xxx-bbbb         1/1     Running
+production    cattle-xxx-cccc            1/1     Running
+...（5 个 cattle pod）
+```
+
+---
+
+### Step 6: 同名资源在不同 namespace 互不干扰
+
+**目标**：在 production namespace 也创建一个叫 `snowflake` 的 Deployment，验证与 development 中的同名 Deployment 完全独立。
+
+```bash
+kubectl config use-context prod
+
+kubectl create deployment snowflake \
+  --image=registry.k8s.io/serve_hostname \
+  --replicas=3
+
+# 两个 namespace 各自有自己的 snowflake
+kubectl get deployment -n development snowflake
+kubectl get deployment -n production snowflake
+```
+
+预期（同名 Deployment，副本数不同，互不影响）：
+
+```
+# development 的 snowflake
+NAME        READY   UP-TO-DATE   AVAILABLE
+snowflake   2/2     2            2
+
+# production 的 snowflake
+NAME        READY   UP-TO-DATE   AVAILABLE
+snowflake   3/3     3            3
 ```
 
 ---
@@ -429,23 +324,26 @@ kubectl describe replicaset -n team-beta | grep -A5 "Warning"
 ## ✅ 验证整体完成
 
 ```bash
-# 列出所有相关资源
-kubectl get namespace team-alpha team-beta
-kubectl get deploy,svc -n team-alpha
-kubectl get deploy,svc -n team-beta
-kubectl get networkpolicy -n team-alpha
-kubectl get resourcequota -n team-beta
+kubectl get namespaces development production
+kubectl get deployment -n development
+kubectl get deployment -n production
 ```
 
-预期（全部资源正常）：
+预期：
 
 ```
-NAME         STATUS
-team-alpha   Active
-team-beta    Active
+NAME          STATUS   AGE
+development   Active   15m
+production    Active   15m
 
-# team-alpha：alpha-web Deployment + alpha-svc + deny-from-beta NetworkPolicy
-# team-beta：beta-web Deployment + beta-svc + beta-quota ResourceQuota
+# development
+NAME        READY
+snowflake   2/2
+
+# production
+NAME        READY
+cattle      5/5
+snowflake   3/3
 ```
 
 ---
@@ -453,11 +351,21 @@ team-beta    Active
 ## 🧹 清理
 
 ```bash
-# 删除整个 namespace 会同时删除其中所有资源
-kubectl delete namespace team-alpha team-beta
+# 删除 namespace 会同时删除其中所有资源
+kubectl delete namespace development production
 
-# 验证
-kubectl get namespace | grep team
+# 删除临时 context
+kubectl config delete-context dev
+kubectl config delete-context prod
+
+# 切回 default context
+kubectl config use-context default 2>/dev/null || true
+```
+
+验证：
+
+```bash
+kubectl get namespace | grep -E "development|production"
 # 预期：无输出
 ```
 
@@ -465,7 +373,7 @@ kubectl get namespace | grep team
 
 ## 🚀 扩展练习
 
-1. **双向隔离**：给 team-beta 也加 NetworkPolicy，实现 alpha 和 beta 互相隔离，但都允许来自 `default` namespace 的访问
-2. **LimitRange**：在 namespace 中创建 `LimitRange`，为没有设置 `resources` 的 Pod 自动注入默认限制
-3. **跨 namespace Service 访问**：在 team-alpha 部署数据库，team-beta 通过 FQDN 访问（无 NetworkPolicy 限制时）
-4. **RBAC 配合**：创建只有读权限的 ServiceAccount，用 `kubectl auth can-i` 验证权限边界（进阶）
+1. **ResourceQuota**：给 `development` namespace 加资源配额，限制最多 5 个 Pod 和 1 CPU
+2. **LimitRange**：给 namespace 设置默认资源请求/限制，让没有写 `resources` 的 Pod 自动获得默认值
+3. **RBAC**：创建只能操作 development namespace 的 ServiceAccount，验证它无法看到 production 资源
+4. **NetworkPolicy**：禁止跨 namespace 的 Pod 间通信，实现真正的网络层隔离

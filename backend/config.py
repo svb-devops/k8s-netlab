@@ -133,6 +133,9 @@ VM_IP_END: int = _get_env_int("VM_IP_END", 254)
 # Registry mirror running on Proxmox host (pull-through cache for docker.io)
 # Defaults to http://<VM_GATEWAY>:5000; set to empty string to disable
 VM_REGISTRY_MIRROR: str = os.getenv("VM_REGISTRY_MIRROR", "")
+# Custom push-capable registry for non-docker.io images (us-docker.pkg.dev, registry.k8s.io)
+# Defaults to http://<VM_GATEWAY>:5001
+VM_REGISTRY_MIRROR_CUSTOM: str = os.getenv("VM_REGISTRY_MIRROR_CUSTOM", "")
 
 # --- Admin API Configuration ---
 # Static token for the admin observability endpoint (X-Admin-Token header).

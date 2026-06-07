@@ -265,11 +265,18 @@ async def reset_k3s_via_agent(vm_id: int, websocket: WebSocket) -> None:
 
         # Step 2: Configure registry mirror so K3s pulls via local cache, not directly from internet
         mirror_url = config.VM_REGISTRY_MIRROR or f"http://{config.VM_GATEWAY}:5000"
+        custom_url = config.VM_REGISTRY_MIRROR_CUSTOM or f"http://{config.VM_GATEWAY}:5001"
         _REGISTRIES_YAML = (
             'mirrors:\n'
             '  "docker.io":\n'
             '    endpoint:\n'
             f'      - "{mirror_url}"\n'
+            '  "us-docker.pkg.dev":\n'
+            '    endpoint:\n'
+            f'      - "{custom_url}"\n'
+            '  "registry.k8s.io":\n'
+            '    endpoint:\n'
+            f'      - "{custom_url}"\n'
         )
         try:
             r = agent.post("exec", command=[

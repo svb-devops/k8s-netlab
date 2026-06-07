@@ -11,38 +11,37 @@
 
 部署一个带持久化存储的 MySQL 数据库，并验证 Pod 重建后数据不丢失：
 
-- 用 `Secret` 安全存储数据库密码（而非明文写进 YAML）
-- 用 `PersistentVolumeClaim` 挂载存储，保证数据与 Pod 生命周期解耦
-- 部署 MySQL Deployment，挂载 PVC
-- 用 `busybox` 客户端 Pod 连接 MySQL，写入数据、重建 Pod、验证数据依然存在
+- 用 `PersistentVolume` + `PersistentVolumeClaim` 挂载存储，保证数据与 Pod 生命周期解耦
+- 部署 MySQL Deployment，使用 `Recreate` 策略（单实例有状态应用的正确策略）
+- 通过 Headless Service（`clusterIP: None`）暴露数据库
+- 用 MySQL 客户端连接、写入数据，重建 Pod 后验证数据依然存在
 
 学完本案例，你将理解：
-1. 为什么有状态应用不能像无状态 Pod 一样"重启即恢复"
-2. Secret 的使用方式——通过环境变量注入，而非硬编码
-3. PVC 与 Pod 的生命周期解耦——Pod 删了，数据还在
-4. K3s 的默认 StorageClass（local-path）如何自动分配 PV
+1. **为什么有状态应用用 `Recreate` 而非 `RollingUpdate`**：单实例数据库无法同时运行新旧两个 Pod 挂载同一个 PVC
+2. **Headless Service**：`clusterIP: None` 使 DNS 直接解析到 Pod IP，适合需要直连 Pod 的有状态应用
+3. **PVC 与 Pod 的生命周期解耦**：Pod 删了，数据还在
 
 ## 🏗️ 架构图
 
 ```
-Secret（db-secret）
-    │ 注入环境变量
-    ▼
-MySQL Pod ──── PVC（mysql-pvc）──── 宿主机本地目录
-    │
-    ▼（ClusterIP Service）
- mysql-svc
-    │
-    ▼
-busybox Pod（数据库客户端，手动执行 SQL）
+mysql-pv-volume（HostPath PV）
+      │
+      └──▶ mysql-pv-claim（PVC，20Gi）
+                  │
+            MySQL Pod（mysql:9）
+                  │ 挂载 /var/lib/mysql
+         Headless Service（mysql，clusterIP:None）
+                  │
+             DNS 直解 Pod IP
+                  │
+            MySQL 客户端（kubectl run）
 ```
 
 ## 🐳 使用的镜像
 
 | 镜像 | 用途 | 来源 |
 |------|------|------|
-| `mysql:8.0` | 数据库服务 | 本地 registry mirror |
-| `busybox:1.28` | 数据库客户端（mysql 命令行） | 本地 registry mirror |
+| `mysql:9` | 数据库服务 | 本地 registry mirror |
 
 ## ⚠️ 开始前
 
@@ -53,154 +52,124 @@ kubectl wait --for=condition=Ready node --all --timeout=120s
 kubectl get storageclass
 ```
 
-预期输出（K3s 内置 local-path）：
-
-```
-NAME                   PROVISIONER             RECLAIMPOLICY
-local-path (default)   rancher.io/local-path   Delete
-```
-
 ---
 
 ## 🔬 步骤
 
-### Step 1: 创建 Secret 存储数据库密码
+### Step 1: 创建 PersistentVolume 和 PersistentVolumeClaim
 
-**目标**：用 Secret 管理敏感信息，不把密码明文写进 Deployment YAML。
-
-```bash
-kubectl create secret generic db-secret \
-  --from-literal=MYSQL_ROOT_PASSWORD=K8sLab2026 \
-  --from-literal=MYSQL_DATABASE=labdb \
-  --from-literal=MYSQL_USER=labuser \
-  --from-literal=MYSQL_PASSWORD=LabPass2026
-```
-
-**验证**（Secret 存储加密，values 不明文显示）：
-
-```bash
-kubectl get secret db-secret
-kubectl describe secret db-secret
-```
-
-预期输出：
-
-```
-NAME        TYPE     DATA   AGE
-db-secret   Opaque   4      5s
-
-Name:   db-secret
-...
-Data
-====
-MYSQL_DATABASE:      5 bytes
-MYSQL_PASSWORD:      11 bytes
-MYSQL_ROOT_PASSWORD: 10 bytes
-MYSQL_USER:          7 bytes
-```
-
----
-
-### Step 2: 创建 PersistentVolumeClaim
-
-**目标**：声明 2Gi 存储，K3s 的 local-path provisioner 自动分配 PV。
+**目标**：手动创建 PV（HostPath 类型），并声明对应的 PVC。
 
 ```bash
 kubectl apply -f - <<'EOF'
 apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv-volume
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 20Gi
+  accessModes:
+  - ReadWriteOnce
+  hostPath:
+    path: "/mnt/data"
+---
+apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: mysql-pvc
+  name: mysql-pv-claim
 spec:
+  storageClassName: manual
   accessModes:
   - ReadWriteOnce
   resources:
     requests:
-      storage: 2Gi
+      storage: 20Gi
 EOF
 ```
 
-**验证**（PVC 初始 Pending，挂载后变 Bound）：
+**验证**：
 
 ```bash
-kubectl get pvc mysql-pvc
+kubectl get pv mysql-pv-volume
+kubectl get pvc mysql-pv-claim
 ```
 
-预期输出（此时还是 Pending，因为 local-path 是懒分配）：
+预期（PV 为 Available，PVC 为 Bound 或 Pending 等待 Pod 调度）：
 
 ```
-NAME        STATUS    VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS
-mysql-pvc   Pending                                      local-path
-```
+NAME              CAPACITY   STATUS      STORAGECLASS
+mysql-pv-volume   20Gi       Available   manual
 
-> local-path 采用 WaitForFirstConsumer 策略，PVC 在 Pod 调度后才变 Bound。
+NAME             STATUS    CAPACITY   STORAGECLASS
+mysql-pv-claim   Pending              manual
+```
 
 ---
 
-### Step 3: 部署 MySQL
+### Step 2: 部署 MySQL
 
-**目标**：创建 MySQL Deployment，引用 Secret 作为环境变量，挂载 PVC 到 `/var/lib/mysql`。
+**目标**：创建 MySQL Deployment 和 Headless Service。
+
+**关键配置说明**：
+- `strategy.type: Recreate`：先删旧 Pod，再建新 Pod，避免两个 Pod 同时挂载同一个 PVC
+- `clusterIP: None`：Headless Service，DNS 直接解析到 Pod IP（而非 VIP）
 
 ```bash
 kubectl apply -f - <<'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+  - port: 3306
+  selector:
+    app: mysql
+  clusterIP: None
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: mysql
-  labels:
-    app: mysql
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app: mysql
+  strategy:
+    type: Recreate
   template:
     metadata:
       labels:
         app: mysql
     spec:
       containers:
-      - name: mysql
-        image: mysql:8.0
-        envFrom:
-        - secretRef:
-            name: db-secret
+      - image: mysql:9
+        name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: password
         ports:
         - containerPort: 3306
+          name: mysql
         volumeMounts:
-        - name: mysql-storage
+        - name: mysql-persistent-storage
           mountPath: /var/lib/mysql
-        resources:
-          requests:
-            cpu: "200m"
-            memory: "256Mi"
-          limits:
-            cpu: "500m"
-            memory: "512Mi"
       volumes:
-      - name: mysql-storage
+      - name: mysql-persistent-storage
         persistentVolumeClaim:
-          claimName: mysql-pvc
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: mysql-svc
-spec:
-  type: ClusterIP
-  selector:
-    app: mysql
-  ports:
-  - port: 3306
-    targetPort: 3306
+          claimName: mysql-pv-claim
 EOF
 ```
 
-**等待 MySQL 就绪**（MySQL 首次初始化需要约 60-90 秒）：
+**等待 MySQL 就绪**（首次初始化约 60-90 秒）：
 
 ```bash
-kubectl wait --for=condition=Available deployment/mysql --timeout=120s
-kubectl get pod -l app=mysql
+kubectl describe deployment mysql
+kubectl get pods -l app=mysql
 ```
 
 预期输出：
@@ -210,153 +179,147 @@ NAME                     READY   STATUS    RESTARTS   AGE
 mysql-xxxxxxxxx-xxxxx    1/1     Running   0          90s
 ```
 
-**同时确认 PVC 已变 Bound**：
+**确认 PVC 已 Bound**：
 
 ```bash
-kubectl get pvc mysql-pvc
+kubectl describe pvc mysql-pv-claim
+```
+
+---
+
+### Step 3: 连接 MySQL 并写入数据
+
+**目标**：用临时客户端 Pod 通过 Headless Service DNS 名连接 MySQL，写入测试数据。
+
+```bash
+kubectl run -it --rm --image=mysql:9 --restart=Never mysql-client -- \
+  mysql -h mysql -ppassword
+```
+
+进入 MySQL 命令行后，执行：
+
+```sql
+CREATE DATABASE IF NOT EXISTS testdb;
+USE testdb;
+CREATE TABLE messages (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  content VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+INSERT INTO messages (content) VALUES ('Hello from Kubernetes');
+INSERT INTO messages (content) VALUES ('Data persists across Pod restarts');
+SELECT * FROM messages;
+exit
 ```
 
 预期输出：
 
 ```
-NAME        STATUS   VOLUME                                     CAPACITY
-mysql-pvc   Bound    pvc-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx   2Gi
++----+-----------------------------------+---------------------+
+| id | content                           | created_at          |
++----+-----------------------------------+---------------------+
+|  1 | Hello from Kubernetes             | 2026-xx-xx xx:xx:xx |
+|  2 | Data persists across Pod restarts | 2026-xx-xx xx:xx:xx |
++----+-----------------------------------+---------------------+
 ```
+
+**关键点**：连接使用的是 Service 名 `mysql`（Headless Service，DNS 解析直接指向 Pod IP）。
 
 ---
 
-### Step 4: 连接数据库并写入数据
+### Step 4: 验证数据持久化——删除 Pod 后数据依然存在
 
-**目标**：用 busybox Pod 作为客户端，连接 MySQL 写入测试数据。
-
-```bash
-# 启动临时客户端 Pod
-kubectl run mysql-client --image=busybox:1.28 --rm -it --restart=Never -- \
-  sh -c '
-    # 等待 MySQL 接受连接
-    until nc -z mysql-svc 3306; do echo "waiting..."; sleep 2; done
-    echo "MySQL is ready"
-    
-    # 连接并执行 SQL
-    # 注意：busybox 没有 mysql 客户端，用 nc 发原始 SQL 验证端口即可
-    echo "Port 3306 is reachable on mysql-svc"
-  '
-```
-
-用 exec 进入正在运行的 MySQL Pod 执行 SQL（更直接）：
+**目标**：强制删除 Pod，观察 `Recreate` 策略下的重建过程，再验证数据未丢失。
 
 ```bash
-MYSQL_POD=$(kubectl get pod -l app=mysql -o jsonpath='{.items[0].metadata.name}')
+# 记录当前 Pod
+kubectl get pods -l app=mysql
 
-# 创建表并插入数据
-kubectl exec $MYSQL_POD -- mysql -u labuser -pLabPass2026 labdb -e "
-  CREATE TABLE IF NOT EXISTS messages (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    content VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  );
-  INSERT INTO messages (content) VALUES ('Hello from K8s - record 1');
-  INSERT INTO messages (content) VALUES ('Hello from K8s - record 2');
-  SELECT * FROM messages;
-"
+# 删除 Pod（模拟崩溃）
+kubectl delete pod -l app=mysql
+
+# 观察重建过程（Recreate：先完全删除，再新建）
+kubectl get pods -l app=mysql -w
 ```
 
-预期输出：
+预期过程（Ctrl+C 退出）：
 
 ```
-id  content                     created_at
-1   Hello from K8s - record 1   2026-xx-xx xx:xx:xx
-2   Hello from K8s - record 2   2026-xx-xx xx:xx:xx
+NAME                   READY   STATUS        RESTARTS
+mysql-xxx-old          1/1     Terminating
+mysql-xxx-new          0/1     Pending       → Running
 ```
+
+**连接新 Pod，查询数据**：
+
+```bash
+kubectl run -it --rm --image=mysql:9 --restart=Never mysql-client -- \
+  mysql -h mysql -ppassword testdb -e "SELECT * FROM messages;"
+```
+
+预期（数据完整保留，与 Step 3 相同）：
+
+```
++----+-----------------------------------+---------------------+
+| id | content                           | created_at          |
++----+-----------------------------------+---------------------+
+|  1 | Hello from Kubernetes             | 2026-xx-xx xx:xx:xx |
+|  2 | Data persists across Pod restarts | 2026-xx-xx xx:xx:xx |
++----+-----------------------------------+---------------------+
+```
+
+数据存储在 PVC 绑定的 HostPath `/mnt/data`，与 Pod 生命周期完全解耦。
 
 ---
 
-### Step 5: 验证数据持久化——删除 Pod 后数据依然存在
+### Step 5: 更新 MySQL（观察 Recreate 策略）
 
-**目标**：这是本案例的核心验证——强制删除 Pod，Deployment 重建后，PVC 中的数据是否还在。
-
-```bash
-# 记录当前 Pod 名称
-OLD_POD=$(kubectl get pod -l app=mysql -o jsonpath='{.items[0].metadata.name}')
-echo "删除前 Pod: $OLD_POD"
-
-# 强制删除 Pod（模拟节点故障/Pod 崩溃）
-kubectl delete pod $OLD_POD
-
-# 等待新 Pod 启动
-echo "等待新 Pod 就绪..."
-kubectl wait --for=condition=Available deployment/mysql --timeout=120s
-
-# 新 Pod 名称
-NEW_POD=$(kubectl get pod -l app=mysql -o jsonpath='{.items[0].metadata.name}')
-echo "新 Pod: $NEW_POD"
-```
-
-**查询数据**（确认数据未丢失）：
+**目标**：触发 Deployment 更新，观察 Recreate 策略与 RollingUpdate 的区别。
 
 ```bash
-kubectl exec $NEW_POD -- mysql -u labuser -pLabPass2026 labdb -e "SELECT * FROM messages;"
+# 触发更新（修改环境变量，让 Deployment 重建 Pod）
+kubectl set env deployment/mysql MYSQL_EXTRA_ENV=test
+
+# 立刻观察
+kubectl get pods -l app=mysql -w
 ```
 
-预期输出（与 Step 4 相同）：
+预期（Recreate 策略：旧 Pod 完全停止后，新 Pod 才启动）：
 
 ```
-id  content                     created_at
-1   Hello from K8s - record 1   2026-xx-xx xx:xx:xx
-2   Hello from K8s - record 2   2026-xx-xx xx:xx:xx
+NAME               READY   STATUS        
+mysql-old-xxx      1/1     Terminating   ← 先停旧 Pod
+mysql-new-xxx      0/1     Pending       ← 旧 Pod 完全停止后才开始新 Pod
+mysql-new-xxx      1/1     Running
 ```
 
-**关键点**：数据存储在 PVC 对应的宿主机目录，与 Pod 生命周期完全解耦。Pod 被删除、重建，数据不受影响。
-
----
-
-### Step 6: 查看 PV 实际存储位置
-
-**目标**：了解 local-path provisioner 在宿主机的实际存储位置。
-
-```bash
-# 查看 PV 详情
-kubectl get pv -o wide
-
-# 查看具体存储路径（在 PV 的 spec.local 或 hostPath 中）
-PV_NAME=$(kubectl get pvc mysql-pvc -o jsonpath='{.spec.volumeName}')
-kubectl describe pv $PV_NAME | grep -A5 "Source"
-```
-
-预期输出（local-path 挂载到宿主机某个临时目录）：
-
-```
-Source:
-    Type:          HostPath (bare host directory volume)
-    Path:          /var/lib/rancher/k3s/storage/pvc-xxxxxxxx.../
-    HostPathType:  DirectoryOrCreate
-```
+**关键对比**：如果是 RollingUpdate，新旧 Pod 会短暂并存——但两个 Pod 同时挂载同一个 ReadWriteOnce PVC 会导致第二个 Pod 启动失败。`Recreate` 正是为避免这个问题而生。
 
 ---
 
 ## ✅ 验证整体完成
 
 ```bash
-kubectl get secret db-secret
-kubectl get pvc mysql-pvc
+kubectl get pv mysql-pv-volume
+kubectl get pvc mysql-pv-claim
 kubectl get deployment mysql
-kubectl get svc mysql-svc
+kubectl get svc mysql
 ```
 
-预期输出（全部就绪）：
+预期（PV/PVC Bound，Deployment 1/1，Headless Service 无 ClusterIP）：
 
 ```
-NAME        TYPE     DATA
-db-secret   Opaque   4
+NAME              CAPACITY   STATUS   STORAGECLASS
+mysql-pv-volume   20Gi       Bound    manual
 
-NAME        STATUS   CAPACITY
-mysql-pvc   Bound    2Gi
+NAME             STATUS   CAPACITY
+mysql-pv-claim   Bound    20Gi
 
 NAME    READY   UP-TO-DATE   AVAILABLE
 mysql   1/1     1            1
 
-NAME        TYPE        PORT(S)
-mysql-svc   ClusterIP   3306/TCP
+NAME    TYPE        CLUSTER-IP   PORT(S)
+mysql   ClusterIP   None         3306/TCP
 ```
 
 ---
@@ -364,26 +327,20 @@ mysql-svc   ClusterIP   3306/TCP
 ## 🧹 清理
 
 ```bash
-kubectl delete deployment mysql
-kubectl delete svc mysql-svc
-kubectl delete pvc mysql-pvc
-kubectl delete secret db-secret
+kubectl delete deployment,svc mysql
+kubectl delete pvc mysql-pv-claim
+kubectl delete pv mysql-pv-volume
 ```
 
-> PVC 删除后，local-path 的 ReclaimPolicy 为 `Delete`，宿主机目录也会被自动清理。
-
-验证清理完成：
-
-```bash
-kubectl get pod,pvc,secret | grep -E "mysql|db-secret"
-# 预期：无输出
-```
+> PV 使用 HostPath，删除 PV 后宿主机目录 `/mnt/data` 仍存在，需手动清理：
+> ```bash
+> rm -rf /mnt/data
+> ```
 
 ---
 
 ## 🚀 扩展练习
 
-1. **StatefulSet vs Deployment**：把 mysql Deployment 改为 StatefulSet，观察 Pod 命名（`mysql-0`）和 PVC 自动绑定的区别
-2. **ConfigMap 配置注入**：把 MySQL 配置文件（my.cnf）用 ConfigMap 挂载到 `/etc/mysql/conf.d/`
-3. **数据库备份**：用 CronJob 定期 `mysqldump` 并存到另一个 PVC（与 D04 结合）
-4. **存储容量**：尝试把 `storage: 2Gi` 改为 `200Mi`，插入大量数据，观察写满后的行为
+1. **为什么不能 scale？**：尝试 `kubectl scale deployment mysql --replicas=2`，观察第二个 Pod 因 PVC 冲突无法启动
+2. **生产最佳实践**：密码改用 Secret（`kubectl create secret generic mysql-pass --from-literal=password=YOUR_PASSWORD`），在 Deployment 中引用
+3. **StatefulSet**：把 Deployment 改为 StatefulSet，感受两者在 Pod 命名和 PVC 自动绑定上的区别
