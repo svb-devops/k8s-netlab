@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- fix: landing.html/article.html 内联脚本提取为外部 JS 文件，修复 CSP 阻断导致文章列表不渲染的 bug；修复 onclick= 内联事件改用事件委托
 - fix: showSuccess/showError 改用非阻塞 toast 通知 — 替换 alert()，loading modal 重绘不再被阻塞
 - fix: 移除 ipwho.is 第三方 IP 地理位置查询 — 学生 IP 不再发往外部服务（隐私保护），admin 面板 login_location 字段始终为 null
 - feat: 公开文章发布系统 — Directus 新增 articles/comments 集合，后端 articles_routes.py 提供公开读/登录后评论 API，新建 landing.html 公开首页（文章列表 + Hero）和 article.html 文章详情+评论页，/ 改为公开落地页，/app 为实验室入口，登录后跳转 /app
