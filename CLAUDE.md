@@ -8,10 +8,10 @@
 - **服务**：`k8s-netlab.service`，FastAPI，uvicorn port 8000
 - **生产地址**：`https://lab.cloudnetops.tech`
 - **健康检查**：`curl -s https://lab.cloudnetops.tech/api/health`
-- **VMID 范围**：100–199，模板 VM ID = 100（不能删）
+- **VMID 范围**：500–599，模板 VM ID = 101（不能删）
 - **网络**：vmbr1（172.16.100.0/24）
 - **数据**：`data/*.json`（flock 原子读写，不用数据库）
-- **测试基线**：256 tests，覆盖率 80%
+- **测试基线**：435 tests，覆盖率 91.7%
 - **安全门禁**：pre-commit（敏感信息扫描）+ pre-push（8 项安全检查 + pytest），安装：`bash scripts/install-git-hooks.sh`
 
 ## 工作流规则（触发时自动执行）

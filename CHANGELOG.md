@@ -7,6 +7,8 @@
 ## [Unreleased]
 
 ### Changed
+- fix: showSuccess/showError 改用非阻塞 toast 通知 — 替换 alert()，loading modal 重绘不再被阻塞
+- fix: 移除 ipwho.is 第三方 IP 地理位置查询 — 学生 IP 不再发往外部服务（隐私保护），admin 面板 login_location 字段始终为 null
 - feat: 公开文章发布系统 — Directus 新增 articles/comments 集合，后端 articles_routes.py 提供公开读/登录后评论 API，新建 landing.html 公开首页（文章列表 + Hero）和 article.html 文章详情+评论页，/ 改为公开落地页，/app 为实验室入口，登录后跳转 /app
 - feat(T2-5): 前端学员账号登录 — 新增 /api/auth/directus-login 端点，通过 Directus 凭证认证后签发本地 session cookie；login.html 新增「学员账号」tab，auth.js 重构 tab 切换逻辑
 - feat(T2-6): 实验内容从 Directus CMS 读取 — 新增 backend/directus_client.py（fetch_experiment_list/fetch_experiment_detail/directus_auth_login），docs_routes.py 优先从 Directus 获取，本地 Markdown 文件兜底；contract test 移除内部字段 filename 的契约约束

@@ -337,18 +337,42 @@ class K8SNetLabApp {
         this.elements.loadingModal.classList.remove('flex');
     }
 
-    /**
-     * Show success message
-     */
-    showSuccess(title, message) {
-        alert(`✅ ${title}\n\n${message}`);
+    _showToast(title, message, colorClass, iconHtml, durationMs) {
+        const id = `toast-${Date.now()}`;
+        const toast = document.createElement('div');
+        toast.id = id;
+        toast.className = [
+            'fixed top-6 left-1/2 -translate-x-1/2 z-50',
+            `border rounded-xl shadow-xl ${colorClass}`,
+            'p-5 max-w-md w-11/12 flex items-start space-x-3',
+        ].join(' ');
+        toast.innerHTML = `
+            <div class="text-2xl select-none">${iconHtml}</div>
+            <div class="flex-1 min-w-0">
+                <p class="font-semibold">${title}</p>
+                ${message ? `<p class="text-sm mt-1 break-words whitespace-pre-wrap">${message}</p>` : ''}
+            </div>
+            <button class="text-xl leading-none flex-shrink-0 opacity-60 hover:opacity-100">✕</button>
+        `;
+        document.body.appendChild(toast);
+        toast.querySelector('button').addEventListener('click', () => toast.remove());
+        setTimeout(() => { if (toast.isConnected) toast.remove(); }, durationMs);
     }
 
-    /**
-     * Show error message
-     */
+    showSuccess(title, message) {
+        this._showToast(
+            title, message,
+            'bg-green-50 border-green-300 text-green-800',
+            '✅', 6000
+        );
+    }
+
     showError(title, message) {
-        alert(`❌ ${title}\n\n${message}`);
+        this._showToast(
+            title, message,
+            'bg-red-50 border-red-300 text-red-800',
+            '❌', 8000
+        );
     }
 
     /**

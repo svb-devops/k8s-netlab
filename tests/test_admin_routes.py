@@ -234,8 +234,8 @@ class TestAdminEdgeCases:
         from unittest.mock import patch as _patch
         return contextlib.ExitStack()
 
-    def test_geo_lookup_exception_does_not_crash_status(self, client):
-        """_get_geo() 内部抛异常时 /api/admin/status 必须正常返回，不传播异常。"""
+    def test_login_location_is_never_populated(self, client):
+        """login_location 必须始终为 None — 不向第三方发起 IP 地理位置查询（隐私保护）。"""
         session = {
             "username": "alice",
             "created_at": "2026-01-01T00:00:00",
@@ -245,17 +245,17 @@ class TestAdminEdgeCases:
         }
         with patch("backend.config.ADMIN_TOKEN", TEST_TOKEN), \
              patch("backend.admin_routes.auth_manager") as mock_auth, \
-             patch("backend.admin_routes.vm_tracker") as mock_tracker, \
-             patch("backend.admin_routes.httpx.AsyncClient") as mock_client_cls:
+             patch("backend.admin_routes.vm_tracker") as mock_tracker:
             mock_auth.get_active_sessions.return_value = [session]
             mock_auth.get_users_summary.return_value = {}
             mock_tracker.get_all_vms_with_details.return_value = []
 
-            # httpx 抛异常模拟 geo 失败
-            mock_client_cls.return_value.__aenter__.side_effect = Exception("network error")
-
             resp = client.get("/api/admin/status", headers={"X-Admin-Token": TEST_TOKEN})
+
         assert resp.status_code == 200
+        sessions = resp.json()["sessions"]
+        assert len(sessions) == 1
+        assert sessions[0]["login_location"] is None
 
     def test_session_missing_timestamps_is_skipped(self, client):
         """created_at 或 expires_at 缺失的 session 必须被静默跳过，不崩溃（数据损坏防御）。"""
@@ -272,8 +272,7 @@ class TestAdminEdgeCases:
         }
         with patch("backend.config.ADMIN_TOKEN", TEST_TOKEN), \
              patch("backend.admin_routes.auth_manager") as mock_auth, \
-             patch("backend.admin_routes.vm_tracker") as mock_tracker, \
-             patch("backend.admin_routes.httpx.AsyncClient"):
+             patch("backend.admin_routes.vm_tracker") as mock_tracker:
             mock_auth.get_active_sessions.return_value = [corrupt_session, valid_session]
             mock_auth.get_users_summary.return_value = {}
             mock_tracker.get_all_vms_with_details.return_value = []

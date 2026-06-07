@@ -8,12 +8,10 @@ Usage:
     curl -H "X-Admin-Token: <token>" http://localhost:8000/api/admin/status
 """
 
-import asyncio
 import logging
 import secrets
 from typing import Optional
 
-import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
@@ -24,20 +22,6 @@ from backend.vm_tracker import vm_tracker
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
-
-
-async def _fetch_geo(ip: str) -> str:
-    """Resolve IP to 'City, Country' via ipwho.is. Returns '' on any failure."""
-    try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            r = await client.get(f"https://ipwho.is/{ip}")
-            d = r.json()
-            if d.get("success"):
-                parts = [p for p in [d.get("city"), d.get("country")] if p]
-                return ", ".join(parts)
-    except Exception as e:
-        logger.debug(f"IP geo lookup failed for {ip}: {e}")
-    return ""
 
 
 # ============================================================
@@ -136,14 +120,6 @@ async def admin_status(
     users_summary = auth_manager.get_users_summary()
     all_vms = vm_tracker.get_all_vms_with_details()
 
-    # Resolve geolocation for all unique login IPs in parallel (2s timeout each)
-    unique_ips = list({s.get("login_ip") for s in active_sessions if s.get("login_ip")})
-    geo_results = await asyncio.gather(*[_fetch_geo(ip) for ip in unique_ips], return_exceptions=True)
-    geo_map: dict[str, str] = {
-        ip: (r if isinstance(r, str) else "")
-        for ip, r in zip(unique_ips, geo_results)
-    }
-
     # Index VMs by owner for O(1) lookup
     vms_by_owner: dict[str, list[VMDetail]] = {}
     for vm in all_vms:
@@ -166,7 +142,7 @@ async def admin_status(
             username=username,
             is_admin=username in config.ADMIN_USERNAMES,
             login_ip=s.get("login_ip"),
-            login_location=geo_map.get(s.get("login_ip", ""), "") or None,
+            login_location=None,
             login_time=created_at,
             expires_at=expires_at,
             registered_at=users_summary.get(username, {}).get("created_at"),
