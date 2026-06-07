@@ -7,6 +7,9 @@
 ## [Unreleased]
 
 ### Changed
+- feat(T2-5): 前端学员账号登录 — 新增 /api/auth/directus-login 端点，通过 Directus 凭证认证后签发本地 session cookie；login.html 新增「学员账号」tab，auth.js 重构 tab 切换逻辑
+- feat(T2-6): 实验内容从 Directus CMS 读取 — 新增 backend/directus_client.py（fetch_experiment_list/fetch_experiment_detail/directus_auth_login），docs_routes.py 优先从 Directus 获取，本地 Markdown 文件兜底；contract test 移除内部字段 filename 的契约约束
+- feat(T2-8): 新增 23 个测试（test_directus_client + docs_routes/auth_routes Directus 集成），425 tests，覆盖率 92%
 - feat(T2-1): 部署 Directus 11 + PostgreSQL 16 — docker-compose.directus.yml，内网 127.0.0.1:8055，admin 凭证在 .env.directus
 - feat(T2-2+T2-3): Directus Schema + 数据迁移 — experiments 集合 10 字段，导入 11 个网络实验 + 5 个部署案例（含 content+background），迁移 12 个用户，配置 public read policy
 - feat(T2-4): FastAPI 双认证支持 — auth_directus.py 验证 Directus Bearer token（60s 缓存），auth_deps.py 优先 Bearer 兜底 session cookie，config.py 新增 DIRECTUS_URL + DIRECTUS_TOKEN_CACHE_TTL

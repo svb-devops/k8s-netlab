@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field
 
 from backend.auth import auth_manager
 from backend.config import SESSION_COOKIE_SECURE
+from backend.directus_client import directus_auth_login
+from backend.auth_directus import verify_directus_token
 from backend.rate_limiter import rate_limiter
 
 logger = logging.getLogger(__name__)
@@ -338,3 +340,86 @@ async def change_password(
 
     logger.info(f"Password changed via API for '{username}'")
     return AuthResponse(success=True, message="密码已修改", username=username)
+
+
+@router.post(
+    "/directus-login",
+    response_model=AuthResponse,
+    summary="Login via Directus credentials"
+)
+async def directus_login(
+    credentials: LoginRequest,
+    response: Response,
+    request: Request,
+) -> AuthResponse:
+    """
+    Login using Directus account credentials.
+
+    Authenticates against Directus (email = {username}@lab.cloudnetops.tech),
+    then issues a local session cookie so the rest of the platform works
+    identically to a regular login.
+
+    Args:
+        credentials: username + password
+        response: FastAPI response (for setting cookie)
+        request: FastAPI request (for rate limiting)
+
+    Returns:
+        AuthResponse with login status
+    """
+    try:
+        client_ip = _get_client_ip(request)
+        rl_key = f"login:{client_ip}"
+        if rate_limiter.is_over_limit(rl_key, max_requests=5, window_seconds=60):
+            wait = rate_limiter.retry_after(rl_key, window_seconds=60)
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"登录尝试过于频繁，请 {wait} 秒后重试",
+                headers={"Retry-After": str(wait)},
+            )
+
+        # Authenticate against Directus
+        token = await directus_auth_login(credentials.username, credentials.password)
+        if not token:
+            rate_limiter.record(rl_key)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Directus 账号或密码错误",
+            )
+
+        # Verify token to get canonical username and role
+        result = await verify_directus_token(token)
+        if not result:
+            rate_limiter.record(rl_key)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Directus 认证失败",
+            )
+        username, is_admin = result
+
+        # Issue a local session so the frontend cookie flow is unchanged
+        session_token = auth_manager.create_session(username, login_ip=client_ip)
+        response.set_cookie(
+            key="session_token",
+            value=session_token,
+            httponly=True,
+            secure=SESSION_COOKIE_SECURE,
+            max_age=86400,
+            samesite="strict",
+        )
+
+        return AuthResponse(
+            success=True,
+            message="Directus 登录成功",
+            username=username,
+            is_admin=is_admin,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Directus login error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="登录失败",
+        )

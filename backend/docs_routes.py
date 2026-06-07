@@ -2,8 +2,11 @@
 K8S NetLab - Experiment Documentation API Routes
 
 Provides endpoints to list and serve Markdown experiment documents.
+When DIRECTUS_URL is configured, content is fetched from Directus CMS;
+otherwise falls back to the hardcoded metadata + local Markdown files.
 """
 
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -11,6 +14,9 @@ from fastapi import APIRouter, Cookie, HTTPException
 from fastapi.responses import JSONResponse
 
 from backend.auth import auth_manager
+from backend.directus_client import fetch_experiment_detail, fetch_experiment_list
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/experiments", tags=["experiments"])
 
@@ -341,10 +347,14 @@ EXPERIMENTS = [
 async def list_experiments() -> JSONResponse:
     """
     Return the list of all experiment metadata.
+    Fetches from Directus when available; falls back to hardcoded list.
 
     Returns:
         JSON with experiments array containing id, title, difficulty, duration, phase
     """
+    directus_experiments = await fetch_experiment_list()
+    if directus_experiments is not None:
+        return JSONResponse({"experiments": directus_experiments})
     return JSONResponse({"experiments": EXPERIMENTS})
 
 
@@ -355,13 +365,22 @@ async def get_experiment(
 ) -> JSONResponse:
     """
     Return the Markdown content of a specific experiment.
+    Fetches from Directus when available; falls back to local Markdown file.
 
     Args:
         exp_id: Two-digit experiment ID, e.g. "01", "11"
 
     Returns:
-        JSON with id, title, and raw Markdown content string
+        JSON with id, title, difficulty, duration, background, and raw Markdown content
     """
+    # Try Directus first
+    directus_detail = await fetch_experiment_detail(exp_id)
+    if directus_detail is not None:
+        if session_token:
+            auth_manager.update_session_activity(session_token, current_experiment=exp_id)
+        return JSONResponse(directus_detail)
+
+    # Fall back to local hardcoded metadata + Markdown file
     exp = next((e for e in EXPERIMENTS if e["id"] == exp_id), None)
     if not exp:
         raise HTTPException(status_code=404, detail=f"Experiment '{exp_id}' not found")
@@ -378,7 +397,6 @@ async def get_experiment(
 
     content = file_path.read_text(encoding="utf-8")
 
-    # Record current experiment for admin observability (best-effort, never blocks response)
     if session_token:
         auth_manager.update_session_activity(session_token, current_experiment=exp_id)
 

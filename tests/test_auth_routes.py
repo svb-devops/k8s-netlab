@@ -472,3 +472,65 @@ class TestChangePasswordExpiredSession:
                 json={"old_password": "old", "new_password": "new_pass_long"},
             )
         assert resp.status_code == 401
+
+
+# ============================================================
+# POST /api/auth/directus-login
+# ============================================================
+
+class TestDirectusLogin:
+    def _make_client(self, auth_setup):
+        client, mgr, mock_rl = auth_setup
+        return client, mgr, mock_rl
+
+    def test_success_sets_session_cookie(self, auth_setup):
+        """有效 Directus 凭据 → 200 + session_token cookie."""
+        from unittest.mock import AsyncMock, patch
+        client, mgr, mock_rl = auth_setup
+        with patch("backend.auth_routes.directus_auth_login",
+                   new=AsyncMock(return_value="dir_token")), \
+             patch("backend.auth_routes.verify_directus_token",
+                   new=AsyncMock(return_value=("alice", False))), \
+             patch("backend.auth_routes.auth_manager", mgr):
+            resp = client.post("/api/auth/directus-login",
+                               json={"username": "alice", "password": "pw"})
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["success"] is True
+        assert data["username"] == "alice"
+        assert "session_token" in resp.cookies
+
+    def test_wrong_password_returns_401(self, auth_setup):
+        """Directus 登录失败（token=None）→ 401."""
+        from unittest.mock import AsyncMock, patch
+        client, mgr, mock_rl = auth_setup
+        mock_rl.is_over_limit.return_value = False
+        with patch("backend.auth_routes.directus_auth_login",
+                   new=AsyncMock(return_value=None)):
+            resp = client.post("/api/auth/directus-login",
+                               json={"username": "alice", "password": "bad"})
+
+        assert resp.status_code == 401
+        mock_rl.record.assert_called()
+
+    def test_rate_limited_returns_429(self, auth_setup):
+        """触发频率限制 → 429."""
+        from unittest.mock import patch
+        client, _, mock_rl = auth_setup
+        mock_rl.is_over_limit.return_value = True
+        mock_rl.retry_after.return_value = 30
+        resp = client.post("/api/auth/directus-login",
+                           json={"username": "alice", "password": "pw"})
+        assert resp.status_code == 429
+
+    def test_directus_unavailable_returns_401(self, auth_setup):
+        """directus_auth_login 返回 None（DIRECTUS_URL 未设）→ 401."""
+        from unittest.mock import AsyncMock, patch
+        client, mgr, mock_rl = auth_setup
+        mock_rl.is_over_limit.return_value = False
+        with patch("backend.auth_routes.directus_auth_login",
+                   new=AsyncMock(return_value=None)):
+            resp = client.post("/api/auth/directus-login",
+                               json={"username": "alice", "password": "pw"})
+        assert resp.status_code == 401

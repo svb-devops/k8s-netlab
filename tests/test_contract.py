@@ -299,7 +299,6 @@ class TestExperimentsContract:
 
         EXP_SCHEMA = {
             "id": str,
-            "filename": str,
             "title": str,
             "difficulty": int,
             "duration": str,
