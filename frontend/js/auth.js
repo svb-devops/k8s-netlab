@@ -58,7 +58,7 @@ async function submitLogin(endpoint, username, password) {
     const result = await response.json();
     if (response.ok) {
         showMessage('登录成功！正在跳转...', false);
-        setTimeout(() => { window.location.href = '/'; }, 1000);
+        setTimeout(() => { window.location.href = '/app'; }, 1000);
     } else {
         showMessage(result.detail || '登录失败', true);
     }

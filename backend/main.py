@@ -28,6 +28,7 @@ from backend.api_routes import router as api_router
 from backend.auth import auth_manager
 from backend.auth_routes import router as auth_router
 from backend.ai_tutor_routes import router as ai_tutor_router
+from backend.articles_routes import router as articles_router
 from backend.deployments_routes import router as deployments_router
 from backend.docs_routes import router as docs_router
 from backend.middleware import JsonFormatter, RequestIDMiddleware, SecurityHeadersMiddleware
@@ -216,12 +217,13 @@ else:
 # Include Routers
 # ============================================================
 
-app.include_router(auth_router)   # Authentication routes
-app.include_router(api_router)    # VM management routes
-app.include_router(docs_router)        # Experiment documentation routes
+app.include_router(auth_router)      # Authentication routes
+app.include_router(api_router)       # VM management routes
+app.include_router(docs_router)      # Experiment documentation routes
 app.include_router(deployments_router) # Deployment cases routes
-app.include_router(ai_tutor_router)    # AI tutor chat routes
-app.include_router(admin_router)  # Admin observability routes
+app.include_router(ai_tutor_router)  # AI tutor chat routes
+app.include_router(admin_router)     # Admin observability routes
+app.include_router(articles_router)  # Public blog articles
 
 
 # ============================================================
@@ -331,19 +333,35 @@ app.mount("/css", StaticFiles(directory=str(FRONTEND_DIR / "css")), name="css")
 
 @app.get(
     "/",
-    summary="Web UI",
-    description="Serve the web interface",
+    summary="Landing Page",
+    description="Serve the public landing page (articles list)",
     include_in_schema=False
 )
 async def root():
-    """
-    Serve the main web interface.
+    from fastapi.responses import FileResponse
+    return FileResponse(str(FRONTEND_DIR / "landing.html"))
 
-    Returns:
-        HTML: The K8S NetLab web UI
-    """
+
+@app.get(
+    "/app",
+    summary="Web UI",
+    description="Serve the main app (login required)",
+    include_in_schema=False
+)
+async def app_page():
     from fastapi.responses import FileResponse
     return FileResponse(str(FRONTEND_DIR / "index.html"))
+
+
+@app.get(
+    "/article.html",
+    summary="Article Detail",
+    description="Serve the article detail page",
+    include_in_schema=False
+)
+async def article_page():
+    from fastapi.responses import FileResponse
+    return FileResponse(str(FRONTEND_DIR / "article.html"))
 
 
 @app.get(
