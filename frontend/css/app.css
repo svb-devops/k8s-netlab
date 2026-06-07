@@ -110,6 +110,44 @@
 /* ── Lab section layout ── */
 .lab-panel { height: calc(100vh - 200px); min-height: 520px; }
 
+/* ── Doc Drawer (fixed overlay, slides in from left) ── */
+.doc-drawer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 440px;
+    max-width: 92vw;
+    background: #fff;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 4px 0 32px rgba(0, 0, 0, 0.18);
+    transform: translateX(-100%);
+    transition: transform 0.25s ease-in-out;
+    overflow: hidden;
+}
+
+.doc-drawer.drawer-open {
+    transform: translateX(0);
+}
+
+/* Backdrop */
+.drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    z-index: 35;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease-in-out;
+}
+
+.drawer-backdrop.backdrop-visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
 /* ── Step navigation pills ── */
 .step-pill {
     display: inline-flex; align-items: center; gap: 3px;
@@ -127,13 +165,9 @@
     pointer-events: none; accent-color: #10b981;
 }
 
-/* ── Responsive: stack panels vertically on mobile ── */
+/* ── Responsive ── */
 @media (max-width: 768px) {
-    .lab-split-body { flex-direction: column !important; }
-    .lab-doc-panel {
-        width: 100% !important; height: 45%;
-        border-right: none !important; border-bottom: 1px solid #e5e7eb;
-    }
-    .lab-terminal-panel { width: 100% !important; height: 55%; }
     .lab-panel { height: calc(100vh - 140px); min-height: 480px; }
+    /* Drawer full-width on mobile */
+    .doc-drawer { width: 100vw; max-width: 100vw; }
 }

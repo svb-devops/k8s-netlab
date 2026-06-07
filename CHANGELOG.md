@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- refactor: 实验学习台改为 Drawer 布局 — 终端全宽，实验文档以固定覆盖层从左侧滑入，新增 drawer.js 控制开关，terminal.js 暴露 fit() 方法，CSS transition 结束后自动 refit xterm，Esc/backdrop 点击关闭，移动端 drawer 全屏宽度
 - feat: 三栏 AI 助教布局 — 实验学习台改为三栏（30% 文档 | 25% 背景+AI对话 | 45% 终端），新增案例背景介绍（5个部署案例均已录入），集成 DeepSeek SSE 多轮对话助教，backend/ai_tutor_routes.py 提供 /api/ai/chat 端点，前端 ai-tutor.js 实现流式渲染
 - feat: 补全 11 个网络实验背景介绍 — docs_routes.py 每个实验加 background 字段（架构图 + 核心概念 + 设计原因），API 响应新增 background 字段，前端已可自动渲染
 - refactor: AI 助教布局重构 — 去掉独立中栏，改为文档栏内三视图切换（实验文档/实验背景/AI助教），终端恢复 62% 宽度，界面不再拥挤

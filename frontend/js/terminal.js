@@ -161,6 +161,16 @@ class TerminalManager {
     isConnected() {
         return this.websocket && this.websocket.readyState === WebSocket.OPEN;
     }
+
+    /**
+     * Re-fit terminal to container size.
+     * Called by drawer.js after drawer open/close transition ends.
+     */
+    fit() {
+        if (this.fitAddon) {
+            this.fitAddon.fit();
+        }
+    }
 }
 
 // Create global terminal manager instance
