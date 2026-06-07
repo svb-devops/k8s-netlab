@@ -9,44 +9,51 @@
 
 ## 🎯 你将完成什么
 
-部署一个完整的多层留言板应用，包含：
-- 3 副本 `nginx` 前端 Deployment（对外提供静态页面）
-- 1 副本 `redis:7-alpine` 后端 Deployment（存储留言数据）
-- ClusterIP Service 连通前后端
-- 验证 Pod 重调度后数据的访问路径
+部署一个完整的三层留言板应用：
+
+- 3 副本 `nginx` **前端** Deployment（对外提供页面）
+- 1 副本 `redis:7-alpine` **Redis Leader**（处理写请求）
+- 2 副本 `redis:7-alpine` **Redis Follower**（处理读请求，自动同步 Leader 数据）
+- 各层通过独立的 ClusterIP Service 连通
 
 学完本案例，你将理解：
-1. 多层应用在 K8s 中的典型部署模式
-2. Deployment 多副本与 Service 负载均衡的协作方式
-3. 通过标签选择器将 Service 路由到正确的 Pod
+1. 读写分离架构：写请求走 Leader，读请求走 Follower
+2. Redis 主从同步：Follower 用 `--replicaof` 参数自动拉取 Leader 数据
+3. Service 作为"角色路由器"：不同 Service 路由到不同角色的 Pod
+4. 多副本 Follower 提升读吞吐量，Leader 保持单点一致写入
 
 ## 🏗️ 架构图
 
 ```
-学生（curl）
-     │
-     ▼
- frontend-svc（ClusterIP :80）
-     │
-     ├──▶ frontend Pod 1（nginx）
-     ├──▶ frontend Pod 2（nginx）
-     └──▶ frontend Pod 3（nginx）
-                │
-                ▼（通过 Service 名访问）
-         redis-svc（ClusterIP :6379）
-                │
-                ▼
-          redis Pod（redis:7-alpine）
+学生（curl / 浏览器）
+         │
+         ▼
+  frontend-svc（ClusterIP :80）
+         │
+    ┌────┴────┐
+    │ nginx   │ × 3 副本（前端）
+    └────┬────┘
+         │
+    写请求│                  读请求
+         ▼                     ▼
+redis-leader-svc（:6379）  redis-follower-svc（:6379）
+         │                     │
+    ┌────┴────┐           ┌────┴────┐
+    │  Redis  │──主从同步─▶│  Redis  │ × 2 副本
+    │ Leader  │           │Follower │
+    └─────────┘           └─────────┘
 ```
+
+**关键设计**：两个 Redis Service 指向不同角色，前端写 Leader、读 Follower，实现读写分离。
 
 ## 🐳 使用的镜像
 
-| 镜像 | 用途 | 来源 |
+| 镜像 | 角色 | 来源 |
 |------|------|------|
+| `redis:7-alpine` | Leader（写）+ Follower（读） | 本地 registry mirror |
 | `nginx` | 前端 Web 服务器 | 本地 registry mirror |
-| `redis:7-alpine` | 留言数据存储 | 本地 registry mirror |
 
-> 两个镜像均已预置在集群内部 registry（`172.16.100.1:5000`），首次拉取无需等待。
+> 同一个镜像，通过不同的启动参数承担不同角色——这是生产环境中常见的做法。
 
 ## ⚠️ 开始前
 
@@ -57,40 +64,34 @@ kubectl wait --for=condition=Ready node --all --timeout=120s
 kubectl get node
 ```
 
-预期输出：
-
-```
-node/k3s-node   Ready   ...
-```
-
 ---
 
 ## 🔬 步骤
 
-### Step 1: 创建 Redis 后端
+### Step 1: 部署 Redis Leader
 
-**目标**：部署 Redis Deployment 和对应的 ClusterIP Service。
+**目标**：部署 1 个 Redis 主节点，负责接收所有写请求，并向 Follower 同步数据。
 
 ```bash
 kubectl apply -f - <<'EOF'
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: redis
+  name: redis-leader
   labels:
     app: guestbook
-    tier: backend
+    role: leader
 spec:
   replicas: 1
   selector:
     matchLabels:
       app: guestbook
-      tier: backend
+      role: leader
   template:
     metadata:
       labels:
         app: guestbook
-        tier: backend
+        role: leader
     spec:
       containers:
       - name: redis
@@ -108,15 +109,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: redis-svc
+  name: redis-leader-svc
   labels:
     app: guestbook
-    tier: backend
+    role: leader
 spec:
   type: ClusterIP
   selector:
     app: guestbook
-    tier: backend
+    role: leader
   ports:
   - port: 6379
     targetPort: 6379
@@ -126,23 +127,111 @@ EOF
 **验证**：
 
 ```bash
-kubectl wait --for=condition=Available deployment/redis --timeout=60s
-kubectl get pod -l tier=backend
+kubectl wait --for=condition=Available deployment/redis-leader --timeout=60s
+kubectl get pod -l role=leader
 ```
 
 预期输出：
 
 ```
-deployment.apps/redis condition met
-NAME                     READY   STATUS    RESTARTS   AGE
-redis-xxxxxxxxx-xxxxx    1/1     Running   0          30s
+NAME                            READY   STATUS    RESTARTS   AGE
+redis-leader-xxxxxxxxx-xxxxx    1/1     Running   0          20s
 ```
 
 ---
 
-### Step 2: 创建 nginx 前端（3 副本）
+### Step 2: 部署 Redis Follower（2 副本）
 
-**目标**：部署 3 副本的 nginx Deployment 和对外的 ClusterIP Service。
+**目标**：部署 2 个 Redis 从节点，通过 `--replicaof` 参数自动向 Leader 发起同步，负责处理读请求。
+
+```bash
+kubectl apply -f - <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-follower
+  labels:
+    app: guestbook
+    role: follower
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: guestbook
+      role: follower
+  template:
+    metadata:
+      labels:
+        app: guestbook
+        role: follower
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        command: ["redis-server", "--replicaof", "redis-leader-svc", "6379"]
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+          limits:
+            cpu: "200m"
+            memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-follower-svc
+  labels:
+    app: guestbook
+    role: follower
+spec:
+  type: ClusterIP
+  selector:
+    app: guestbook
+    role: follower
+  ports:
+  - port: 6379
+    targetPort: 6379
+EOF
+```
+
+**验证（Follower 就绪，并与 Leader 建立同步）**：
+
+```bash
+kubectl wait --for=condition=Available deployment/redis-follower --timeout=60s
+kubectl get pod -l role=follower
+```
+
+预期输出（2 个 Follower 都 Running）：
+
+```
+NAME                              READY   STATUS    RESTARTS   AGE
+redis-follower-xxxxxxxxx-aaaaa    1/1     Running   0          15s
+redis-follower-xxxxxxxxx-bbbbb    1/1     Running   0          15s
+```
+
+**确认主从同步已建立**：
+
+```bash
+FOLLOWER_POD=$(kubectl get pod -l role=follower -o jsonpath='{.items[0].metadata.name}')
+kubectl exec $FOLLOWER_POD -- redis-cli INFO replication | grep -E "role|master_host|master_link_status"
+```
+
+预期输出（role 为 slave，master_link_status 为 up）：
+
+```
+role:slave
+master_host:redis-leader-svc
+master_link_status:up
+```
+
+---
+
+### Step 3: 部署 nginx 前端（3 副本）
+
+**目标**：部署 3 副本前端，并通过 ClusterIP Service 对外提供访问。
 
 ```bash
 kubectl apply -f - <<'EOF'
@@ -152,21 +241,21 @@ metadata:
   name: frontend
   labels:
     app: guestbook
-    tier: frontend
+    role: frontend
 spec:
   replicas: 3
   selector:
     matchLabels:
       app: guestbook
-      tier: frontend
+      role: frontend
   template:
     metadata:
       labels:
         app: guestbook
-        tier: frontend
+        role: frontend
     spec:
       containers:
-      - name: frontend
+      - name: nginx
         image: nginx
         ports:
         - containerPort: 80
@@ -184,149 +273,169 @@ metadata:
   name: frontend-svc
   labels:
     app: guestbook
-    tier: frontend
+    role: frontend
 spec:
   type: ClusterIP
   selector:
     app: guestbook
-    tier: frontend
+    role: frontend
   ports:
   - port: 80
     targetPort: 80
 EOF
 ```
 
-**验证**：
+**验证（3 个前端 Pod 全部 Running）**：
 
 ```bash
 kubectl wait --for=condition=Available deployment/frontend --timeout=60s
-kubectl get pod -l tier=frontend
+kubectl get pod -l role=frontend
 ```
 
-预期输出（3 个 Pod 都 Running）：
+预期输出：
 
 ```
 NAME                        READY   STATUS    RESTARTS   AGE
-frontend-xxxxxxxxx-aaaaa    1/1     Running   0          20s
-frontend-xxxxxxxxx-bbbbb    1/1     Running   0          20s
-frontend-xxxxxxxxx-ccccc    1/1     Running   0          20s
+frontend-xxxxxxxxx-aaaaa    1/1     Running   0          15s
+frontend-xxxxxxxxx-bbbbb    1/1     Running   0          15s
+frontend-xxxxxxxxx-ccccc    1/1     Running   0          15s
 ```
 
 ---
 
-### Step 3: 验证 Service 发现
+### Step 4: 验证读写分离——写 Leader，从 Follower 读到
 
-**目标**：从 frontend Pod 内部，通过 Service 名称访问 Redis。
-
-```bash
-# 取任意一个 frontend Pod
-FRONTEND_POD=$(kubectl get pod -l tier=frontend -o jsonpath='{.items[0].metadata.name}')
-
-# 进入 Pod，测试 DNS 解析
-kubectl exec $FRONTEND_POD -- nslookup redis-svc
-```
-
-预期输出（DNS 解析成功）：
-
-```
-Server:         10.43.0.10
-Address:        10.43.0.10#53
-
-Name:   redis-svc.default.svc.cluster.local
-Address: 10.43.x.x
-```
-
-**关键点**：Pod 内使用 Service 短名（`redis-svc`）即可访问，K8s DNS 自动补全 `.default.svc.cluster.local`。
-
----
-
-### Step 4: 观察负载均衡
-
-**目标**：验证对 frontend-svc 的请求被分散到 3 个 Pod。
+**目标**：这是本案例的核心验证。向 Leader 写入数据，确认两个 Follower 都能读到，证明主从同步正常工作。
 
 ```bash
-# 获取 Service Cluster IP
-FRONTEND_IP=$(kubectl get svc frontend-svc -o jsonpath='{.spec.clusterIP}')
-echo "frontend-svc ClusterIP: $FRONTEND_IP"
-
-# 从 redis Pod 发出多次请求，观察响应（nginx 默认返回主机名）
-REDIS_POD=$(kubectl get pod -l tier=backend -o jsonpath='{.items[0].metadata.name}')
-kubectl exec $REDIS_POD -- sh -c "
-  for i in \$(seq 1 9); do
-    wget -qO- --timeout=2 http://$FRONTEND_IP 2>/dev/null | grep -o 'nginx' || echo 'ok'
-  done
-"
+# 向 Leader 写入数据
+LEADER_POD=$(kubectl get pod -l role=leader -o jsonpath='{.items[0].metadata.name}')
+kubectl exec $LEADER_POD -- redis-cli SET guestbook:msg1 "Hello from Leader"
+kubectl exec $LEADER_POD -- redis-cli SET guestbook:msg2 "K8s is awesome"
 ```
 
-预期输出（9 次请求均返回，表明 3 个副本都在提供服务）：
+预期输出：
 
 ```
-ok
-ok
-ok
-...（共 9 行）
+OK
+OK
 ```
 
-**深入观察**：查看每个 Pod 的访问日志，可以看到请求被分散：
+**从 Follower 1 读取**：
 
 ```bash
-kubectl logs -l tier=frontend --prefix --tail=3
+FOLLOWER_0=$(kubectl get pod -l role=follower -o jsonpath='{.items[0].metadata.name}')
+kubectl exec $FOLLOWER_0 -- redis-cli GET guestbook:msg1
+kubectl exec $FOLLOWER_0 -- redis-cli GET guestbook:msg2
+```
+
+**从 Follower 2 读取**：
+
+```bash
+FOLLOWER_1=$(kubectl get pod -l role=follower -o jsonpath='{.items[1].metadata.name}')
+kubectl exec $FOLLOWER_1 -- redis-cli GET guestbook:msg1
+kubectl exec $FOLLOWER_1 -- redis-cli GET guestbook:msg2
+```
+
+两个 Follower 的预期输出（与写入完全一致）：
+
+```
+"Hello from Leader"
+"K8s is awesome"
+```
+
+**验证 Follower 只读（不接受写入）**：
+
+```bash
+kubectl exec $FOLLOWER_0 -- redis-cli SET guestbook:direct "try write to follower"
+```
+
+预期输出（从节点拒绝写入）：
+
+```
+(error) READONLY You can't write against a read only replica.
 ```
 
 ---
 
-### Step 5: 测试 Pod 故障自愈
+### Step 5: 验证 Service 负载均衡
 
-**目标**：删除一个 frontend Pod，观察 Deployment 自动重建。
+**目标**：确认 `redis-follower-svc` 把请求分散到两个 Follower Pod。
 
 ```bash
-# 记录当前 Pod 列表
-kubectl get pod -l tier=frontend
-
-# 删除第一个 Pod（模拟故障）
-POD_TO_DELETE=$(kubectl get pod -l tier=frontend -o jsonpath='{.items[0].metadata.name}')
-kubectl delete pod $POD_TO_DELETE
-
-# 立即观察（新 Pod 正在被调度）
-kubectl get pod -l tier=frontend -w
+# 通过 Service 连续查询，观察请求分布（不同 Pod 处理）
+LEADER_POD=$(kubectl get pod -l role=leader -o jsonpath='{.items[0].metadata.name}')
+for i in $(seq 1 6); do
+  kubectl exec $LEADER_POD -- redis-cli -h redis-follower-svc GET guestbook:msg1
+done
 ```
 
-预期过程（按 Ctrl+C 退出 watch）：
+预期输出（6 次均成功返回，Service 在两个 Follower 之间负载均衡）：
 
 ```
-NAME                        READY   STATUS        RESTARTS
-frontend-xxxxxxxxx-aaaaa    1/1     Terminating   0
-frontend-xxxxxxxxx-ddddd    0/1     Pending       0
-frontend-xxxxxxxxx-ddddd    1/1     Running       0
+"Hello from Leader"
+"Hello from Leader"
+...（共 6 行）
 ```
 
-Deployment 控制器检测到副本数不足，自动创建新 Pod 恢复到 3 个。
+查看两个 Follower 的访问日志，可以看到请求被分散：
+
+```bash
+kubectl logs -l role=follower --prefix --tail=5
+```
+
+---
+
+### Step 6: 验证架构完整性——一览全局
+
+```bash
+kubectl get deployment,pod,svc -l app=guestbook
+```
+
+预期输出（全部就绪）：
+
+```
+NAME                             READY   UP-TO-DATE   AVAILABLE
+deployment.apps/frontend         3/3     3            3
+deployment.apps/redis-follower   2/2     2            2
+deployment.apps/redis-leader     1/1     1            1
+
+NAME                                  READY   STATUS
+pod/frontend-xxx-aaa                  1/1     Running
+pod/frontend-xxx-bbb                  1/1     Running
+pod/frontend-xxx-ccc                  1/1     Running
+pod/redis-follower-xxx-ddd            1/1     Running
+pod/redis-follower-xxx-eee            1/1     Running
+pod/redis-leader-xxx-fff              1/1     Running
+
+NAME                   TYPE        PORT(S)
+frontend-svc           ClusterIP   80/TCP
+redis-follower-svc     ClusterIP   6379/TCP
+redis-leader-svc       ClusterIP   6379/TCP
+```
 
 ---
 
 ## ✅ 验证整体完成
 
+运行以下检查，全部通过即完成：
+
 ```bash
-# 所有组件都就绪
-kubectl get deployment,pod,svc -l app=guestbook
+# 1. 主从同步状态
+LEADER_POD=$(kubectl get pod -l role=leader -o jsonpath='{.items[0].metadata.name}')
+kubectl exec $LEADER_POD -- redis-cli INFO replication | grep connected_slaves
+
+# 2. 数据一致性
+FOLLOWER_POD=$(kubectl get pod -l role=follower -o jsonpath='{.items[0].metadata.name}')
+kubectl exec $FOLLOWER_POD -- redis-cli GET guestbook:msg1
 ```
 
-预期输出（Deployment READY 均满足，Pod 全 Running，Service 存在）：
+预期输出：
 
 ```
-NAME                       READY   UP-TO-DATE   AVAILABLE
-deployment.apps/frontend   3/3     3            3
-deployment.apps/redis      1/1     1            1
+connected_slaves:2        ← Leader 已连接 2 个 Follower
 
-NAME                            READY   STATUS
-pod/frontend-xxx-aaa            1/1     Running
-pod/frontend-xxx-bbb            1/1     Running
-pod/frontend-xxx-ccc            1/1     Running
-pod/redis-xxx-yyy               1/1     Running
-
-NAME             TYPE        CLUSTER-IP    PORT(S)
-frontend-svc     ClusterIP   10.43.x.x     80/TCP
-redis-svc        ClusterIP   10.43.x.x     6379/TCP
+"Hello from Leader"       ← Follower 数据与 Leader 一致
 ```
 
 ---
@@ -334,14 +443,14 @@ redis-svc        ClusterIP   10.43.x.x     6379/TCP
 ## 🧹 清理
 
 ```bash
-kubectl delete deployment frontend redis
-kubectl delete service frontend-svc redis-svc
+kubectl delete deployment frontend redis-leader redis-follower
+kubectl delete service frontend-svc redis-leader-svc redis-follower-svc
 ```
 
 验证清理完成：
 
 ```bash
-kubectl get pod -l app=guestbook
+kubectl get pod,svc -l app=guestbook
 # 预期：No resources found.
 ```
 
@@ -349,7 +458,7 @@ kubectl get pod -l app=guestbook
 
 ## 🚀 扩展练习
 
-1. **扩缩容**：`kubectl scale deployment frontend --replicas=5`，再缩回 3，观察 Pod 变化
-2. **Service 类型**：把 frontend-svc 改为 `NodePort`，用节点 IP + 端口从外部访问
-3. **资源限制**：去掉 `resources.limits`，用 `kubectl top pod` 观察 Pod 实际用量
-4. **持久化存储**：给 Redis 挂载 PVC，删除 Pod 后数据是否还在？（进阶）
+1. **扩容 Follower**：`kubectl scale deployment redis-follower --replicas=4`，观察 Leader 同步到新 Follower 的过程（`INFO replication` 中 connected_slaves 变为 4）
+2. **Leader 故障模拟**：删除 Leader Pod，观察 Follower 的 `master_link_status` 变为 `down`，新 Leader Pod 重建后自动恢复同步
+3. **写压力测试**：用 `redis-cli --pipe` 向 Leader 批量写入 1000 条数据，随后在 Follower 验证全部同步
+4. **哨兵模式**（进阶）：了解 Redis Sentinel 如何在 Leader 故障时自动将 Follower 提升为新 Leader
