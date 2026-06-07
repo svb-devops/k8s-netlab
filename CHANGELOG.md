@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- docs: 里程碑3 完成全部 5 个部署案例 — D02（MySQL + PVC + Secret，数据持久化验证）、D04（CronJob 定时任务，concurrencyPolicy/超时/手动触发）、D05（多命名空间隔离，跨 namespace DNS + NetworkPolicy + ResourceQuota）；同步更新 deployments_routes.py D02 标题和 README 状态
 - docs: 里程碑2 部署案例首批内容 — 新增 D01（留言板 Guestbook，nginx + redis:7-alpine，多副本 Deployment + ClusterIP Service）和 D03（蓝绿部署与滚动更新，nginx:1.24/1.25，Service 选择器切换 + rollout history/undo），两案例均可独立使用 kubectl apply 直接运行
 - feat: 里程碑1 部署案例基础设施 — 新增 backend/deployments_routes.py（/api/deployments），注册路由到 main.py，前端加 Tab 切换（网络实验/部署案例），docs.js 扩展 mode 属性和 switchMode()，补 tests/test_deployments_routes.py（10个测试，覆盖率93%），redis:7-alpine 已在 registry mirror
 - docs: 重写 docs/experiments/README.md — 对齐实际文件内容（11个实验全部完成），修正旧版规划中的标题/状态错误，按 Phase 分组，补充各实验前置条件和学习目标摘要

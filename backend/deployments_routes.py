@@ -29,7 +29,7 @@ DEPLOYMENT_CASES = [
     {
         "id": "D02",
         "filename": "D02-wordpress-mysql.md",
-        "title": "WordPress + MySQL",
+        "title": "有状态应用：MySQL + 持久化存储",
         "difficulty": 4,
         "duration": "45 分钟",
         "phase": 2,
