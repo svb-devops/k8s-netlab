@@ -199,7 +199,8 @@
                         <!-- Drawer toggle: open experiment docs -->
                         <button id="btn-toggle-drawer"
                                 class="text-xs text-gray-300 hover:text-white bg-gray-700 hover:bg-gray-600
-                                       px-3 py-1.5 rounded transition duration-150 flex items-center gap-1.5">
+                                       px-3 py-1.5 rounded transition duration-150 flex items-center gap-1.5"
+                                style="display:none">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                       d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
@@ -247,7 +248,7 @@
          Doc Drawer — fixed overlay, slides in from left
          All experiment doc content lives here.
          ══════════════════════════════════════════════════════ -->
-    <div id="doc-drawer" class="doc-drawer" role="dialog" aria-label="实验文档" style="display:none">
+    <div id="doc-drawer" class="doc-drawer" role="dialog" aria-label="实验文档">
 
         <!-- Row 1: Mode tabs + close button -->
         <div class="flex-shrink-0 flex items-stretch border-b border-gray-200 bg-gray-50">
@@ -416,7 +417,7 @@
     </div><!-- end doc-drawer -->
 
     <!-- Drawer Backdrop -->
-    <div id="doc-drawer-backdrop" class="drawer-backdrop" style="display:none"></div>
+    <div id="doc-drawer-backdrop" class="drawer-backdrop"></div>
 
     <!-- Loading Modal -->
     <div id="loading-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
@@ -473,10 +474,10 @@
 
     <!-- Scripts -->
     <script src="/js/api.js?v=20260223d"></script>
-    <script src="/js/terminal.js?v=20260607"></script>
+    <script src="/js/terminal.js?v=20260608"></script>
     <script src="/js/docs.js?v=20260607"></script>
     <script src="/js/ai-tutor.js?v=20260606"></script>
-    <script src="/js/drawer.js?v=20260607"></script>
+    <script src="/js/drawer.js?v=20260608"></script>
     <script src="/js/app.js?v=20260607"></script>
 </body>
 </html>

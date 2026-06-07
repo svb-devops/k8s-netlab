@@ -62,4 +62,9 @@
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && isOpen) closeDrawer();
     });
+
+    // Expose reset for terminal.js disconnect
+    window.drawerReset = function () {
+        isOpen = false;
+    };
 })();

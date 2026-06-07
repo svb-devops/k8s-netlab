@@ -52,11 +52,9 @@ class TerminalManager {
         // calling them while the parent is display:none causes silent failure.
         document.getElementById('terminal-section').classList.remove('hidden');
 
-        // Make drawer available now that terminal is active (was display:none before).
-        const drawerEl   = document.getElementById('doc-drawer');
-        const backdropEl = document.getElementById('doc-drawer-backdrop');
-        if (drawerEl)   drawerEl.style.display   = 'flex';
-        if (backdropEl) backdropEl.style.display  = 'block';
+        // Show the drawer toggle button now that terminal is active.
+        const toggleBtn = document.getElementById('btn-toggle-drawer');
+        if (toggleBtn) toggleBtn.style.display = '';
 
         // Mount to DOM
         const terminalContainer = document.getElementById('terminal');
@@ -157,17 +155,14 @@ class TerminalManager {
 
         this.currentVMId = null;
 
-        // Hide drawer and reset its state before hiding terminal section.
+        // Reset drawer state on disconnect.
         const drawerEl   = document.getElementById('doc-drawer');
         const backdropEl = document.getElementById('doc-drawer-backdrop');
-        if (drawerEl) {
-            drawerEl.classList.remove('drawer-open');
-            drawerEl.style.display = 'none';
-        }
-        if (backdropEl) {
-            backdropEl.classList.remove('backdrop-visible');
-            backdropEl.style.display = 'none';
-        }
+        const toggleBtn  = document.getElementById('btn-toggle-drawer');
+        if (drawerEl)   drawerEl.classList.remove('drawer-open');
+        if (backdropEl) backdropEl.classList.remove('backdrop-visible');
+        if (toggleBtn)  toggleBtn.style.display = 'none';
+        if (typeof window.drawerReset === 'function') window.drawerReset();
 
         // Hide terminal section
         document.getElementById('terminal-section').classList.add('hidden');

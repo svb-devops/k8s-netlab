@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- fix: drawer 点击无反应 — 移除 display:none inline 依赖，改为纯 CSS transform 控制抽屉可见性，terminal connect/disconnect 只控制 toggle 按钮显隐和 isOpen 状态同步
 - fix: drawer CSS 缓存 + 连接前隐藏 — CSS 链接加版本号强制刷新，drawer/backdrop 初始 display:none，仅在 terminal.connect() 后显示，disconnect() 时收回
 - refactor: 实验学习台改为 Drawer 布局 — 终端全宽，实验文档以固定覆盖层从左侧滑入，新增 drawer.js 控制开关，terminal.js 暴露 fit() 方法，CSS transition 结束后自动 refit xterm，Esc/backdrop 点击关闭，移动端 drawer 全屏宽度
 - feat: 三栏 AI 助教布局 — 实验学习台改为三栏（30% 文档 | 25% 背景+AI对话 | 45% 终端），新增案例背景介绍（5个部署案例均已录入），集成 DeepSeek SSE 多轮对话助教，backend/ai_tutor_routes.py 提供 /api/ai/chat 端点，前端 ai-tutor.js 实现流式渲染
