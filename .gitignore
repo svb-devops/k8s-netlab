@@ -57,4 +57,5 @@ proxmox_credentials.*
 
 # Any other .env files
 *.env
+.env.*
 .gstack/

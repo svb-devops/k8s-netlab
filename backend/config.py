@@ -194,6 +194,17 @@ if MAX_VMS_PER_USER > MAX_TOTAL_VMS:
         f"MAX_VMS_PER_USER ({MAX_VMS_PER_USER}) cannot exceed MAX_TOTAL_VMS ({MAX_TOTAL_VMS})."
     )
 
+# --- Directus CMS Configuration ---
+# URL of the Directus instance. Leave empty to disable Directus auth.
+DIRECTUS_URL: str = os.getenv("DIRECTUS_URL", "")
+# Token verification cache TTL in seconds (avoids per-request roundtrips to Directus).
+DIRECTUS_TOKEN_CACHE_TTL: int = _get_env_int("DIRECTUS_TOKEN_CACHE_TTL", 60)
+
+if DIRECTUS_URL:
+    logger.info(f"Directus integration enabled: {DIRECTUS_URL}")
+else:
+    logger.info("Directus integration disabled (DIRECTUS_URL not set)")
+
 # --- AI Tutor Configuration ---
 DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_MODEL: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")

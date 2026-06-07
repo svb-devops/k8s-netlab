@@ -1,0 +1,47 @@
+services:
+  database:
+    image: postgres:16-alpine
+    container_name: k8s-netlab-postgres
+    env_file: .env.directus
+    environment:
+      POSTGRES_USER: directus
+      POSTGRES_PASSWORD: ${DIRECTUS_DB_PASSWORD}
+      POSTGRES_DB: directus
+    volumes:
+      - ./data/directus/database:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U directus"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  directus:
+    image: directus/directus:11
+    container_name: k8s-netlab-directus
+    ports:
+      - "127.0.0.1:8055:8055"
+    depends_on:
+      database:
+        condition: service_healthy
+    env_file: .env.directus
+    environment:
+      SECRET: ${DIRECTUS_SECRET}
+      DB_CLIENT: pg
+      DB_HOST: database
+      DB_PORT: "5432"
+      DB_DATABASE: directus
+      DB_USER: directus
+      DB_PASSWORD: ${DIRECTUS_DB_PASSWORD}
+      ADMIN_EMAIL: ${DIRECTUS_ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${DIRECTUS_ADMIN_PASSWORD}
+      PUBLIC_URL: "http://127.0.0.1:8055"
+      CORS_ENABLED: "true"
+      CORS_ORIGIN: "http://localhost:8000,https://lab.cloudnetops.tech"
+      WEBSOCKETS_ENABLED: "false"
+      LOG_LEVEL: "warn"
+      CACHE_ENABLED: "false"
+    volumes:
+      - ./data/directus/uploads:/directus/uploads
+      - ./data/directus/extensions:/directus/extensions
+    restart: unless-stopped

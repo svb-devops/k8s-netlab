@@ -7,6 +7,9 @@
 ## [Unreleased]
 
 ### Changed
+- feat(T2-1): 部署 Directus 11 + PostgreSQL 16 — docker-compose.directus.yml，内网 127.0.0.1:8055，admin 凭证在 .env.directus
+- feat(T2-2+T2-3): Directus Schema + 数据迁移 — experiments 集合 10 字段，导入 11 个网络实验 + 5 个部署案例（含 content+background），迁移 12 个用户，配置 public read policy
+- feat(T2-4): FastAPI 双认证支持 — auth_directus.py 验证 Directus Bearer token（60s 缓存），auth_deps.py 优先 Bearer 兜底 session cookie，config.py 新增 DIRECTUS_URL + DIRECTUS_TOKEN_CACHE_TTL
 - fix: drawer 点击无反应 — 移除 display:none inline 依赖，改为纯 CSS transform 控制抽屉可见性，terminal connect/disconnect 只控制 toggle 按钮显隐和 isOpen 状态同步
 - fix: drawer CSS 缓存 + 连接前隐藏 — CSS 链接加版本号强制刷新，drawer/backdrop 初始 display:none，仅在 terminal.connect() 后显示，disconnect() 时收回
 - refactor: 实验学习台改为 Drawer 布局 — 终端全宽，实验文档以固定覆盖层从左侧滑入，新增 drawer.js 控制开关，terminal.js 暴露 fit() 方法，CSS transition 结束后自动 refit xterm，Esc/backdrop 点击关闭，移动端 drawer 全屏宽度
