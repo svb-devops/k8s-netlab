@@ -107,6 +107,20 @@ class SchemaVersionedModel(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# VerifyResult  (§verifier)
+# ---------------------------------------------------------------------------
+
+
+class VerifyResult(SchemaVersionedModel):
+    session_id: str
+    verify_id: str
+    verify_type: str
+    passed: bool
+    error_code: Optional[str] = None
+    detail: str = ""
+
+
+# ---------------------------------------------------------------------------
 # ValidatorResult  (§9)
 # ---------------------------------------------------------------------------
 
@@ -293,3 +307,7 @@ class LabSessionState(SchemaVersionedModel):
     ended_at: Optional[datetime] = None
     namespace: Optional[str] = None
     failure_reason: Optional[str] = None
+    current_step_index: int = 0
+    completed_step_ids: list[str] = Field(default_factory=list)
+    ready_to_complete: bool = False
+    last_verify_results: list[VerifyResult] = Field(default_factory=list)

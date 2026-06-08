@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from backend.labgen.models import (
     LabSessionStatus,
-    SchemaVersionedModel,
+    VerifyResult,
     VerifyTemplate,
     VerifyType,
 )
@@ -29,18 +29,8 @@ if TYPE_CHECKING:
     from backend.labgen.lab_session_repository import LabSessionRepository
 
 
-# ---------------------------------------------------------------------------
-# Result model
-# ---------------------------------------------------------------------------
-
-
-class VerifyResult(SchemaVersionedModel):
-    session_id: str
-    verify_id: str
-    verify_type: str
-    passed: bool
-    error_code: Optional[str] = None
-    detail: str = ""
+# VerifyResult lives in models.py (to avoid circular imports with LabSessionState).
+# Imported above so `from backend.labgen.verifier import VerifyResult` still works.
 
 
 # ---------------------------------------------------------------------------

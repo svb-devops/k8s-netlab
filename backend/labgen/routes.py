@@ -40,6 +40,7 @@ from backend.labgen.models import (
     Step,
     ValidatorResult,
     ValidatorStatus,
+    VerifyResult,
     VerifyTemplate,
 )
 from backend.labgen.image_resolver import ImageResolver
@@ -48,7 +49,16 @@ from backend.labgen.repository import LabDraftRepository
 from backend.labgen.review_diff import AdminReviewDiffRepository
 from backend.labgen.static_validator import StaticValidator
 from backend.labgen.stub_generator import LabDraftGeneratorStub
-from backend.labgen.verifier import VerifierService, VerifyResult
+from backend.labgen.step_progression_service import (
+    StepAccessDenied,
+    StepCheckResponse,
+    StepDraftUnavailable,
+    StepNotCurrent,
+    StepProgressionService,
+    StepSessionNotActive,
+    StepSessionNotFound,
+)
+from backend.labgen.verifier import VerifierService
 from backend.labgen.verifier_credentials import VerifierCredentialStore
 
 router = APIRouter(prefix="/api/labgen", tags=["labgen"])
@@ -68,6 +78,7 @@ _session_repo: Optional[LabSessionRepository] = None
 _session_svc: Optional[LabSessionService] = None
 _image_resolver: Optional[ImageResolver] = None
 _verifier_svc: Optional[VerifierService] = None
+_step_progression_svc: Optional[StepProgressionService] = None
 
 
 def get_repository() -> LabDraftRepository:
@@ -149,6 +160,17 @@ def get_verifier_service() -> VerifierService:
             k8s_client_factory=_not_implemented_factory,
         )
     return _verifier_svc
+
+
+def get_step_progression_service() -> StepProgressionService:
+    global _step_progression_svc
+    if _step_progression_svc is None:
+        _step_progression_svc = StepProgressionService(
+            session_repo=get_session_repository(),
+            draft_repo=get_repository(),
+            verifier_svc=get_verifier_service(),
+        )
+    return _step_progression_svc
 
 
 async def require_admin_user(
@@ -506,3 +528,32 @@ async def verifier_check(
     svc: VerifierService = Depends(get_verifier_service),
 ) -> VerifyResult:
     return svc.check(body.session_id, body.template)
+
+
+# ===========================================================================
+# Step progression — POST /api/lab-sessions/{id}/steps/{step_id}/check
+# ===========================================================================
+
+
+@lab_session_router.post(
+    "/{session_id}/steps/{step_id}/check",
+    response_model=StepCheckResponse,
+)
+async def check_step(
+    session_id: str,
+    step_id: str,
+    username: str = Depends(get_current_user),
+    svc: StepProgressionService = Depends(get_step_progression_service),
+) -> StepCheckResponse:
+    try:
+        return svc.check_step(session_id, step_id, username)
+    except StepSessionNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    except StepSessionNotActive as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except StepAccessDenied:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    except StepDraftUnavailable as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    except StepNotCurrent as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
