@@ -153,6 +153,12 @@ class _FailingDeleteAdapter(NamespaceLifecyclePort):
     def is_namespace_deleted(self, namespace: str) -> bool:
         return False
 
+    def ensure_verifier_rolebinding(self, namespace: str) -> bool:
+        return True
+
+    def verifier_rolebinding_exists(self, namespace: str) -> bool:
+        return True
+
 
 class _RaisingDeleteAdapter(NamespaceLifecyclePort):
     """create OK, delete raises — simulates K8s API being unavailable."""
@@ -168,6 +174,12 @@ class _RaisingDeleteAdapter(NamespaceLifecyclePort):
 
     def is_namespace_deleted(self, namespace: str) -> bool:
         raise RuntimeError("K8s unavailable")
+
+    def ensure_verifier_rolebinding(self, namespace: str) -> bool:
+        return True
+
+    def verifier_rolebinding_exists(self, namespace: str) -> bool:
+        return True
 
 
 class _RecordingVMTracker(VMTrackerPort):
@@ -866,6 +878,12 @@ class TestNamespaceLifecycle:
             def is_namespace_deleted(self, namespace: str) -> bool:
                 return True
 
+            def ensure_verifier_rolebinding(self, namespace: str) -> bool:
+                return True
+
+            def verifier_rolebinding_exists(self, namespace: str) -> bool:
+                return True
+
         draft = _make_published_draft()
         svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=_ExplodingAdapter())
         session = svc.create_session(draft.lab_id, "vm-500", "student1")
@@ -1026,3 +1044,230 @@ class TestNamespaceLifecycle:
             adapter.delete_namespace("lab-test")
         with pytest.raises(NotImplementedError):
             adapter.is_namespace_deleted("lab-test")
+        with pytest.raises(NotImplementedError):
+            adapter.ensure_verifier_rolebinding("lab-test")
+        with pytest.raises(NotImplementedError):
+            adapter.verifier_rolebinding_exists("lab-test")
+
+
+# ===========================================================================
+# Stub rolebinding behaviour
+# ===========================================================================
+
+
+class TestNamespaceLifecycleStubRolebinding:
+    """StubNamespaceLifecycleAdapter rolebinding methods."""
+
+    def test_rolebinding_succeeds_by_default(self):
+        adapter = StubNamespaceLifecycleAdapter()
+        assert adapter.ensure_verifier_rolebinding("lab-abc") is True
+
+    def test_rolebinding_records_namespace(self):
+        adapter = StubNamespaceLifecycleAdapter()
+        adapter.ensure_verifier_rolebinding("lab-abc")
+        assert "lab-abc" in adapter.rolebindings_created
+
+    def test_rolebinding_failure_configured(self):
+        adapter = StubNamespaceLifecycleAdapter(rolebinding_succeeds=False)
+        assert adapter.ensure_verifier_rolebinding("lab-abc") is False
+
+    def test_rolebinding_failure_does_not_record_namespace(self):
+        adapter = StubNamespaceLifecycleAdapter(rolebinding_succeeds=False)
+        adapter.ensure_verifier_rolebinding("lab-abc")
+        assert adapter.rolebindings_created == []
+
+    def test_rolebinding_exists_true_by_default(self):
+        adapter = StubNamespaceLifecycleAdapter()
+        assert adapter.verifier_rolebinding_exists("lab-abc") is True
+
+    def test_rolebinding_exists_false_configured(self):
+        adapter = StubNamespaceLifecycleAdapter(rolebinding_exists_after_create=False)
+        assert adapter.verifier_rolebinding_exists("lab-abc") is False
+
+    def test_rolebindings_created_starts_empty(self):
+        adapter = StubNamespaceLifecycleAdapter()
+        assert adapter.rolebindings_created == []
+
+    def test_multiple_rolebindings_recorded(self):
+        adapter = StubNamespaceLifecycleAdapter()
+        adapter.ensure_verifier_rolebinding("lab-aaa")
+        adapter.ensure_verifier_rolebinding("lab-bbb")
+        assert adapter.rolebindings_created == ["lab-aaa", "lab-bbb"]
+
+
+# ===========================================================================
+# Lab Session Verifier RoleBinding integration
+# ===========================================================================
+
+
+class TestLabSessionVerifierRolebinding:
+    """Verifier RoleBinding creation during session start flow."""
+
+    # ------------------------------------------------------------------
+    # Success path
+    # ------------------------------------------------------------------
+
+    def test_success_path_reaches_lab_active(self):
+        """All namespace + rolebinding steps pass → LAB_ACTIVE."""
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft})
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.lab_session_status == LabSessionStatus.LAB_ACTIVE
+
+    def test_rolebinding_called_after_namespace_verified(self):
+        """ensure_verifier_rolebinding is called after namespace_exists returns True."""
+        adapter = StubNamespaceLifecycleAdapter()
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert len(adapter.rolebindings_created) == 1
+
+    def test_rolebinding_called_with_session_namespace(self):
+        """ensure_verifier_rolebinding receives the same namespace as create_namespace."""
+        adapter = StubNamespaceLifecycleAdapter()
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert adapter.rolebindings_created[0] == f"lab-{session.session_id}"
+
+    def test_rolebinding_not_called_when_namespace_create_fails(self):
+        """Short-circuit: rolebinding must not be called if namespace create fails."""
+        adapter = StubNamespaceLifecycleAdapter(create_succeeds=False)
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=adapter)
+        svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert adapter.rolebindings_created == []
+
+    def test_rolebinding_not_called_when_namespace_exists_fails(self):
+        """Short-circuit: rolebinding must not be called if namespace_exists returns False."""
+        adapter = StubNamespaceLifecycleAdapter(
+            create_succeeds=True, exists_after_create=False
+        )
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=adapter)
+        svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert adapter.rolebindings_created == []
+
+    # ------------------------------------------------------------------
+    # RoleBinding create failure
+    # ------------------------------------------------------------------
+
+    def test_rolebinding_create_failure_returns_lab_start_failed(self):
+        """ensure_verifier_rolebinding returns False → LAB_START_FAILED."""
+        adapter = StubNamespaceLifecycleAdapter(rolebinding_succeeds=False)
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.lab_session_status == LabSessionStatus.LAB_START_FAILED
+
+    def test_rolebinding_create_failure_reason(self):
+        """failure_reason is verifier_rolebinding_create_failed when ensure returns False."""
+        adapter = StubNamespaceLifecycleAdapter(rolebinding_succeeds=False)
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.failure_reason == "verifier_rolebinding_create_failed"
+
+    def test_rolebinding_create_failure_not_lab_active(self):
+        """RoleBinding failure must not produce LAB_ACTIVE."""
+        adapter = StubNamespaceLifecycleAdapter(rolebinding_succeeds=False)
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.lab_session_status != LabSessionStatus.LAB_ACTIVE
+
+    def test_rolebinding_create_failure_session_persisted(self):
+        """LAB_START_FAILED (rolebinding create) session is stored in the repository."""
+        repo = _MemSessionRepo()
+        adapter = StubNamespaceLifecycleAdapter(rolebinding_succeeds=False)
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, session_repo=repo, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        stored = repo.get(session.session_id)
+        assert stored is not None
+        assert stored.lab_session_status == LabSessionStatus.LAB_START_FAILED
+
+    def test_rolebinding_create_exception_returns_lab_start_failed(self):
+        """Exception from ensure_verifier_rolebinding is caught → LAB_START_FAILED."""
+
+        class _RaisingRolebindingAdapter(StubNamespaceLifecycleAdapter):
+            def ensure_verifier_rolebinding(self, namespace: str) -> bool:
+                raise RuntimeError("kubectl apply failed")
+
+        adapter = _RaisingRolebindingAdapter()
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.lab_session_status == LabSessionStatus.LAB_START_FAILED
+        assert session.failure_reason == "verifier_rolebinding_create_failed"
+
+    # ------------------------------------------------------------------
+    # RoleBinding verify failure
+    # ------------------------------------------------------------------
+
+    def test_rolebinding_verify_failure_returns_lab_start_failed(self):
+        """verifier_rolebinding_exists returns False → LAB_START_FAILED."""
+        adapter = StubNamespaceLifecycleAdapter(rolebinding_exists_after_create=False)
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.lab_session_status == LabSessionStatus.LAB_START_FAILED
+
+    def test_rolebinding_verify_failure_reason(self):
+        """failure_reason is verifier_rolebinding_verify_failed when exists returns False."""
+        adapter = StubNamespaceLifecycleAdapter(rolebinding_exists_after_create=False)
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.failure_reason == "verifier_rolebinding_verify_failed"
+
+    def test_rolebinding_verify_failure_not_lab_active(self):
+        """RoleBinding verify failure must not produce LAB_ACTIVE."""
+        adapter = StubNamespaceLifecycleAdapter(rolebinding_exists_after_create=False)
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.lab_session_status != LabSessionStatus.LAB_ACTIVE
+
+    def test_rolebinding_verify_exception_returns_lab_start_failed(self):
+        """Exception from verifier_rolebinding_exists is caught → LAB_START_FAILED."""
+
+        class _RaisingExistsAdapter(StubNamespaceLifecycleAdapter):
+            def verifier_rolebinding_exists(self, namespace: str) -> bool:
+                raise RuntimeError("kubectl get failed")
+
+        adapter = _RaisingExistsAdapter()
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.lab_session_status == LabSessionStatus.LAB_START_FAILED
+        assert session.failure_reason == "verifier_rolebinding_verify_failed"
+
+    def test_rolebinding_verify_failure_session_persisted(self):
+        """LAB_START_FAILED (rolebinding verify) session is stored in the repository."""
+        repo = _MemSessionRepo()
+        adapter = StubNamespaceLifecycleAdapter(rolebinding_exists_after_create=False)
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, session_repo=repo, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        stored = repo.get(session.session_id)
+        assert stored is not None
+        assert stored.lab_session_status == LabSessionStatus.LAB_START_FAILED
+
+    # ------------------------------------------------------------------
+    # No ClusterRoleBinding (structural: only namespace-scoped binding)
+    # ------------------------------------------------------------------
+
+    def test_verifier_binding_creating_in_active_states(self):
+        """VERIFIER_BINDING_CREATING is in _ACTIVE_STATES (blocks duplicate session)."""
+        from backend.labgen.lab_session_service import _ACTIVE_STATES
+        assert LabSessionStatus.VERIFIER_BINDING_CREATING in _ACTIVE_STATES
+
+    def test_rolebinding_called_with_lab_namespace_not_kube_system(self):
+        """RoleBinding must be scoped to the lab namespace, not kube-system."""
+        adapter = StubNamespaceLifecycleAdapter()
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert adapter.rolebindings_created[0].startswith("lab-")
+        assert "kube-system" not in adapter.rolebindings_created[0]

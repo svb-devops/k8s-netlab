@@ -49,6 +49,7 @@ _ACTIVE_STATES: frozenset[LabSessionStatus] = frozenset({
     LabSessionStatus.IMAGE_CHECK_RUNNING,
     LabSessionStatus.NAMESPACE_CREATING,
     LabSessionStatus.NAMESPACE_READY,
+    LabSessionStatus.VERIFIER_BINDING_CREATING,
     LabSessionStatus.LAB_ACTIVE,
     LabSessionStatus.CLEANUP_REQUESTED,
     LabSessionStatus.NAMESPACE_TERMINATING_WAIT,
@@ -265,6 +266,28 @@ class LabSessionService:
         if not exists:
             session.lab_session_status = LabSessionStatus.LAB_START_FAILED
             session.failure_reason = "namespace_create_failed"
+            return self._session_repo.create(session)
+
+        # VERIFIER_BINDING_CREATING: create RoleBinding, then verify existence
+        session.lab_session_status = LabSessionStatus.VERIFIER_BINDING_CREATING
+        try:
+            binding_ok = self._ns_lifecycle.ensure_verifier_rolebinding(session.namespace)
+        except Exception:
+            binding_ok = False
+
+        if not binding_ok:
+            session.lab_session_status = LabSessionStatus.LAB_START_FAILED
+            session.failure_reason = "verifier_rolebinding_create_failed"
+            return self._session_repo.create(session)
+
+        try:
+            binding_exists = self._ns_lifecycle.verifier_rolebinding_exists(session.namespace)
+        except Exception:
+            binding_exists = False
+
+        if not binding_exists:
+            session.lab_session_status = LabSessionStatus.LAB_START_FAILED
+            session.failure_reason = "verifier_rolebinding_verify_failed"
             return self._session_repo.create(session)
 
         session.lab_session_status = LabSessionStatus.LAB_ACTIVE
