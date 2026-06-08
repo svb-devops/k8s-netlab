@@ -29,6 +29,8 @@ from backend.labgen.models import (
     ValidatorResult,
     ValidatorStatus,
 )
+from backend.labgen.image_resolver import ImageResolver
+from backend.labgen.publish_service import PublishService
 from backend.labgen.repository import LabDraftRepository
 from backend.labgen.review_diff import AdminReviewDiffRepository
 from backend.labgen.static_validator import StaticValidator
@@ -46,6 +48,7 @@ _repo: Optional[LabDraftRepository] = None
 _generator: Optional[LabDraftGeneratorStub] = None
 _validator: Optional[StaticValidator] = None
 _diff_repo: Optional[AdminReviewDiffRepository] = None
+_publish_svc: Optional[PublishService] = None
 
 
 def get_repository() -> LabDraftRepository:
@@ -67,6 +70,16 @@ def get_validator() -> StaticValidator:
     if _validator is None:
         _validator = StaticValidator()
     return _validator
+
+
+def get_publish_service() -> PublishService:
+    global _publish_svc
+    if _publish_svc is None:
+        _publish_svc = PublishService(
+            validator=StaticValidator(),
+            image_resolver=ImageResolver(),
+        )
+    return _publish_svc
 
 
 def get_diff_repository() -> AdminReviewDiffRepository:
@@ -257,3 +270,31 @@ async def list_draft_diffs(
     if repo.get(lab_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
     return diff_repo.list_by_draft(lab_id)
+
+
+@router.post("/drafts/{lab_id}/publish", response_model=LabDraft)
+async def publish_draft(
+    lab_id: str,
+    admin: str = Depends(require_admin_user),
+    repo: LabDraftRepository = Depends(get_repository),
+    svc: PublishService = Depends(get_publish_service),
+) -> LabDraft:
+    draft = repo.get(lab_id)
+    if draft is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
+
+    updated = svc.publish(draft)
+    saved = repo.update(updated)
+
+    if saved.publish_status == PublishStatus.PUBLISH_BLOCKED:
+        blocking = [
+            r.check_id for r in saved.validator_results
+            if r.status == ValidatorStatus.FAILED
+            and r.blocking_level == BlockingLevel.PUBLISH_BLOCKING
+        ]
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"publish_blocking failures: {', '.join(blocking)}",
+        )
+
+    return saved
