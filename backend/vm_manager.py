@@ -7,11 +7,17 @@ Each operation uses SmartLogger for structured logging and reporting.
 
 import logging
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from proxmoxer.core import ResourceException
 
 from backend import config
+from backend.labgen.verifier_credentials import (
+    CommandResult,
+    VerifierCredentialStore,
+    VerifierIdentityManager,
+    VMCommandExecutorPort,
+)
 from backend.proxmox_api import connect_proxmox
 from backend.smart_logger import SmartLogger
 
@@ -261,3 +267,126 @@ def list_vms() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Unexpected error listing VMs: {e}", exc_info=True)
         return {"success": False, "data": None, "error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Verifier identity initialization
+# ---------------------------------------------------------------------------
+
+
+class AgentVMCommandExecutor(VMCommandExecutorPort):
+    """Runs commands on a VM via Proxmox QEMU guest agent.
+
+    Polls exec-status until the command exits or _poll_iterations is exhausted.
+    Only kubectl and python3 -c commands are allowed (defence in depth).
+    Use StubVMCommandExecutor in tests to avoid real Proxmox dependency.
+    """
+
+    _poll_iterations: int = 60  # one poll per second → 60s max
+
+    # Allowed command prefixes — defence in depth against accidental misuse.
+    _ALLOWED_PREFIXES: tuple[list[str], ...] = (
+        ["kubectl"],
+        ["python3", "-c"],
+    )
+
+    def _check_command(self, command: list[str]) -> None:
+        if not any(command[: len(p)] == p for p in self._ALLOWED_PREFIXES):
+            raise ValueError(
+                f"AgentVMCommandExecutor: command not in allowlist: {command[0]!r}"
+            )
+
+    def execute(self, vm_id: str, command: list[str]) -> CommandResult:
+        from backend.labgen.verifier_credentials import _validate_vm_id
+        _validate_vm_id(vm_id)
+        self._check_command(command)
+
+        proxmox = connect_proxmox()
+        agent = proxmox.nodes(config.PROXMOX_NODE).qemu(int(vm_id)).agent
+
+        r = agent.post("exec", command=command)
+        pid = r.get("pid")
+
+        for _ in range(self._poll_iterations):
+            time.sleep(1)
+            s = agent.get("exec-status", pid=pid)
+            if s.get("exited"):
+                return CommandResult(
+                    exit_code=s.get("exitcode", 0),
+                    stdout=s.get("out-data", ""),
+                    stderr=s.get("err-data", ""),
+                )
+
+        raise TimeoutError(
+            f"Agent command timed out after {self._poll_iterations}s on VM {vm_id}"
+        )
+
+
+def initialize_verifier_for_vm(
+    vm_id: int,
+    *,
+    store: Optional[VerifierCredentialStore] = None,
+    executor: Optional[VMCommandExecutorPort] = None,
+) -> Dict[str, Any]:
+    """Initialize verifier identity for a VM after K3s is confirmed ready.
+
+    Steps:
+      1. Apply lab-verifier ServiceAccount + ClusterRole via kubectl (idempotent)
+      2. Extract kubeconfig and save via VerifierCredentialStore
+      3. Run structural smoke test
+
+    VM is considered READY only after all three steps pass.
+    kubeconfig content is NEVER logged.
+
+    Args:
+        vm_id:    VM ID (100-999999)
+        store:    Override VerifierCredentialStore (default: creds/vm_creds/)
+        executor: Override command executor (default: AgentVMCommandExecutor)
+
+    Returns:
+        {"success": bool, "data": dict | None, "error": str | None}
+    """
+    _validate_vm_id(vm_id)
+
+    if store is None:
+        store = VerifierCredentialStore()
+    if executor is None:
+        executor = AgentVMCommandExecutor()
+
+    manager = VerifierIdentityManager(store=store, executor=executor)
+    vm_id_str = str(vm_id)
+
+    slog = SmartLogger(f"init_verifier_{vm_id}")
+    try:
+        metadata = manager.ensure_verifier_identity(vm_id_str)
+        slog.info(
+            f"VM {vm_id}: verifier identity ensured "
+            f"(generation={metadata.credential_generation})"
+        )
+
+        # NEVER log the return value of export_verifier_kubeconfig
+        manager.export_verifier_kubeconfig(vm_id_str)
+        slog.info(f"VM {vm_id}: verifier kubeconfig exported")
+
+        smoke = manager.run_smoke_test(vm_id_str)
+        if not smoke.passed:
+            failed = [c.check_name for c in smoke.checks if not c.passed]
+            slog.warning(f"VM {vm_id}: verifier smoke test failed: {failed}")
+            return {
+                "success": False,
+                "data": None,
+                "error": f"smoke_test_failed: {failed}",
+            }
+
+        slog.success(f"VM {vm_id}: verifier initialized and verified")
+        return {
+            "success": True,
+            "data": {"credential_generation": metadata.credential_generation},
+            "error": None,
+        }
+
+    except Exception as e:
+        slog.error(f"VM {vm_id}: verifier initialization failed: {e}", e)
+        return {"success": False, "data": None, "error": str(e)}
+    finally:
+        slog.generate_report()

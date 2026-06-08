@@ -294,31 +294,11 @@ class TestSmokeResultModels:
 
 
 # ---------------------------------------------------------------------------
-# VerifierIdentityManager skeleton
+# VerifierIdentityManager wiring
 # ---------------------------------------------------------------------------
 
 
-class TestVerifierIdentityManagerSkeleton:
-    def _mgr(self, tmp_path: Path) -> VerifierIdentityManager:
-        store = VerifierCredentialStore(base_dir=tmp_path / "creds")
-        executor = StubVMCommandExecutor()
-        return VerifierIdentityManager(store=store, executor=executor)
-
-    def test_ensure_verifier_identity_raises_not_implemented(self, tmp_path):
-        mgr = self._mgr(tmp_path)
-        with pytest.raises(NotImplementedError):
-            mgr.ensure_verifier_identity("501")
-
-    def test_export_verifier_kubeconfig_raises_not_implemented(self, tmp_path):
-        mgr = self._mgr(tmp_path)
-        with pytest.raises(NotImplementedError):
-            mgr.export_verifier_kubeconfig("501")
-
-    def test_run_smoke_test_raises_not_implemented(self, tmp_path):
-        mgr = self._mgr(tmp_path)
-        with pytest.raises(NotImplementedError):
-            mgr.run_smoke_test("501")
-
+class TestVerifierIdentityManagerWiring:
     def test_store_and_executor_wired(self, tmp_path):
         store = VerifierCredentialStore(base_dir=tmp_path / "creds")
         executor = StubVMCommandExecutor()
