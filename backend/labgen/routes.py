@@ -8,6 +8,7 @@ validation and HTTP status mapping.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -17,6 +18,8 @@ from pydantic import BaseModel
 from backend.auth import auth_manager
 from backend.auth_deps import get_current_user
 from backend.labgen.models import (
+    AdminReviewDiff,
+    AdminReviewDiffChange,
     BlockingLevel,
     CleanupSpec,
     ImageResolutionResult,
@@ -27,6 +30,7 @@ from backend.labgen.models import (
     ValidatorStatus,
 )
 from backend.labgen.repository import LabDraftRepository
+from backend.labgen.review_diff import AdminReviewDiffRepository
 from backend.labgen.static_validator import StaticValidator
 from backend.labgen.stub_generator import LabDraftGeneratorStub
 
@@ -41,6 +45,7 @@ router = APIRouter(prefix="/api/labgen", tags=["labgen"])
 _repo: Optional[LabDraftRepository] = None
 _generator: Optional[LabDraftGeneratorStub] = None
 _validator: Optional[StaticValidator] = None
+_diff_repo: Optional[AdminReviewDiffRepository] = None
 
 
 def get_repository() -> LabDraftRepository:
@@ -62,6 +67,13 @@ def get_validator() -> StaticValidator:
     if _validator is None:
         _validator = StaticValidator()
     return _validator
+
+
+def get_diff_repository() -> AdminReviewDiffRepository:
+    global _diff_repo
+    if _diff_repo is None:
+        _diff_repo = AdminReviewDiffRepository()
+    return _diff_repo
 
 
 async def require_admin_user(
@@ -116,6 +128,36 @@ def _compute_publish_status(results: list[ValidatorResult]) -> PublishStatus:
     return PublishStatus.DRAFT
 
 
+def _build_diff(
+    draft: LabDraft,
+    update_data_json: dict,
+    admin_user: str,
+) -> Optional[AdminReviewDiff]:
+    """Return an AdminReviewDiff if any fields actually changed, else None."""
+    old_data = draft.model_dump(mode="json")
+    changes = []
+    for field, new_val in update_data_json.items():
+        if field == "updated_at":
+            continue
+        old_val = old_data.get(field)
+        if old_val != new_val:
+            changes.append(AdminReviewDiffChange(
+                field_path=field,
+                change_type="edit",
+                original_value=json.dumps(old_val, default=str),
+                edited_value=json.dumps(new_val, default=str),
+            ))
+    if not changes:
+        return None
+    return AdminReviewDiff(
+        lab_draft_id=draft.lab_id,
+        admin_user=admin_user,
+        reviewed_at=datetime.now(tz=timezone.utc),
+        review_duration_seconds=0,
+        changes=changes,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -156,6 +198,7 @@ async def patch_draft(
     body: PatchDraftRequest,
     admin: str = Depends(require_admin_user),
     repo: LabDraftRepository = Depends(get_repository),
+    diff_repo: AdminReviewDiffRepository = Depends(get_diff_repository),
 ) -> LabDraft:
     draft = repo.get(lab_id)
     if draft is None:
@@ -169,9 +212,18 @@ async def patch_draft(
             detail="publish_status cannot be set to 'published' directly — use the publish endpoint",
         )
 
+    # Compute diff before applying the update (old state vs incoming changes)
+    update_data_json = body.model_dump(mode="json", exclude_unset=True)
+    diff = _build_diff(draft, update_data_json, admin)
+
     update_data["updated_at"] = datetime.now(tz=timezone.utc)
     updated = draft.model_copy(update=update_data)
-    return repo.update(updated)
+    result = repo.update(updated)
+
+    if diff is not None:
+        diff_repo.append(diff)
+
+    return result
 
 
 @router.post("/drafts/{lab_id}/validate", response_model=LabDraft)
@@ -193,3 +245,15 @@ async def validate_draft(
     draft.updated_at = datetime.now(tz=timezone.utc)
 
     return repo.update(draft)
+
+
+@router.get("/drafts/{lab_id}/diffs", response_model=list[AdminReviewDiff])
+async def list_draft_diffs(
+    lab_id: str,
+    admin: str = Depends(require_admin_user),
+    repo: LabDraftRepository = Depends(get_repository),
+    diff_repo: AdminReviewDiffRepository = Depends(get_diff_repository),
+) -> list[AdminReviewDiff]:
+    if repo.get(lab_id) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
+    return diff_repo.list_by_draft(lab_id)

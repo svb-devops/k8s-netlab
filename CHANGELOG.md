@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- feat(labgen): Admin Review Diff — PATCH 自动记录字段级 diff（AdminReviewDiffRepository，append-only，data/lab_review_diffs.json）；GET /api/labgen/drafts/{id}/diffs 端点；26 个新测试（repository + API），全量 666 tests，覆盖率 92.95%
 - feat(labgen): Draft API MVP — POST/GET/PATCH/validate 四个端点；LabDraftRepository（flock JSON 存储）；LabDraftGeneratorStub（无 LLM 占位生成）；validate 自动推导 pollution_level/shared_namespace_candidate/publish_status；PATCH 阻止直接设置 published；52 个新测试（API + repository），全量 640 tests，覆盖率 92.91%
 - feat(labgen): 新增 ImageResolver 模块 — backend/labgen/image_resolver.py，实现 RequestedImage 解析、白名单意图映射、blocking 检查（latest/无tag/外部registry/未知registry）、registry existence check（可 mock HTTP）、needs_recheck TTL 判断；62 个新测试全部通过
 - feat(labgen): 新增 LabGen 模块基础层 — backend/labgen/models.py（14 个 Pydantic 模型，含 schema_version 字段）和 backend/labgen/static_validator.py（StaticValidator，13 项 publish-gate 检查，自动推导 pollution_level / shared_namespace_candidate）；config/image_whitelist.json；91 个新测试全部通过，labgen 覆盖率 models 100% / validator 98%
