@@ -12,11 +12,23 @@ import json
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel
 
+from backend import config
 from backend.auth import auth_manager
 from backend.auth_deps import get_current_user
+from backend.labgen.lab_session_repository import LabSessionRepository
+from backend.labgen.lab_session_service import (
+    LabSessionService,
+    NamespaceInspector,
+    PrecheckFailed,
+    RealVMTracker,
+    SessionAlreadyTerminated,
+    SessionNotFound,
+    StubNamespaceInspector,
+    VMTrackerPort,
+)
 from backend.labgen.models import (
     AdminReviewDiff,
     AdminReviewDiffChange,
@@ -24,6 +36,7 @@ from backend.labgen.models import (
     CleanupSpec,
     ImageResolutionResult,
     LabDraft,
+    LabSessionState,
     PublishStatus,
     Step,
     ValidatorResult,
@@ -49,6 +62,8 @@ _generator: Optional[LabDraftGeneratorStub] = None
 _validator: Optional[StaticValidator] = None
 _diff_repo: Optional[AdminReviewDiffRepository] = None
 _publish_svc: Optional[PublishService] = None
+_session_repo: Optional[LabSessionRepository] = None
+_session_svc: Optional[LabSessionService] = None
 
 
 def get_repository() -> LabDraftRepository:
@@ -70,6 +85,25 @@ def get_validator() -> StaticValidator:
     if _validator is None:
         _validator = StaticValidator()
     return _validator
+
+
+def get_session_repository() -> LabSessionRepository:
+    global _session_repo
+    if _session_repo is None:
+        _session_repo = LabSessionRepository()
+    return _session_repo
+
+
+def get_session_service() -> LabSessionService:
+    global _session_svc
+    if _session_svc is None:
+        _session_svc = LabSessionService(
+            session_repo=get_session_repository(),
+            draft_repo=get_repository(),
+            vm_tracker=RealVMTracker(),
+            ns_inspector=StubNamespaceInspector(),
+        )
+    return _session_svc
 
 
 def get_publish_service() -> PublishService:
@@ -298,3 +332,128 @@ async def publish_draft(
         )
 
     return saved
+
+
+# ===========================================================================
+# Lab Session routes — /api/lab-sessions  and  /internal/lab-sessions
+# ===========================================================================
+
+lab_session_router = APIRouter(prefix="/api/lab-sessions", tags=["lab-sessions"])
+internal_router = APIRouter(prefix="/internal/lab-sessions", tags=["internal"])
+
+
+# ---------------------------------------------------------------------------
+# Request models
+# ---------------------------------------------------------------------------
+
+
+class CreateSessionRequest(BaseModel):
+    lab_id: str
+    vm_id: str
+
+
+# ---------------------------------------------------------------------------
+# Auth helpers
+# ---------------------------------------------------------------------------
+
+
+async def require_internal_token(x_admin_token: str = Header(default=None)) -> None:
+    if not config.ADMIN_TOKEN or x_admin_token != config.ADMIN_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing admin token",
+        )
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+
+
+@lab_session_router.post("", response_model=LabSessionState, status_code=status.HTTP_201_CREATED)
+async def create_lab_session(
+    body: CreateSessionRequest,
+    username: str = Depends(get_current_user),
+    svc: LabSessionService = Depends(get_session_service),
+) -> LabSessionState:
+    try:
+        return svc.create_session(
+            lab_id=body.lab_id,
+            vm_id=body.vm_id,
+            student_username=username,
+        )
+    except PrecheckFailed as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"precheck_failures": exc.failures},
+        )
+
+
+@lab_session_router.get("/{session_id}", response_model=LabSessionState)
+async def get_lab_session(
+    session_id: str,
+    username: str = Depends(get_current_user),
+    svc: LabSessionService = Depends(get_session_service),
+) -> LabSessionState:
+    try:
+        session = svc._require_session(session_id)
+    except SessionNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    if session.student_username != username and not auth_manager.is_admin(username):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    return session
+
+
+@lab_session_router.post("/{session_id}/complete", response_model=LabSessionState)
+async def complete_lab_session(
+    session_id: str,
+    username: str = Depends(get_current_user),
+    svc: LabSessionService = Depends(get_session_service),
+) -> LabSessionState:
+    # Fetch session first to verify ownership before mutating
+    try:
+        session = svc._require_session(session_id)
+    except SessionNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    if session.student_username != username:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the session owner can complete it")
+
+    try:
+        return svc.complete_session(session_id)
+    except SessionAlreadyTerminated:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session is already terminated")
+
+
+@lab_session_router.post("/{session_id}/abort", response_model=LabSessionState)
+async def abort_lab_session(
+    session_id: str,
+    username: str = Depends(get_current_user),
+    svc: LabSessionService = Depends(get_session_service),
+) -> LabSessionState:
+    try:
+        session = svc._require_session(session_id)
+    except SessionNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    if session.student_username != username:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the session owner can abort it")
+
+    try:
+        return svc.abort_session(session_id)
+    except SessionAlreadyTerminated:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session is already terminated")
+
+
+@internal_router.post("/{session_id}/cleanup", response_model=LabSessionState)
+async def internal_cleanup(
+    session_id: str,
+    _: None = Depends(require_internal_token),
+    svc: LabSessionService = Depends(get_session_service),
+) -> LabSessionState:
+    try:
+        return svc.run_cleanup(session_id)
+    except SessionNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
