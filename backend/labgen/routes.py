@@ -40,6 +40,7 @@ from backend.labgen.models import (
     Step,
     ValidatorResult,
     ValidatorStatus,
+    VerifyTemplate,
 )
 from backend.labgen.image_resolver import ImageResolver
 from backend.labgen.publish_service import PublishService
@@ -47,6 +48,8 @@ from backend.labgen.repository import LabDraftRepository
 from backend.labgen.review_diff import AdminReviewDiffRepository
 from backend.labgen.static_validator import StaticValidator
 from backend.labgen.stub_generator import LabDraftGeneratorStub
+from backend.labgen.verifier import VerifierService, VerifyResult
+from backend.labgen.verifier_credentials import VerifierCredentialStore
 
 router = APIRouter(prefix="/api/labgen", tags=["labgen"])
 
@@ -64,6 +67,7 @@ _publish_svc: Optional[PublishService] = None
 _session_repo: Optional[LabSessionRepository] = None
 _session_svc: Optional[LabSessionService] = None
 _image_resolver: Optional[ImageResolver] = None
+_verifier_svc: Optional[VerifierService] = None
 
 
 def get_repository() -> LabDraftRepository:
@@ -129,6 +133,22 @@ def get_diff_repository() -> AdminReviewDiffRepository:
     if _diff_repo is None:
         _diff_repo = AdminReviewDiffRepository()
     return _diff_repo
+
+
+def get_verifier_service() -> VerifierService:
+    global _verifier_svc
+    if _verifier_svc is None:
+        from backend.labgen.verifier import K8sVerifierClientPort
+
+        def _not_implemented_factory(kubeconfig: str) -> K8sVerifierClientPort:
+            raise NotImplementedError("Real K8s verifier client not yet implemented")
+
+        _verifier_svc = VerifierService(
+            session_repo=get_session_repository(),
+            credential_store=VerifierCredentialStore(),
+            k8s_client_factory=_not_implemented_factory,
+        )
+    return _verifier_svc
 
 
 async def require_admin_user(
@@ -465,3 +485,24 @@ async def internal_cleanup(
         return svc.run_cleanup(session_id)
     except SessionNotFound:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+
+# ===========================================================================
+# Verifier routes — /internal/verifier
+# ===========================================================================
+
+verifier_router = APIRouter(prefix="/internal/verifier", tags=["internal"])
+
+
+class VerifierCheckRequest(BaseModel):
+    session_id: str
+    template: VerifyTemplate
+
+
+@verifier_router.post("/check", response_model=VerifyResult)
+async def verifier_check(
+    body: VerifierCheckRequest,
+    _: None = Depends(require_internal_token),
+    svc: VerifierService = Depends(get_verifier_service),
+) -> VerifyResult:
+    return svc.check(body.session_id, body.template)

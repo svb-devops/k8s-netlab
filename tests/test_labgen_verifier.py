@@ -1,0 +1,614 @@
+"""
+Tests for backend/labgen/verifier.py — VerifierService, FakeK8sVerifierClient,
+VerifyResult, and the POST /internal/verifier/check HTTP endpoint.
+"""
+
+from __future__ import annotations
+
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+import pytest
+
+from backend.labgen.models import (
+    LabSessionState,
+    LabSessionStatus,
+    VerifyTemplate,
+    VerifyType,
+)
+from backend.labgen.verifier import (
+    FakeK8sVerifierClient,
+    K8sVerifierClientPort,
+    VerifierService,
+    VerifyResult,
+    _NS_SENTINEL,
+    _SUPPORTED_TYPES,
+)
+from backend.labgen.verifier_credentials import (
+    VerifierCredentialMetadata,
+    VerifierCredentialStore,
+)
+
+pytestmark = pytest.mark.static
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+class _FakeSessionRepo:
+    """Minimal in-memory session repo for VerifierService tests."""
+
+    def __init__(self, sessions: Optional[dict[str, LabSessionState]] = None) -> None:
+        self._sessions: dict[str, LabSessionState] = sessions or {}
+
+    def get(self, session_id: str) -> Optional[LabSessionState]:
+        return self._sessions.get(session_id)
+
+
+def _active_session(
+    session_id: str = "sess-abc",
+    vm_id: str = "501",
+    namespace: str = "lab-sess-abc",
+    status: LabSessionStatus = LabSessionStatus.LAB_ACTIVE,
+) -> LabSessionState:
+    s = LabSessionState(
+        session_id=session_id,
+        lab_id="lab-1",
+        vm_id=vm_id,
+        student_username="student1",
+        lab_session_status=status,
+    )
+    s.namespace = namespace
+    return s
+
+
+def _make_store(tmp_dir: Path, vm_id: str = "501") -> VerifierCredentialStore:
+    """Create a VerifierCredentialStore with one seeded credential."""
+    store = VerifierCredentialStore(base_dir=tmp_dir)
+    kubeconfig = (
+        "apiVersion: v1\n"
+        "kind: Config\n"
+        "clusters:\n"
+        "- cluster:\n"
+        "    server: https://k3s.test:6443\n"
+        "    certificate-authority-data: dGVzdA==\n"
+        "  name: k3s-lab\n"
+        "users:\n"
+        "- name: lab-verifier\n"
+        "  user:\n"
+        "    token: test-token-xyz\n"
+    )
+    metadata = VerifierCredentialMetadata(
+        vm_id=vm_id,
+        created_at=datetime.now(tz=timezone.utc),
+        expires_at=datetime.now(tz=timezone.utc),
+        k3s_endpoint="https://k3s.test:6443",
+    )
+    store.save(vm_id, kubeconfig, metadata)
+    return store
+
+
+def _make_template(
+    verify_id: str = "v1",
+    vtype: VerifyType = VerifyType.NAMESPACE_EXISTS,
+    namespace: str = _NS_SENTINEL,
+    name: str = "placeholder",
+    cluster_scope: bool = False,
+    label_selector: Optional[str] = None,
+) -> VerifyTemplate:
+    return VerifyTemplate(
+        verify_id=verify_id,
+        type=vtype,
+        namespace=namespace,
+        name=name,
+        cluster_scope=cluster_scope,
+        label_selector=label_selector,
+    )
+
+
+def _make_service(
+    sessions: dict,
+    store: VerifierCredentialStore,
+    fake_client: Optional[FakeK8sVerifierClient] = None,
+) -> VerifierService:
+    if fake_client is None:
+        fake_client = FakeK8sVerifierClient()
+    return VerifierService(
+        session_repo=_FakeSessionRepo(sessions),
+        credential_store=store,
+        k8s_client_factory=lambda _kc: fake_client,
+    )
+
+
+# ===========================================================================
+# VerifyResult model
+# ===========================================================================
+
+
+class TestVerifyResultModel:
+    def test_schema_version_default(self) -> None:
+        r = VerifyResult(session_id="s", verify_id="v", verify_type="namespace_exists", passed=True)
+        assert r.schema_version == "1.0"
+
+    def test_error_code_optional(self) -> None:
+        r = VerifyResult(session_id="s", verify_id="v", verify_type="namespace_exists", passed=True)
+        assert r.error_code is None
+        assert r.detail == ""
+
+    def test_failed_result_carries_error_code(self) -> None:
+        r = VerifyResult(
+            session_id="s",
+            verify_id="v",
+            verify_type="namespace_exists",
+            passed=False,
+            error_code="session_not_found",
+        )
+        assert not r.passed
+        assert r.error_code == "session_not_found"
+
+
+# ===========================================================================
+# FakeK8sVerifierClient
+# ===========================================================================
+
+
+class TestFakeK8sVerifierClient:
+    def test_default_true(self) -> None:
+        c = FakeK8sVerifierClient(default=True)
+        assert c.namespace_exists("any-ns") is True
+        assert c.pod_running("any-ns", "any-pod") is True
+        assert c.deployment_ready("any-ns", "any-deploy") is True
+        assert c.service_exists("any-ns", "any-svc") is True
+        assert c.configmap_exists("any-ns", "any-cm") is True
+        assert c.secret_exists("any-ns", "any-secret") is True
+
+    def test_default_false(self) -> None:
+        c = FakeK8sVerifierClient(default=False)
+        assert c.namespace_exists("any-ns") is False
+        assert c.pod_running("any-ns", "any-pod") is False
+
+    def test_per_key_namespace_exists(self) -> None:
+        c = FakeK8sVerifierClient(
+            responses={("namespace_exists", "lab-abc"): False},
+            default=True,
+        )
+        assert c.namespace_exists("lab-abc") is False
+        assert c.namespace_exists("lab-other") is True
+
+    def test_per_key_pod_running(self) -> None:
+        c = FakeK8sVerifierClient(
+            responses={("pod_running", "lab-ns", "my-pod"): False},
+        )
+        assert c.pod_running("lab-ns", "my-pod") is False
+        assert c.pod_running("lab-ns", "other-pod") is True
+
+    def test_per_key_deployment_ready(self) -> None:
+        c = FakeK8sVerifierClient(
+            responses={("deployment_ready", "lab-ns", "nginx"): False},
+        )
+        assert c.deployment_ready("lab-ns", "nginx") is False
+
+    def test_per_key_service_exists(self) -> None:
+        c = FakeK8sVerifierClient(
+            responses={("service_exists", "lab-ns", "my-svc"): False},
+        )
+        assert c.service_exists("lab-ns", "my-svc") is False
+
+    def test_per_key_configmap_exists(self) -> None:
+        c = FakeK8sVerifierClient(
+            responses={("configmap_exists", "lab-ns", "app-config"): False},
+        )
+        assert c.configmap_exists("lab-ns", "app-config") is False
+
+    def test_per_key_secret_exists(self) -> None:
+        c = FakeK8sVerifierClient(
+            responses={("secret_exists", "lab-ns", "tls-cert"): False},
+        )
+        assert c.secret_exists("lab-ns", "tls-cert") is False
+
+    def test_pod_running_label_selector_ignored_in_lookup(self) -> None:
+        c = FakeK8sVerifierClient(
+            responses={("pod_running", "lab-ns", "app"): True},
+        )
+        assert c.pod_running("lab-ns", "app", label_selector="app=nginx") is True
+        assert c.pod_running("lab-ns", "app", label_selector=None) is True
+
+    def test_is_k8s_client_port_subclass(self) -> None:
+        assert issubclass(FakeK8sVerifierClient, K8sVerifierClientPort)
+
+
+# ===========================================================================
+# VerifierService — guard checks
+# ===========================================================================
+
+
+class TestVerifierServiceGuards:
+    def setup_method(self) -> None:
+        self._tmp = tempfile.mkdtemp()
+        self._store = _make_store(Path(self._tmp))
+
+    def test_session_not_found(self) -> None:
+        svc = _make_service({}, self._store)
+        result = svc.check("missing-id", _make_template())
+        assert not result.passed
+        assert result.error_code == "session_not_found"
+        assert result.session_id == "missing-id"
+
+    def test_session_not_active_start_failed(self) -> None:
+        s = _active_session(status=LabSessionStatus.LAB_START_FAILED)
+        svc = _make_service({s.session_id: s}, self._store)
+        result = svc.check(s.session_id, _make_template())
+        assert not result.passed
+        assert result.error_code == "session_not_active"
+        assert "LAB_START_FAILED" in result.detail
+
+    def test_session_not_active_namespace_creating(self) -> None:
+        s = _active_session(status=LabSessionStatus.NAMESPACE_CREATING)
+        svc = _make_service({s.session_id: s}, self._store)
+        result = svc.check(s.session_id, _make_template())
+        assert not result.passed
+        assert result.error_code == "session_not_active"
+
+    def test_session_not_active_lab_aborted(self) -> None:
+        s = _active_session(status=LabSessionStatus.LAB_ABORTED)
+        svc = _make_service({s.session_id: s}, self._store)
+        result = svc.check(s.session_id, _make_template())
+        assert not result.passed
+        assert result.error_code == "session_not_active"
+
+    def test_cluster_scope_rejected(self) -> None:
+        s = _active_session()
+        svc = _make_service({s.session_id: s}, self._store)
+        t = _make_template(cluster_scope=True)
+        result = svc.check(s.session_id, t)
+        assert not result.passed
+        assert result.error_code == "cluster_scope_not_supported"
+
+    def test_namespace_mismatch_different_ns(self) -> None:
+        s = _active_session(namespace="lab-real-ns")
+        svc = _make_service({s.session_id: s}, self._store)
+        t = _make_template(namespace="lab-attacker-ns")
+        result = svc.check(s.session_id, t)
+        assert not result.passed
+        assert result.error_code == "namespace_mismatch"
+
+    def test_namespace_mismatch_kube_system_rejected(self) -> None:
+        s = _active_session(namespace="lab-real-ns")
+        svc = _make_service({s.session_id: s}, self._store)
+        t = _make_template(namespace="kube-system")
+        result = svc.check(s.session_id, t)
+        assert not result.passed
+        assert result.error_code == "namespace_mismatch"
+
+    def test_namespace_mismatch_when_session_namespace_is_none(self) -> None:
+        s = _active_session()
+        s.namespace = None
+        svc = _make_service({s.session_id: s}, self._store)
+        t = _make_template(namespace=_NS_SENTINEL)
+        result = svc.check(s.session_id, t)
+        assert not result.passed
+        assert result.error_code == "namespace_mismatch"
+
+    def test_verify_type_not_implemented_pod_ready(self) -> None:
+        s = _active_session()
+        svc = _make_service({s.session_id: s}, self._store)
+        t = _make_template(vtype=VerifyType.POD_READY)
+        result = svc.check(s.session_id, t)
+        assert not result.passed
+        assert result.error_code == "verify_type_not_implemented"
+
+    def test_verify_type_not_implemented_node_ready(self) -> None:
+        s = _active_session()
+        svc = _make_service({s.session_id: s}, self._store)
+        t = _make_template(vtype=VerifyType.NODE_READY)
+        result = svc.check(s.session_id, t)
+        assert not result.passed
+        assert result.error_code == "verify_type_not_implemented"
+
+    def test_verify_type_not_implemented_pvc_bound(self) -> None:
+        s = _active_session()
+        svc = _make_service({s.session_id: s}, self._store)
+        t = _make_template(vtype=VerifyType.PVC_BOUND)
+        result = svc.check(s.session_id, t)
+        assert not result.passed
+        assert result.error_code == "verify_type_not_implemented"
+
+    def test_verify_type_not_implemented_job_completed(self) -> None:
+        s = _active_session()
+        svc = _make_service({s.session_id: s}, self._store)
+        t = _make_template(vtype=VerifyType.JOB_COMPLETED)
+        result = svc.check(s.session_id, t)
+        assert not result.passed
+        assert result.error_code == "verify_type_not_implemented"
+
+    def test_credential_missing(self) -> None:
+        empty_store = VerifierCredentialStore(base_dir=Path(self._tmp) / "empty")
+        s = _active_session(vm_id="502")
+        svc = _make_service({s.session_id: s}, empty_store)
+        result = svc.check(s.session_id, _make_template())
+        assert not result.passed
+        assert result.error_code == "credential_missing"
+        assert "502" in result.detail
+
+
+# ===========================================================================
+# VerifierService — namespace resolution
+# ===========================================================================
+
+
+class TestVerifierServiceNamespaceResolution:
+    def setup_method(self) -> None:
+        self._tmp = tempfile.mkdtemp()
+        self._store = _make_store(Path(self._tmp))
+
+    def test_sentinel_resolves_to_session_namespace(self) -> None:
+        s = _active_session(namespace="lab-my-session-id")
+        svc = _make_service({s.session_id: s}, self._store)
+        t = _make_template(namespace=_NS_SENTINEL)
+        result = svc.check(s.session_id, t)
+        assert result.passed
+        assert result.error_code is None
+
+    def test_exact_namespace_match_accepted(self) -> None:
+        s = _active_session(namespace="lab-my-session-id")
+        svc = _make_service({s.session_id: s}, self._store)
+        t = _make_template(namespace="lab-my-session-id")
+        result = svc.check(s.session_id, t)
+        assert result.passed
+        assert result.error_code is None
+
+
+# ===========================================================================
+# VerifierService — dispatch to supported types
+# ===========================================================================
+
+
+class TestVerifierServiceDispatch:
+    def setup_method(self) -> None:
+        self._tmp = tempfile.mkdtemp()
+        self._store = _make_store(Path(self._tmp))
+        self._session = _active_session(namespace="lab-test-ns")
+
+    def _svc(self, fake: FakeK8sVerifierClient) -> VerifierService:
+        return _make_service({self._session.session_id: self._session}, self._store, fake)
+
+    def test_namespace_exists_true(self) -> None:
+        result = self._svc(FakeK8sVerifierClient(default=True)).check(
+            self._session.session_id,
+            _make_template(vtype=VerifyType.NAMESPACE_EXISTS),
+        )
+        assert result.passed
+        assert result.verify_type == "namespace_exists"
+
+    def test_namespace_exists_false(self) -> None:
+        result = self._svc(
+            FakeK8sVerifierClient({("namespace_exists", "lab-test-ns"): False})
+        ).check(
+            self._session.session_id,
+            _make_template(vtype=VerifyType.NAMESPACE_EXISTS),
+        )
+        assert not result.passed
+
+    def test_pod_running_true(self) -> None:
+        result = self._svc(FakeK8sVerifierClient(default=True)).check(
+            self._session.session_id,
+            _make_template(vtype=VerifyType.POD_RUNNING, name="my-app"),
+        )
+        assert result.passed
+        assert result.verify_type == "pod_running"
+
+    def test_pod_running_false(self) -> None:
+        result = self._svc(
+            FakeK8sVerifierClient({("pod_running", "lab-test-ns", "my-app"): False})
+        ).check(
+            self._session.session_id,
+            _make_template(vtype=VerifyType.POD_RUNNING, name="my-app"),
+        )
+        assert not result.passed
+
+    def test_pod_running_with_label_selector(self) -> None:
+        fake = FakeK8sVerifierClient(
+            responses={("pod_running", "lab-test-ns", "labeled-pod"): True},
+        )
+        result = self._svc(fake).check(
+            self._session.session_id,
+            _make_template(
+                vtype=VerifyType.POD_RUNNING,
+                name="labeled-pod",
+                label_selector="app=nginx",
+            ),
+        )
+        assert result.passed
+
+    def test_deployment_ready_true(self) -> None:
+        result = self._svc(FakeK8sVerifierClient(default=True)).check(
+            self._session.session_id,
+            _make_template(vtype=VerifyType.DEPLOYMENT_READY, name="my-deploy"),
+        )
+        assert result.passed
+
+    def test_deployment_ready_false(self) -> None:
+        result = self._svc(
+            FakeK8sVerifierClient({("deployment_ready", "lab-test-ns", "my-deploy"): False})
+        ).check(
+            self._session.session_id,
+            _make_template(vtype=VerifyType.DEPLOYMENT_READY, name="my-deploy"),
+        )
+        assert not result.passed
+
+    def test_service_exists_true(self) -> None:
+        result = self._svc(FakeK8sVerifierClient(default=True)).check(
+            self._session.session_id,
+            _make_template(vtype=VerifyType.SERVICE_EXISTS, name="nginx-svc"),
+        )
+        assert result.passed
+
+    def test_configmap_exists_true(self) -> None:
+        result = self._svc(FakeK8sVerifierClient(default=True)).check(
+            self._session.session_id,
+            _make_template(vtype=VerifyType.CONFIGMAP_EXISTS, name="app-config"),
+        )
+        assert result.passed
+
+    def test_secret_exists_true(self) -> None:
+        result = self._svc(FakeK8sVerifierClient(default=True)).check(
+            self._session.session_id,
+            _make_template(vtype=VerifyType.SECRET_EXISTS, name="tls-cert"),
+        )
+        assert result.passed
+
+
+# ===========================================================================
+# VerifierService — result fields
+# ===========================================================================
+
+
+class TestVerifierServiceResultFields:
+    def setup_method(self) -> None:
+        self._tmp = tempfile.mkdtemp()
+        self._store = _make_store(Path(self._tmp))
+
+    def test_verify_id_preserved_in_success(self) -> None:
+        s = _active_session()
+        svc = _make_service({s.session_id: s}, self._store)
+        t = _make_template(verify_id="check-001")
+        result = svc.check(s.session_id, t)
+        assert result.verify_id == "check-001"
+
+    def test_verify_id_preserved_in_failure(self) -> None:
+        svc = _make_service({}, self._store)
+        t = _make_template(verify_id="check-002")
+        result = svc.check("no-such-session", t)
+        assert result.verify_id == "check-002"
+
+    def test_session_id_in_result(self) -> None:
+        s = _active_session(session_id="my-unique-session")
+        svc = _make_service({s.session_id: s}, self._store)
+        result = svc.check("my-unique-session", _make_template())
+        assert result.session_id == "my-unique-session"
+
+    def test_success_has_no_error_code(self) -> None:
+        s = _active_session()
+        svc = _make_service({s.session_id: s}, self._store)
+        result = svc.check(s.session_id, _make_template())
+        assert result.error_code is None
+        assert result.detail == ""
+
+
+# ===========================================================================
+# _SUPPORTED_TYPES coverage
+# ===========================================================================
+
+
+class TestSupportedTypesSet:
+    def test_six_types_supported(self) -> None:
+        assert len(_SUPPORTED_TYPES) == 6
+
+    def test_shell_not_supported(self) -> None:
+        unsupported = {
+            VerifyType.POD_READY,
+            VerifyType.NODE_READY,
+            VerifyType.PVC_BOUND,
+            VerifyType.JOB_COMPLETED,
+        }
+        assert unsupported.isdisjoint(_SUPPORTED_TYPES)
+
+
+# ===========================================================================
+# HTTP endpoint — POST /internal/verifier/check
+# ===========================================================================
+
+
+class TestVerifierCheckRoute:
+    def _build_body(self, session_id: str = "sess-123") -> dict:
+        return {
+            "session_id": session_id,
+            "template": {
+                "verify_id": "v-http-test",
+                "type": "namespace_exists",
+                "namespace": "{{lab_namespace}}",
+                "name": "placeholder",
+                "schema_version": "1.0",
+            },
+        }
+
+    def test_returns_200_with_valid_token(self) -> None:
+        from backend.main import app
+        from backend.labgen.routes import get_verifier_service, require_internal_token
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = _make_store(Path(tmp))
+            session = _active_session(session_id="sess-123", namespace="lab-sess-123")
+            fake_svc = VerifierService(
+                session_repo=_FakeSessionRepo({"sess-123": session}),
+                credential_store=store,
+                k8s_client_factory=lambda _kc: FakeK8sVerifierClient(default=True),
+            )
+            app.dependency_overrides[get_verifier_service] = lambda: fake_svc
+            app.dependency_overrides[require_internal_token] = lambda: None
+            from fastapi.testclient import TestClient
+            c = TestClient(app, raise_server_exceptions=True)
+            resp = c.post(
+                "/internal/verifier/check",
+                json=self._build_body("sess-123"),
+            )
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["session_id"] == "sess-123"
+        assert data["verify_id"] == "v-http-test"
+        assert data["passed"] is True
+
+    def test_returns_401_without_token(self) -> None:
+        from backend.main import app
+        from fastapi.testclient import TestClient
+
+        c = TestClient(app, raise_server_exceptions=False)
+        resp = c.post(
+            "/internal/verifier/check",
+            json=self._build_body(),
+        )
+        assert resp.status_code == 401
+
+    def test_returns_401_with_wrong_token(self) -> None:
+        from backend.main import app
+        from fastapi.testclient import TestClient
+
+        c = TestClient(app, raise_server_exceptions=False)
+        resp = c.post(
+            "/internal/verifier/check",
+            json=self._build_body(),
+            headers={"X-Admin-Token": "wrong-token"},
+        )
+        assert resp.status_code == 401
+
+    def test_session_not_found_returns_200_with_error_code(self) -> None:
+        from backend.main import app
+        from backend.labgen.routes import get_verifier_service, require_internal_token
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = VerifierCredentialStore(base_dir=Path(tmp) / "empty")
+            fake_svc = VerifierService(
+                session_repo=_FakeSessionRepo({}),
+                credential_store=store,
+                k8s_client_factory=lambda _kc: FakeK8sVerifierClient(),
+            )
+            app.dependency_overrides[get_verifier_service] = lambda: fake_svc
+            app.dependency_overrides[require_internal_token] = lambda: None
+            from fastapi.testclient import TestClient
+            c = TestClient(app, raise_server_exceptions=True)
+            resp = c.post(
+                "/internal/verifier/check",
+                json=self._build_body("no-such-session"),
+            )
+            app.dependency_overrides.clear()
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["passed"] is False
+        assert data["error_code"] == "session_not_found"

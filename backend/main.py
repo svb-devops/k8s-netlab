@@ -32,7 +32,7 @@ from backend.articles_routes import router as articles_router
 from backend.deployments_routes import router as deployments_router
 from backend.docs_routes import router as docs_router
 from backend.labgen.routes import router as labgen_router
-from backend.labgen.routes import lab_session_router, internal_router
+from backend.labgen.routes import lab_session_router, internal_router, verifier_router
 from backend.middleware import JsonFormatter, RequestIDMiddleware, SecurityHeadersMiddleware
 from backend.proxmox_api import connect_proxmox
 from backend.task_registry import drain as drain_vm_tasks
@@ -229,6 +229,7 @@ app.include_router(articles_router)  # Public blog articles
 app.include_router(labgen_router)    # LabGen draft management
 app.include_router(lab_session_router)  # Lab session lifecycle
 app.include_router(internal_router)     # Internal cleanup (admin only)
+app.include_router(verifier_router)     # Internal verifier check (admin only)
 
 
 # ============================================================
