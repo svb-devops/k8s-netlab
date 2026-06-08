@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- feat(labgen): Namespace Lifecycle Adapter — 新增 NamespaceLifecyclePort 抽象（create_namespace/namespace_exists/delete_namespace/is_namespace_deleted）；StubNamespaceLifecycleAdapter（可配置，测试专用）；K3sNamespaceLifecycleAdapter 骨架；create_session 加入 NAMESPACE_CREATING 阶段（create+verify，失败→LAB_START_FAILED(namespace_create_failed)）；_do_cleanup 改用 delete+is_namespace_deleted 二次确认（任一失败→LAB_CLEANUP_FAILED+mark_vm_tainted）；verifier kubeconfig 与 namespace lifecycle 完全隔离；17 个新测试，全量 761 tests，覆盖率 92.70%
 - feat(labgen): Lab Session Image TTL Recheck — create_session 在 precheck 通过后执行 IMAGE_CHECK_RUNNING 阶段；UNRESOLVED/BLOCKED 图像 → LAB_START_FAILED(image_unresolved)；TTL 过期则重新调 registry existence check，失败 → LAB_START_FAILED(image_unavailable)；recheck 后更新 draft.image_resolution；LabSessionState 新增 failure_reason 字段；11 个新测试
 - feat(labgen): Lab Session 状态机骨架 — LabSessionRepository、LabSessionService（VMTrackerPort + NamespaceInspector 端口抽象、RealVMTracker 真实所有权校验、StubNamespaceInspector MVP）；6 条本地 precheck；POST/GET/complete/abort /api/lab-sessions；POST /internal/lab-sessions/{id}/cleanup（admin token 隔离）；46 个新测试，全量 733 tests，覆盖率不低于 92%
 - feat(labgen): Publish API — POST /api/labgen/drafts/{id}/publish；PublishService 始终重跑 StaticValidator + registry existence check；publish_blocking → 409，无 blocking → 200 + published；21 个新测试（service unit + endpoint），全量测试覆盖率不低于 92%

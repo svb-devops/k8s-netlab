@@ -12,12 +12,14 @@ from fastapi.testclient import TestClient
 from backend.labgen.lab_session_repository import LabSessionRepository
 from backend.labgen.lab_session_service import (
     LabSessionService,
-    NamespaceInspector,
     PrecheckFailed,
     SessionAlreadyTerminated,
-    StubNamespaceInspector,
     StubVMTracker,
     VMTrackerPort,
+)
+from backend.labgen.namespace_lifecycle import (
+    NamespaceLifecyclePort,
+    StubNamespaceLifecycleAdapter,
 )
 from backend.labgen.models import (
     CleanupNamespace,
@@ -136,13 +138,35 @@ class _StubImageResolver:
         return img.model_copy(update={"existence_check_passed": self._passes})
 
 
-class _FailingNamespaceInspector(NamespaceInspector):
-    def request_namespace_cleanup(self, namespace: str) -> bool:
+class _FailingDeleteAdapter(NamespaceLifecyclePort):
+    """create OK, delete returns False — simulates delete API failure."""
+
+    def create_namespace(self, namespace: str) -> bool:
+        return True
+
+    def namespace_exists(self, namespace: str) -> bool:
+        return True
+
+    def delete_namespace(self, namespace: str) -> bool:
+        return False
+
+    def is_namespace_deleted(self, namespace: str) -> bool:
         return False
 
 
-class _RaisingNamespaceInspector(NamespaceInspector):
-    def request_namespace_cleanup(self, namespace: str) -> bool:
+class _RaisingDeleteAdapter(NamespaceLifecyclePort):
+    """create OK, delete raises — simulates K8s API being unavailable."""
+
+    def create_namespace(self, namespace: str) -> bool:
+        return True
+
+    def namespace_exists(self, namespace: str) -> bool:
+        return True
+
+    def delete_namespace(self, namespace: str) -> bool:
+        raise RuntimeError("K8s unavailable")
+
+    def is_namespace_deleted(self, namespace: str) -> bool:
         raise RuntimeError("K8s unavailable")
 
 
@@ -164,7 +188,7 @@ def _make_svc(
     drafts: dict[str, LabDraft] | None = None,
     session_repo: _MemSessionRepo | None = None,
     vm_tracker: VMTrackerPort | None = None,
-    ns_inspector: NamespaceInspector | None = None,
+    ns_lifecycle: NamespaceLifecyclePort | None = None,
     image_resolver: _StubImageResolver | None = None,
 ) -> tuple[LabSessionService, _MemSessionRepo]:
     repo = session_repo or _MemSessionRepo()
@@ -172,7 +196,7 @@ def _make_svc(
         session_repo=repo,
         draft_repo=_MemDraftRepo(drafts),
         vm_tracker=vm_tracker or StubVMTracker(),
-        ns_inspector=ns_inspector or StubNamespaceInspector(),
+        ns_lifecycle=ns_lifecycle or StubNamespaceLifecycleAdapter(),
         image_resolver=image_resolver or _StubImageResolver(),
     )
     return svc, repo
@@ -200,7 +224,7 @@ def student_client(mem_session_repo):
         session_repo=mem_session_repo,
         draft_repo=_MemDraftRepo(drafts),
         vm_tracker=StubVMTracker(),
-        ns_inspector=StubNamespaceInspector(),
+        ns_lifecycle=StubNamespaceLifecycleAdapter(),
         image_resolver=_StubImageResolver(),
     )
 
@@ -220,7 +244,7 @@ def internal_client(mem_session_repo):
         session_repo=mem_session_repo,
         draft_repo=_MemDraftRepo(),
         vm_tracker=StubVMTracker(),
-        ns_inspector=StubNamespaceInspector(),
+        ns_lifecycle=StubNamespaceLifecycleAdapter(),
         image_resolver=_StubImageResolver(),
     )
 
@@ -436,7 +460,7 @@ class TestLabSessionLifecycle:
             session_repo=repo,
             draft_repo=_MemDraftRepo(),
             vm_tracker=tracker,
-            ns_inspector=_FailingNamespaceInspector(),
+            ns_lifecycle=_FailingDeleteAdapter(),
             image_resolver=_StubImageResolver(),
         )
         result = svc.run_cleanup(session.session_id)
@@ -452,7 +476,7 @@ class TestLabSessionLifecycle:
             session_repo=repo,
             draft_repo=_MemDraftRepo(),
             vm_tracker=tracker,
-            ns_inspector=_RaisingNamespaceInspector(),
+            ns_lifecycle=_RaisingDeleteAdapter(),
             image_resolver=_StubImageResolver(),
         )
         result = svc.run_cleanup(session.session_id)
@@ -545,7 +569,7 @@ class TestGetSessionEndpoint:
             session_repo=mem_session_repo,
             draft_repo=_MemDraftRepo(),
             vm_tracker=StubVMTracker(),
-            ns_inspector=StubNamespaceInspector(),
+            ns_lifecycle=StubNamespaceLifecycleAdapter(),
             image_resolver=_StubImageResolver(),
         )
         app.dependency_overrides[get_session_service] = lambda: svc
@@ -712,7 +736,7 @@ class TestImageCheck:
             session_repo=_MemSessionRepo(),
             draft_repo=draft_repo,
             vm_tracker=StubVMTracker(),
-            ns_inspector=StubNamespaceInspector(),
+            ns_lifecycle=StubNamespaceLifecycleAdapter(),
             image_resolver=resolver,
         )
         svc.create_session(draft.lab_id, "vm-500", "student1")
@@ -730,7 +754,7 @@ class TestImageCheck:
             session_repo=_MemSessionRepo(),
             draft_repo=draft_repo,
             vm_tracker=StubVMTracker(),
-            ns_inspector=StubNamespaceInspector(),
+            ns_lifecycle=StubNamespaceLifecycleAdapter(),
             image_resolver=resolver,
         )
         svc.create_session(draft.lab_id, "vm-500", "student1")
@@ -753,9 +777,252 @@ class TestImageCheck:
         assert session.failure_reason == "image_unresolved"
 
     def test_start_failed_session_has_no_namespace(self):
-        """LAB_START_FAILED session must not have a namespace set."""
+        """LAB_START_FAILED (image) session must not have a namespace set."""
         img = _make_resolved_img(image_status=ImageStatus.UNRESOLVED)
         draft = _make_published_draft(image_resolution=[img])
         svc, _ = _make_svc(drafts={draft.lab_id: draft})
         session = svc.create_session(draft.lab_id, "vm-500", "student1")
         assert session.namespace is None
+
+
+# ===========================================================================
+# Service — NAMESPACE_CREATING phase unit tests
+# ===========================================================================
+
+
+class TestNamespaceLifecycle:
+    # ------------------------------------------------------------------
+    # Namespace create + verify
+    # ------------------------------------------------------------------
+
+    def test_create_namespace_called_with_derived_name(self):
+        """create_namespace is called with namespace = lab-{session_id}."""
+        adapter = StubNamespaceLifecycleAdapter()
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert len(adapter.created) == 1
+        assert adapter.created[0] == f"lab-{session.session_id}"
+
+    def test_namespace_exists_verified_after_create(self):
+        """After create_namespace succeeds, namespace_exists is always called."""
+
+        class _TrackingAdapter(StubNamespaceLifecycleAdapter):
+            def __init__(self):
+                super().__init__()
+                self.exists_calls: list[str] = []
+
+            def namespace_exists(self, namespace: str) -> bool:
+                self.exists_calls.append(namespace)
+                return True
+
+        adapter = _TrackingAdapter()
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert len(adapter.exists_calls) == 1
+        assert adapter.exists_calls[0] == f"lab-{session.session_id}"
+
+    def test_create_namespace_failure_returns_lab_start_failed(self):
+        """create_namespace returns False → LAB_START_FAILED."""
+        adapter = StubNamespaceLifecycleAdapter(create_succeeds=False)
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.lab_session_status == LabSessionStatus.LAB_START_FAILED
+
+    def test_create_namespace_failure_has_observable_failure_reason(self):
+        """failure_reason is set and readable when namespace create fails."""
+        adapter = StubNamespaceLifecycleAdapter(create_succeeds=False)
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.failure_reason == "namespace_create_failed"
+
+    def test_namespace_not_found_after_create_returns_lab_start_failed(self):
+        """create_namespace succeeds but namespace_exists returns False → LAB_START_FAILED."""
+        adapter = StubNamespaceLifecycleAdapter(
+            create_succeeds=True, exists_after_create=False
+        )
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.lab_session_status == LabSessionStatus.LAB_START_FAILED
+        assert session.failure_reason == "namespace_create_failed"
+
+    def test_create_namespace_exception_returns_lab_start_failed(self):
+        """Exception from create_namespace is caught and treated as failure."""
+
+        class _ExplodingAdapter(NamespaceLifecyclePort):
+            def create_namespace(self, namespace: str) -> bool:
+                raise RuntimeError("K8s API unreachable")
+
+            def namespace_exists(self, namespace: str) -> bool:
+                return False
+
+            def delete_namespace(self, namespace: str) -> bool:
+                return True
+
+            def is_namespace_deleted(self, namespace: str) -> bool:
+                return True
+
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=_ExplodingAdapter())
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.lab_session_status == LabSessionStatus.LAB_START_FAILED
+        assert session.failure_reason == "namespace_create_failed"
+
+    def test_start_failed_namespace_create_session_is_persisted(self):
+        """LAB_START_FAILED (namespace) session is stored in the repository."""
+        repo = _MemSessionRepo()
+        adapter = StubNamespaceLifecycleAdapter(create_succeeds=False)
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, session_repo=repo, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        stored = repo.get(session.session_id)
+        assert stored is not None
+        assert stored.lab_session_status == LabSessionStatus.LAB_START_FAILED
+
+    def test_start_failed_namespace_create_has_no_lab_active_state(self):
+        """Namespace failure must not produce LAB_ACTIVE."""
+        adapter = StubNamespaceLifecycleAdapter(create_succeeds=False)
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, ns_lifecycle=adapter)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.lab_session_status != LabSessionStatus.LAB_ACTIVE
+
+    # ------------------------------------------------------------------
+    # Namespace delete + verify
+    # ------------------------------------------------------------------
+
+    def test_delete_namespace_called_on_cleanup(self):
+        """delete_namespace is called with the session's namespace during cleanup."""
+        adapter = StubNamespaceLifecycleAdapter()
+        repo = _MemSessionRepo()
+        session = _make_session(namespace="lab-abc123")
+        repo.create(session)
+        svc, _ = _make_svc(session_repo=repo, ns_lifecycle=adapter)
+        svc.run_cleanup(session.session_id)
+        assert "lab-abc123" in adapter.deleted
+
+    def test_is_namespace_deleted_verified_after_delete(self):
+        """After delete_namespace, is_namespace_deleted is called to confirm."""
+
+        class _TrackingDeleteAdapter(StubNamespaceLifecycleAdapter):
+            def __init__(self):
+                super().__init__()
+                self.deleted_check_calls: list[str] = []
+
+            def is_namespace_deleted(self, namespace: str) -> bool:
+                self.deleted_check_calls.append(namespace)
+                return True
+
+        adapter = _TrackingDeleteAdapter()
+        repo = _MemSessionRepo()
+        session = _make_session(namespace="lab-abc123")
+        repo.create(session)
+        svc, _ = _make_svc(session_repo=repo, ns_lifecycle=adapter)
+        svc.run_cleanup(session.session_id)
+        assert "lab-abc123" in adapter.deleted_check_calls
+
+    def test_delete_namespace_failure_sets_cleanup_failed(self):
+        """delete_namespace returns False → LAB_CLEANUP_FAILED."""
+        adapter = StubNamespaceLifecycleAdapter(delete_succeeds=False)
+        repo = _MemSessionRepo()
+        session = _make_session(namespace="lab-abc123")
+        repo.create(session)
+        svc, _ = _make_svc(session_repo=repo, ns_lifecycle=adapter)
+        result = svc.run_cleanup(session.session_id)
+        assert result.lab_session_status == LabSessionStatus.LAB_CLEANUP_FAILED
+
+    def test_namespace_not_deleted_after_delete_sets_cleanup_failed(self):
+        """delete_namespace succeeds but is_namespace_deleted returns False → LAB_CLEANUP_FAILED."""
+        adapter = StubNamespaceLifecycleAdapter(
+            delete_succeeds=True, deleted_after_delete=False
+        )
+        repo = _MemSessionRepo()
+        session = _make_session(namespace="lab-abc123")
+        repo.create(session)
+        svc, _ = _make_svc(session_repo=repo, ns_lifecycle=adapter)
+        result = svc.run_cleanup(session.session_id)
+        assert result.lab_session_status == LabSessionStatus.LAB_CLEANUP_FAILED
+
+    def test_delete_failure_marks_vm_tainted(self):
+        """delete_namespace failure triggers mark_vm_tainted."""
+        tracker = _RecordingVMTracker()
+        adapter = StubNamespaceLifecycleAdapter(delete_succeeds=False)
+        repo = _MemSessionRepo()
+        session = _make_session(vm_id="vm-501", namespace="lab-abc123")
+        repo.create(session)
+        svc = LabSessionService(
+            session_repo=repo,
+            draft_repo=_MemDraftRepo(),
+            vm_tracker=tracker,
+            ns_lifecycle=adapter,
+            image_resolver=_StubImageResolver(),
+        )
+        svc.run_cleanup(session.session_id)
+        assert "vm-501" in tracker.tainted
+
+    def test_namespace_not_deleted_marks_vm_tainted(self):
+        """is_namespace_deleted=False also triggers mark_vm_tainted."""
+        tracker = _RecordingVMTracker()
+        adapter = StubNamespaceLifecycleAdapter(
+            delete_succeeds=True, deleted_after_delete=False
+        )
+        repo = _MemSessionRepo()
+        session = _make_session(vm_id="vm-502", namespace="lab-abc123")
+        repo.create(session)
+        svc = LabSessionService(
+            session_repo=repo,
+            draft_repo=_MemDraftRepo(),
+            vm_tracker=tracker,
+            ns_lifecycle=adapter,
+            image_resolver=_StubImageResolver(),
+        )
+        svc.run_cleanup(session.session_id)
+        assert "vm-502" in tracker.tainted
+
+    def test_delete_exception_results_in_cleanup_failed(self):
+        """Exception during delete_namespace is caught → LAB_CLEANUP_FAILED."""
+        repo = _MemSessionRepo()
+        session = _make_session(namespace="lab-abc123")
+        repo.create(session)
+        svc, _ = _make_svc(session_repo=repo, ns_lifecycle=_RaisingDeleteAdapter())
+        result = svc.run_cleanup(session.session_id)
+        assert result.lab_session_status == LabSessionStatus.LAB_CLEANUP_FAILED
+
+    def test_successful_cleanup_does_not_mark_vm_tainted(self):
+        """Clean delete path must NOT call mark_vm_tainted."""
+        tracker = _RecordingVMTracker()
+        adapter = StubNamespaceLifecycleAdapter()  # default: all succeeds
+        repo = _MemSessionRepo()
+        session = _make_session(vm_id="vm-503", namespace="lab-abc123")
+        repo.create(session)
+        svc = LabSessionService(
+            session_repo=repo,
+            draft_repo=_MemDraftRepo(),
+            vm_tracker=tracker,
+            ns_lifecycle=adapter,
+            image_resolver=_StubImageResolver(),
+        )
+        result = svc.run_cleanup(session.session_id)
+        assert result.lab_session_status == LabSessionStatus.LAB_CLOSED
+        assert "vm-503" not in tracker.tainted
+
+    # ------------------------------------------------------------------
+    # Verifier kubeconfig separation (structural, not integration)
+    # ------------------------------------------------------------------
+
+    def test_k3s_adapter_skeleton_raises_not_implemented(self):
+        """K3sNamespaceLifecycleAdapter raises NotImplementedError — real K8s not called."""
+        from backend.labgen.namespace_lifecycle import K3sNamespaceLifecycleAdapter
+        adapter = K3sNamespaceLifecycleAdapter()
+        with pytest.raises(NotImplementedError):
+            adapter.create_namespace("lab-test")
+        with pytest.raises(NotImplementedError):
+            adapter.namespace_exists("lab-test")
+        with pytest.raises(NotImplementedError):
+            adapter.delete_namespace("lab-test")
+        with pytest.raises(NotImplementedError):
+            adapter.is_namespace_deleted("lab-test")

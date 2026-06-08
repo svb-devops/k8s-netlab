@@ -21,14 +21,13 @@ from backend.auth_deps import get_current_user
 from backend.labgen.lab_session_repository import LabSessionRepository
 from backend.labgen.lab_session_service import (
     LabSessionService,
-    NamespaceInspector,
     PrecheckFailed,
     RealVMTracker,
     SessionAlreadyTerminated,
     SessionNotFound,
-    StubNamespaceInspector,
     VMTrackerPort,
 )
+from backend.labgen.namespace_lifecycle import StubNamespaceLifecycleAdapter
 from backend.labgen.models import (
     AdminReviewDiff,
     AdminReviewDiffChange,
@@ -109,7 +108,7 @@ def get_session_service() -> LabSessionService:
             session_repo=get_session_repository(),
             draft_repo=get_repository(),
             vm_tracker=RealVMTracker(),
-            ns_inspector=StubNamespaceInspector(),
+            ns_lifecycle=StubNamespaceLifecycleAdapter(),
             image_resolver=get_image_resolver(),
         )
     return _session_svc

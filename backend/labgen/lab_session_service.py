@@ -20,6 +20,10 @@ from backend.labgen.models import (
     LabSessionStatus,
     PublishStatus,
 )
+from backend.labgen.namespace_lifecycle import (
+    NamespaceLifecyclePort,
+    StubNamespaceLifecycleAdapter,
+)
 
 if TYPE_CHECKING:
     from backend.labgen.image_resolver import ImageResolver
@@ -72,7 +76,7 @@ class SessionAlreadyTerminated(Exception):
 
 
 # ---------------------------------------------------------------------------
-# Ports (abstract interfaces)
+# VMTracker port
 # ---------------------------------------------------------------------------
 
 
@@ -85,11 +89,6 @@ class VMTrackerPort(ABC):
 
     @abstractmethod
     def mark_vm_tainted(self, vm_id: str) -> None: ...
-
-
-class NamespaceInspector(ABC):
-    @abstractmethod
-    def request_namespace_cleanup(self, namespace: str) -> bool: ...
 
 
 # ---------------------------------------------------------------------------
@@ -140,13 +139,6 @@ class RealVMTracker(VMTrackerPort):
         )
 
 
-class StubNamespaceInspector(NamespaceInspector):
-    """Always reports cleanup succeeded."""
-
-    def request_namespace_cleanup(self, namespace: str) -> bool:
-        return True
-
-
 # ---------------------------------------------------------------------------
 # Precheck result
 # ---------------------------------------------------------------------------
@@ -169,13 +161,13 @@ class LabSessionService:
         session_repo: "LabSessionRepository",
         draft_repo: "LabDraftRepository",
         vm_tracker: VMTrackerPort,
-        ns_inspector: NamespaceInspector,
+        ns_lifecycle: NamespaceLifecyclePort,
         image_resolver: "ImageResolver",
     ) -> None:
         self._session_repo = session_repo
         self._draft_repo = draft_repo
         self._vm_tracker = vm_tracker
-        self._ns_inspector = ns_inspector
+        self._ns_lifecycle = ns_lifecycle
         self._image_resolver = image_resolver
 
     # ------------------------------------------------------------------
@@ -245,17 +237,39 @@ class LabSessionService:
         if any_rechecked and draft is not None:
             self._draft_repo.update(draft.model_copy(update={"image_resolution": updated_images}))
 
+        # Allocate session_id early so namespace is derived from it
         session = LabSessionState(
             lab_id=lab_id,
             vm_id=vm_id,
             student_username=student_username,
-            lab_session_status=LabSessionStatus.LAB_ACTIVE,
-            connection_state=ConnectionState.CONNECTED,
-            started_at=datetime.now(tz=timezone.utc),
+            lab_session_status=LabSessionStatus.NAMESPACE_CREATING,
         )
-        # Derive namespace from full session_id — globally unique, no collision possible
         session.namespace = f"lab-{session.session_id}"
 
+        # NAMESPACE_CREATING: attempt to create, then confirm existence
+        try:
+            create_ok = self._ns_lifecycle.create_namespace(session.namespace)
+        except Exception:
+            create_ok = False
+
+        if not create_ok:
+            session.lab_session_status = LabSessionStatus.LAB_START_FAILED
+            session.failure_reason = "namespace_create_failed"
+            return self._session_repo.create(session)
+
+        try:
+            exists = self._ns_lifecycle.namespace_exists(session.namespace)
+        except Exception:
+            exists = False
+
+        if not exists:
+            session.lab_session_status = LabSessionStatus.LAB_START_FAILED
+            session.failure_reason = "namespace_create_failed"
+            return self._session_repo.create(session)
+
+        session.lab_session_status = LabSessionStatus.LAB_ACTIVE
+        session.connection_state = ConnectionState.CONNECTED
+        session.started_at = datetime.now(tz=timezone.utc)
         return self._session_repo.create(session)
 
     def complete_session(self, session_id: str) -> LabSessionState:
@@ -326,12 +340,15 @@ class LabSessionService:
             session.lab_session_status = LabSessionStatus.LAB_CLOSED
             return self._session_repo.update(session)
 
+        # NAMESPACE_TERMINATING_WAIT: delete namespace, then verify deletion
+        deleted = False
         try:
-            success = self._ns_inspector.request_namespace_cleanup(session.namespace)
+            if self._ns_lifecycle.delete_namespace(session.namespace):
+                deleted = self._ns_lifecycle.is_namespace_deleted(session.namespace)
         except Exception:
-            success = False
+            deleted = False
 
-        if success:
+        if deleted:
             session.lab_session_status = LabSessionStatus.LAB_CLOSED
         else:
             session.lab_session_status = LabSessionStatus.LAB_CLEANUP_FAILED
