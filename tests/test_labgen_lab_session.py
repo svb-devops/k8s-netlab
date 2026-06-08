@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Optional
 from unittest.mock import MagicMock
 
@@ -23,6 +24,8 @@ from backend.labgen.models import (
     CleanupSpec,
     ConnectionState,
     ExplainField,
+    ImageResolutionResult,
+    ImageStatus,
     LabDraft,
     LabSessionState,
     LabSessionStatus,
@@ -31,6 +34,7 @@ from backend.labgen.models import (
     Step,
 )
 from backend.labgen.routes import (
+    get_image_resolver,
     get_session_repository,
     get_session_service,
     require_internal_token,
@@ -100,10 +104,36 @@ class _MemSessionRepo:
 
 class _MemDraftRepo:
     def __init__(self, drafts: dict[str, LabDraft] | None = None) -> None:
-        self._store: dict[str, LabDraft] = drafts or {}
+        self._store: dict[str, LabDraft] = dict(drafts or {})
+        self.update_calls: list[LabDraft] = []
 
     def get(self, lab_id: str) -> Optional[LabDraft]:
         return self._store.get(lab_id)
+
+    def update(self, draft: LabDraft) -> LabDraft:
+        self._store[draft.lab_id] = draft
+        self.update_calls.append(draft)
+        return draft
+
+
+class _StubImageResolver:
+    """Stub ImageResolver — configurable pass/fail for image existence checks."""
+
+    def __init__(
+        self,
+        needs_recheck_val: bool = False,
+        existence_check_passes: bool = True,
+    ) -> None:
+        self._needs_recheck = needs_recheck_val
+        self._passes = existence_check_passes
+        self.recheck_called_for: list[ImageResolutionResult] = []
+
+    def needs_recheck(self, img: ImageResolutionResult) -> bool:
+        return self._needs_recheck
+
+    def check_registry_existence(self, img: ImageResolutionResult) -> ImageResolutionResult:
+        self.recheck_called_for.append(img)
+        return img.model_copy(update={"existence_check_passed": self._passes})
 
 
 class _FailingNamespaceInspector(NamespaceInspector):
@@ -135,6 +165,7 @@ def _make_svc(
     session_repo: _MemSessionRepo | None = None,
     vm_tracker: VMTrackerPort | None = None,
     ns_inspector: NamespaceInspector | None = None,
+    image_resolver: _StubImageResolver | None = None,
 ) -> tuple[LabSessionService, _MemSessionRepo]:
     repo = session_repo or _MemSessionRepo()
     svc = LabSessionService(
@@ -142,6 +173,7 @@ def _make_svc(
         draft_repo=_MemDraftRepo(drafts),
         vm_tracker=vm_tracker or StubVMTracker(),
         ns_inspector=ns_inspector or StubNamespaceInspector(),
+        image_resolver=image_resolver or _StubImageResolver(),
     )
     return svc, repo
 
@@ -169,6 +201,7 @@ def student_client(mem_session_repo):
         draft_repo=_MemDraftRepo(drafts),
         vm_tracker=StubVMTracker(),
         ns_inspector=StubNamespaceInspector(),
+        image_resolver=_StubImageResolver(),
     )
 
     app.dependency_overrides[get_session_repository] = lambda: mem_session_repo
@@ -188,6 +221,7 @@ def internal_client(mem_session_repo):
         draft_repo=_MemDraftRepo(),
         vm_tracker=StubVMTracker(),
         ns_inspector=StubNamespaceInspector(),
+        image_resolver=_StubImageResolver(),
     )
 
     app.dependency_overrides[get_session_repository] = lambda: mem_session_repo
@@ -403,6 +437,7 @@ class TestLabSessionLifecycle:
             draft_repo=_MemDraftRepo(),
             vm_tracker=tracker,
             ns_inspector=_FailingNamespaceInspector(),
+            image_resolver=_StubImageResolver(),
         )
         result = svc.run_cleanup(session.session_id)
         assert result.lab_session_status == LabSessionStatus.LAB_CLEANUP_FAILED
@@ -418,6 +453,7 @@ class TestLabSessionLifecycle:
             draft_repo=_MemDraftRepo(),
             vm_tracker=tracker,
             ns_inspector=_RaisingNamespaceInspector(),
+            image_resolver=_StubImageResolver(),
         )
         result = svc.run_cleanup(session.session_id)
         assert result.lab_session_status == LabSessionStatus.LAB_CLEANUP_FAILED
@@ -510,6 +546,7 @@ class TestGetSessionEndpoint:
             draft_repo=_MemDraftRepo(),
             vm_tracker=StubVMTracker(),
             ns_inspector=StubNamespaceInspector(),
+            image_resolver=_StubImageResolver(),
         )
         app.dependency_overrides[get_session_service] = lambda: svc
         app.dependency_overrides[get_current_user] = lambda: "attacker"
@@ -577,3 +614,148 @@ class TestInternalCleanupEndpoint:
         c = TestClient(app, raise_server_exceptions=False)
         r = c.post("/internal/lab-sessions/some-id/cleanup")
         assert r.status_code == 401
+
+
+# ===========================================================================
+# Service — IMAGE_CHECK_RUNNING phase unit tests
+# ===========================================================================
+
+
+def _make_resolved_img(**kw) -> ImageResolutionResult:
+    defaults = dict(
+        image_intent="nginx",
+        requested_image="nginx:1.25-alpine",
+        resolved_image="internal/nginx:1.25-alpine",
+        image_status=ImageStatus.RESOLVED,
+        existence_check_passed=True,
+        existence_checked_at=datetime.now(timezone.utc),
+    )
+    defaults.update(kw)
+    return ImageResolutionResult(**defaults)
+
+
+class TestImageCheck:
+    def test_no_images_passes(self):
+        """Empty image_resolution list skips check, session becomes LAB_ACTIVE."""
+        draft = _make_published_draft(image_resolution=[])
+        svc, _ = _make_svc(drafts={draft.lab_id: draft})
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.lab_session_status == LabSessionStatus.LAB_ACTIVE
+
+    def test_resolved_and_verified_image_passes(self):
+        """RESOLVED image with cached existence_check_passed=True → LAB_ACTIVE."""
+        img = _make_resolved_img(existence_check_passed=True)
+        draft = _make_published_draft(image_resolution=[img])
+        svc, _ = _make_svc(
+            drafts={draft.lab_id: draft},
+            image_resolver=_StubImageResolver(needs_recheck_val=False),
+        )
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.lab_session_status == LabSessionStatus.LAB_ACTIVE
+
+    def test_unresolved_image_fails_start(self):
+        """UNRESOLVED image → LAB_START_FAILED with failure_reason=image_unresolved."""
+        img = _make_resolved_img(image_status=ImageStatus.UNRESOLVED)
+        draft = _make_published_draft(image_resolution=[img])
+        svc, _ = _make_svc(drafts={draft.lab_id: draft})
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.lab_session_status == LabSessionStatus.LAB_START_FAILED
+        assert session.failure_reason == "image_unresolved"
+
+    def test_blocked_image_fails_start(self):
+        """BLOCKED image → LAB_START_FAILED with failure_reason=image_unresolved."""
+        img = _make_resolved_img(image_status=ImageStatus.BLOCKED, resolved_image=None)
+        draft = _make_published_draft(image_resolution=[img])
+        svc, _ = _make_svc(drafts={draft.lab_id: draft})
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.lab_session_status == LabSessionStatus.LAB_START_FAILED
+        assert session.failure_reason == "image_unresolved"
+
+    def test_needs_recheck_calls_resolver(self):
+        """needs_recheck=True → check_registry_existence is called → LAB_ACTIVE."""
+        img = _make_resolved_img(existence_check_passed=None, existence_checked_at=None)
+        draft = _make_published_draft(image_resolution=[img])
+        resolver = _StubImageResolver(needs_recheck_val=True, existence_check_passes=True)
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, image_resolver=resolver)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.lab_session_status == LabSessionStatus.LAB_ACTIVE
+        assert len(resolver.recheck_called_for) == 1
+
+    def test_needs_recheck_fails_when_unavailable(self):
+        """TTL expired + registry check fails → LAB_START_FAILED with failure_reason=image_unavailable."""
+        img = _make_resolved_img(existence_check_passed=None, existence_checked_at=None)
+        draft = _make_published_draft(image_resolution=[img])
+        resolver = _StubImageResolver(needs_recheck_val=True, existence_check_passes=False)
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, image_resolver=resolver)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.lab_session_status == LabSessionStatus.LAB_START_FAILED
+        assert session.failure_reason == "image_unavailable"
+
+    def test_cached_unavailable_fails_without_recheck(self):
+        """existence_check_passed=False, needs_recheck=False → fail without calling resolver."""
+        img = _make_resolved_img(existence_check_passed=False)
+        draft = _make_published_draft(image_resolution=[img])
+        resolver = _StubImageResolver(needs_recheck_val=False)
+        svc, _ = _make_svc(drafts={draft.lab_id: draft}, image_resolver=resolver)
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.lab_session_status == LabSessionStatus.LAB_START_FAILED
+        assert session.failure_reason == "image_unavailable"
+        assert len(resolver.recheck_called_for) == 0
+
+    def test_recheck_updates_draft_on_success(self):
+        """After successful recheck, draft.image_resolution is persisted."""
+        img = _make_resolved_img(existence_check_passed=None, existence_checked_at=None)
+        draft = _make_published_draft(image_resolution=[img])
+        draft_repo = _MemDraftRepo(drafts={draft.lab_id: draft})
+        resolver = _StubImageResolver(needs_recheck_val=True, existence_check_passes=True)
+        svc = LabSessionService(
+            session_repo=_MemSessionRepo(),
+            draft_repo=draft_repo,
+            vm_tracker=StubVMTracker(),
+            ns_inspector=StubNamespaceInspector(),
+            image_resolver=resolver,
+        )
+        svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert len(draft_repo.update_calls) == 1
+        saved = draft_repo.update_calls[0]
+        assert saved.image_resolution[0].existence_check_passed is True
+
+    def test_no_recheck_does_not_update_draft(self):
+        """needs_recheck=False → draft not written."""
+        img = _make_resolved_img(existence_check_passed=True)
+        draft = _make_published_draft(image_resolution=[img])
+        draft_repo = _MemDraftRepo(drafts={draft.lab_id: draft})
+        resolver = _StubImageResolver(needs_recheck_val=False)
+        svc = LabSessionService(
+            session_repo=_MemSessionRepo(),
+            draft_repo=draft_repo,
+            vm_tracker=StubVMTracker(),
+            ns_inspector=StubNamespaceInspector(),
+            image_resolver=resolver,
+        )
+        svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert len(draft_repo.update_calls) == 0
+
+    def test_any_image_failure_stops_start(self):
+        """First image passes, second is unresolved → LAB_START_FAILED."""
+        good = _make_resolved_img(image_intent="nginx", existence_check_passed=True)
+        bad = _make_resolved_img(
+            image_intent="badimage",
+            image_status=ImageStatus.UNRESOLVED,
+        )
+        draft = _make_published_draft(image_resolution=[good, bad])
+        svc, _ = _make_svc(
+            drafts={draft.lab_id: draft},
+            image_resolver=_StubImageResolver(needs_recheck_val=False),
+        )
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.lab_session_status == LabSessionStatus.LAB_START_FAILED
+        assert session.failure_reason == "image_unresolved"
+
+    def test_start_failed_session_has_no_namespace(self):
+        """LAB_START_FAILED session must not have a namespace set."""
+        img = _make_resolved_img(image_status=ImageStatus.UNRESOLVED)
+        draft = _make_published_draft(image_resolution=[img])
+        svc, _ = _make_svc(drafts={draft.lab_id: draft})
+        session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        assert session.namespace is None

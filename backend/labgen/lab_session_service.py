@@ -14,13 +14,17 @@ from typing import TYPE_CHECKING, Optional
 
 from backend.labgen.models import (
     ConnectionState,
+    ImageResolutionResult,
+    ImageStatus,
     LabSessionState,
     LabSessionStatus,
     PublishStatus,
 )
 
 if TYPE_CHECKING:
+    from backend.labgen.image_resolver import ImageResolver
     from backend.labgen.lab_session_repository import LabSessionRepository
+    from backend.labgen.models import LabDraft
     from backend.labgen.repository import LabDraftRepository
 
 
@@ -166,11 +170,13 @@ class LabSessionService:
         draft_repo: "LabDraftRepository",
         vm_tracker: VMTrackerPort,
         ns_inspector: NamespaceInspector,
+        image_resolver: "ImageResolver",
     ) -> None:
         self._session_repo = session_repo
         self._draft_repo = draft_repo
         self._vm_tracker = vm_tracker
         self._ns_inspector = ns_inspector
+        self._image_resolver = image_resolver
 
     # ------------------------------------------------------------------
     # Precheck — 6 local/stub checks, no real K8s calls
@@ -221,6 +227,24 @@ class LabSessionService:
         if not result.passed:
             raise PrecheckFailed(result.failures)
 
+        # Safe: precheck already verified draft exists
+        draft = self._draft_repo.get(lab_id)
+
+        passed, failure_reason, updated_images, any_rechecked = self._run_image_check(draft)
+
+        if not passed:
+            session = LabSessionState(
+                lab_id=lab_id,
+                vm_id=vm_id,
+                student_username=student_username,
+                lab_session_status=LabSessionStatus.LAB_START_FAILED,
+                failure_reason=failure_reason,
+            )
+            return self._session_repo.create(session)
+
+        if any_rechecked and draft is not None:
+            self._draft_repo.update(draft.model_copy(update={"image_resolution": updated_images}))
+
         session = LabSessionState(
             lab_id=lab_id,
             vm_id=vm_id,
@@ -267,6 +291,35 @@ class LabSessionService:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _run_image_check(
+        self,
+        draft: Optional["LabDraft"],
+    ) -> "tuple[bool, Optional[str], list[ImageResolutionResult], bool]":
+        """
+        Returns (all_passed, failure_reason, updated_images, any_rechecked).
+
+        - image_status != RESOLVED  → (False, "image_unresolved", ...)
+        - existence_check_passed is False → (False, "image_unavailable", ...)
+        - recheck performed          → any_rechecked=True so caller can persist fresh results
+        """
+        if draft is None or not draft.image_resolution:
+            return True, None, [], False
+
+        updated_images: list[ImageResolutionResult] = []
+        any_rechecked = False
+
+        for img in draft.image_resolution:
+            if img.image_status != ImageStatus.RESOLVED:
+                return False, "image_unresolved", updated_images, False
+            if self._image_resolver.needs_recheck(img):
+                img = self._image_resolver.check_registry_existence(img)
+                any_rechecked = True
+            if img.existence_check_passed is False:
+                return False, "image_unavailable", updated_images, False
+            updated_images.append(img)
+
+        return True, None, updated_images, any_rechecked
 
     def _do_cleanup(self, session: LabSessionState) -> LabSessionState:
         if session.namespace is None:

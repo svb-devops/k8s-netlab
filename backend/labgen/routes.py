@@ -64,6 +64,7 @@ _diff_repo: Optional[AdminReviewDiffRepository] = None
 _publish_svc: Optional[PublishService] = None
 _session_repo: Optional[LabSessionRepository] = None
 _session_svc: Optional[LabSessionService] = None
+_image_resolver: Optional[ImageResolver] = None
 
 
 def get_repository() -> LabDraftRepository:
@@ -94,6 +95,13 @@ def get_session_repository() -> LabSessionRepository:
     return _session_repo
 
 
+def get_image_resolver() -> ImageResolver:
+    global _image_resolver
+    if _image_resolver is None:
+        _image_resolver = ImageResolver()
+    return _image_resolver
+
+
 def get_session_service() -> LabSessionService:
     global _session_svc
     if _session_svc is None:
@@ -102,6 +110,7 @@ def get_session_service() -> LabSessionService:
             draft_repo=get_repository(),
             vm_tracker=RealVMTracker(),
             ns_inspector=StubNamespaceInspector(),
+            image_resolver=get_image_resolver(),
         )
     return _session_svc
 

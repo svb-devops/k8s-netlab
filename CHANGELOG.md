@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- feat(labgen): Lab Session Image TTL Recheck — create_session 在 precheck 通过后执行 IMAGE_CHECK_RUNNING 阶段；UNRESOLVED/BLOCKED 图像 → LAB_START_FAILED(image_unresolved)；TTL 过期则重新调 registry existence check，失败 → LAB_START_FAILED(image_unavailable)；recheck 后更新 draft.image_resolution；LabSessionState 新增 failure_reason 字段；11 个新测试
 - feat(labgen): Lab Session 状态机骨架 — LabSessionRepository、LabSessionService（VMTrackerPort + NamespaceInspector 端口抽象、RealVMTracker 真实所有权校验、StubNamespaceInspector MVP）；6 条本地 precheck；POST/GET/complete/abort /api/lab-sessions；POST /internal/lab-sessions/{id}/cleanup（admin token 隔离）；46 个新测试，全量 733 tests，覆盖率不低于 92%
 - feat(labgen): Publish API — POST /api/labgen/drafts/{id}/publish；PublishService 始终重跑 StaticValidator + registry existence check；publish_blocking → 409，无 blocking → 200 + published；21 个新测试（service unit + endpoint），全量测试覆盖率不低于 92%
 - feat(labgen): Admin Review Diff — PATCH 自动记录字段级 diff（AdminReviewDiffRepository，append-only，data/lab_review_diffs.json）；GET /api/labgen/drafts/{id}/diffs 端点；26 个新测试（repository + API），全量 666 tests，覆盖率 92.95%
