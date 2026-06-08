@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- feat(labgen): 新增 LabGen 模块基础层 — backend/labgen/models.py（14 个 Pydantic 模型，含 schema_version 字段）和 backend/labgen/static_validator.py（StaticValidator，13 项 publish-gate 检查，自动推导 pollution_level / shared_namespace_candidate）；config/image_whitelist.json；91 个新测试全部通过，labgen 覆盖率 models 100% / validator 98%
 - fix: landing.html/article.html 内联脚本提取为外部 JS 文件，修复 CSP 阻断导致文章列表不渲染的 bug；修复 onclick= 内联事件改用事件委托
 - fix: showSuccess/showError 改用非阻塞 toast 通知 — 替换 alert()，loading modal 重绘不再被阻塞
 - fix: 移除 ipwho.is 第三方 IP 地理位置查询 — 学生 IP 不再发往外部服务（隐私保护），admin 面板 login_location 字段始终为 null
