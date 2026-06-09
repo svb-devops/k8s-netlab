@@ -76,6 +76,10 @@ class SessionAlreadyTerminated(Exception):
     pass
 
 
+class LabNotReadyToComplete(Exception):
+    pass
+
+
 # ---------------------------------------------------------------------------
 # VMTracker port
 # ---------------------------------------------------------------------------
@@ -299,6 +303,8 @@ class LabSessionService:
         session = self._require_session(session_id)
         if session.lab_session_status in _TERMINAL_STATES:
             raise SessionAlreadyTerminated(session_id)
+        if not session.ready_to_complete:
+            raise LabNotReadyToComplete(session_id)
 
         session.lab_session_status = LabSessionStatus.LAB_COMPLETED
         session.connection_state = ConnectionState.DISCONNECTED

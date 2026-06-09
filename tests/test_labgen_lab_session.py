@@ -428,13 +428,15 @@ class TestLabSessionLifecycle:
         draft = _make_published_draft()
         svc, repo = _make_svc(drafts={draft.lab_id: draft})
         session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        repo.update(session.model_copy(update={"ready_to_complete": True}))
         result = svc.complete_session(session.session_id)
         assert result.lab_session_status == LabSessionStatus.LAB_CLOSED
 
     def test_complete_session_sets_disconnected(self):
         draft = _make_published_draft()
-        svc, _ = _make_svc(drafts={draft.lab_id: draft})
+        svc, repo = _make_svc(drafts={draft.lab_id: draft})
         session = svc.create_session(draft.lab_id, "vm-500", "student1")
+        repo.update(session.model_copy(update={"ready_to_complete": True}))
         result = svc.complete_session(session.session_id)
         assert result.connection_state == ConnectionState.DISCONNECTED
 
@@ -595,14 +597,16 @@ class TestGetSessionEndpoint:
 class TestCompleteAbortEndpoints:
     def test_complete_returns_200(self, student_client, mem_session_repo):
         client, lab_id = student_client
-        session = _make_session(lab_id=lab_id, student_username="student1")
+        session = _make_session(lab_id=lab_id, student_username="student1",
+                                 ready_to_complete=True)
         mem_session_repo.create(session)
         r = client.post(f"/api/lab-sessions/{session.session_id}/complete")
         assert r.status_code == 200
 
     def test_complete_returns_lab_closed(self, student_client, mem_session_repo):
         client, lab_id = student_client
-        session = _make_session(lab_id=lab_id, student_username="student1")
+        session = _make_session(lab_id=lab_id, student_username="student1",
+                                 ready_to_complete=True)
         mem_session_repo.create(session)
         r = client.post(f"/api/lab-sessions/{session.session_id}/complete")
         assert r.json()["lab_session_status"] == "LAB_CLOSED"

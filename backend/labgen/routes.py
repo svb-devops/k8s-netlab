@@ -20,6 +20,7 @@ from backend.auth import auth_manager
 from backend.auth_deps import get_current_user
 from backend.labgen.lab_session_repository import LabSessionRepository
 from backend.labgen.lab_session_service import (
+    LabNotReadyToComplete,
     LabSessionService,
     PrecheckFailed,
     RealVMTracker,
@@ -472,6 +473,8 @@ async def complete_lab_session(
         return svc.complete_session(session_id)
     except SessionAlreadyTerminated:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session is already terminated")
+    except LabNotReadyToComplete:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="lab_not_ready_to_complete")
 
 
 @lab_session_router.post("/{session_id}/abort", response_model=LabSessionState)
