@@ -149,15 +149,12 @@ def get_diff_repository() -> AdminReviewDiffRepository:
 def get_verifier_service() -> VerifierService:
     global _verifier_svc
     if _verifier_svc is None:
-        from backend.labgen.verifier import K8sVerifierClientPort
-
-        def _not_implemented_factory(kubeconfig: str) -> K8sVerifierClientPort:
-            raise NotImplementedError("Real K8s verifier client not yet implemented")
+        from backend.labgen.k8s_verifier_client import K8sVerifierClientFactory
 
         _verifier_svc = VerifierService(
             session_repo=get_session_repository(),
             credential_store=VerifierCredentialStore(),
-            k8s_client_factory=_not_implemented_factory,
+            k8s_client_factory=K8sVerifierClientFactory,
         )
     return _verifier_svc
 
