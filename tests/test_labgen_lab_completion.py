@@ -128,6 +128,9 @@ class _RecordingVMTracker(VMTrackerPort):
     def mark_vm_tainted(self, vm_id: str) -> None:
         self.tainted.append(vm_id)
 
+    def is_vm_tainted(self, vm_id: str) -> bool:
+        return False
+
 
 class _FailingDeleteAdapter(NamespaceLifecyclePort):
     def create_namespace(self, ns: str) -> bool:

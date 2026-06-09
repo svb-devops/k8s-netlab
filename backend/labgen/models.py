@@ -307,6 +307,7 @@ class LabSessionState(SchemaVersionedModel):
     ended_at: Optional[datetime] = None
     namespace: Optional[str] = None
     failure_reason: Optional[str] = None
+    cleanup_verified: bool = False
     current_step_index: int = 0
     completed_step_ids: list[str] = Field(default_factory=list)
     ready_to_complete: bool = False

@@ -195,6 +195,9 @@ class _RecordingVMTracker(VMTrackerPort):
     def mark_vm_tainted(self, vm_id: str) -> None:
         self.tainted.append(vm_id)
 
+    def is_vm_tainted(self, vm_id: str) -> bool:
+        return False
+
 
 def _make_svc(
     drafts: dict[str, LabDraft] | None = None,
@@ -354,6 +357,8 @@ class TestPrecheck:
                 return False
             def mark_vm_tainted(self, vm_id: str) -> None:
                 pass
+            def is_vm_tainted(self, vm_id: str) -> bool:
+                return False
 
         draft = _make_published_draft()
         svc, _ = _make_svc(drafts={draft.lab_id: draft}, vm_tracker=NoVMTracker())
@@ -368,6 +373,8 @@ class TestPrecheck:
                 return False
             def mark_vm_tainted(self, vm_id: str) -> None:
                 pass
+            def is_vm_tainted(self, vm_id: str) -> bool:
+                return False
 
         draft = _make_published_draft()
         svc, _ = _make_svc(drafts={draft.lab_id: draft}, vm_tracker=WrongOwnerTracker())

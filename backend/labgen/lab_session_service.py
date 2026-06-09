@@ -95,6 +95,9 @@ class VMTrackerPort(ABC):
     @abstractmethod
     def mark_vm_tainted(self, vm_id: str) -> None: ...
 
+    @abstractmethod
+    def is_vm_tainted(self, vm_id: str) -> bool: ...
+
 
 # ---------------------------------------------------------------------------
 # Stubs (MVP skeleton — no real K8s / VM allocation)
@@ -104,6 +107,9 @@ class VMTrackerPort(ABC):
 class StubVMTracker(VMTrackerPort):
     """Always reports VM exists and is owned by any user. Tests only."""
 
+    def __init__(self) -> None:
+        self._tainted: set[str] = set()
+
     def vm_exists(self, vm_id: str) -> bool:
         return True
 
@@ -111,7 +117,10 @@ class StubVMTracker(VMTrackerPort):
         return True
 
     def mark_vm_tainted(self, vm_id: str) -> None:
-        pass
+        self._tainted.add(vm_id)
+
+    def is_vm_tainted(self, vm_id: str) -> bool:
+        return vm_id in self._tainted
 
 
 class RealVMTracker(VMTrackerPort):
@@ -139,9 +148,25 @@ class RealVMTracker(VMTrackerPort):
 
     def mark_vm_tainted(self, vm_id: str) -> None:
         import logging as _log
+        from pathlib import Path as _Path
+        from backend.storage_utils import safe_update_json as _upd
         _log.getLogger(__name__).warning(
             "VM %s tainted after cleanup failure — manual review required", vm_id
         )
+        _tainted_file = _Path(__file__).parent.parent.parent / "data" / "tainted_vms.json"
+
+        def _add(data: dict) -> dict:
+            data[vm_id] = True
+            return data
+
+        _upd(_tainted_file, _add)
+
+    def is_vm_tainted(self, vm_id: str) -> bool:
+        from pathlib import Path as _Path
+        from backend.storage_utils import safe_read_json as _read
+        _tainted_file = _Path(__file__).parent.parent.parent / "data" / "tainted_vms.json"
+        data = _read(_tainted_file, default={})
+        return bool(data.get(vm_id, False))
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +225,8 @@ class LabSessionService:
             failures.append("precheck.vm_not_found")
         elif not self._vm_tracker.is_vm_owned_by(vm_id, student_username):
             failures.append("precheck.vm_not_owned_by_student")
+        elif self._vm_tracker.is_vm_tainted(vm_id):
+            failures.append("precheck.vm_tainted")
 
         existing = self._session_repo.list_by_student(student_username)
         if any(
@@ -327,8 +354,8 @@ class LabSessionService:
 
     def run_cleanup(self, session_id: str) -> LabSessionState:
         session = self._require_session(session_id)
-        if session.lab_session_status == LabSessionStatus.LAB_CLOSED:
-            return session  # already clean, idempotent
+        if session.lab_session_status in _TERMINAL_STATES:
+            return session  # idempotent — already closed or permanently failed
         return self._do_cleanup(session)
 
     # ------------------------------------------------------------------
@@ -367,6 +394,7 @@ class LabSessionService:
     def _do_cleanup(self, session: LabSessionState) -> LabSessionState:
         if session.namespace is None:
             session.lab_session_status = LabSessionStatus.LAB_CLOSED
+            session.cleanup_verified = True
             return self._session_repo.update(session)
 
         # NAMESPACE_TERMINATING_WAIT: delete namespace, then verify deletion
@@ -379,8 +407,11 @@ class LabSessionService:
 
         if deleted:
             session.lab_session_status = LabSessionStatus.LAB_CLOSED
+            session.cleanup_verified = True
         else:
             session.lab_session_status = LabSessionStatus.LAB_CLEANUP_FAILED
+            session.failure_reason = "namespace_cleanup_failed"
+            session.cleanup_verified = False
             self._vm_tracker.mark_vm_tainted(session.vm_id)
 
         return self._session_repo.update(session)
