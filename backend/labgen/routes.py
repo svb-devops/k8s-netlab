@@ -588,3 +588,92 @@ async def get_audit_events(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
     return audit_repo.list_by_session(session_id)
+
+
+# ===========================================================================
+# Lab Draft Generation — POST /api/lab-drafts/generate
+# ===========================================================================
+
+lab_draft_gen_router = APIRouter(prefix="/api/lab-drafts", tags=["lab-drafts"])
+
+from backend.labgen.llm_generation import (  # noqa: E402
+    DraftCandidateParseError,
+    DraftGenerationRejected,
+    FakeDraftGenerationAdapter,
+    GenerateLabDraftResponse,
+    LabDraftGenerationBody,
+    LabDraftGenerationPort,
+    LabDraftGenerationRequest,
+    LabDraftGenerationService,
+    build_candidate_summary,
+)
+
+_generation_svc: Optional[LabDraftGenerationService] = None
+
+
+def get_generation_service() -> LabDraftGenerationService:
+    global _generation_svc
+    if _generation_svc is None:
+        _generation_svc = LabDraftGenerationService(
+            port=FakeDraftGenerationAdapter(),
+            validator=StaticValidator(),
+            repo=get_repository(),
+        )
+    return _generation_svc
+
+
+@lab_draft_gen_router.post(
+    "/generate",
+    response_model=GenerateLabDraftResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def generate_lab_draft(
+    body: LabDraftGenerationBody,
+    username: str = Depends(get_current_user),
+    svc: LabDraftGenerationService = Depends(get_generation_service),
+) -> GenerateLabDraftResponse:
+    request = LabDraftGenerationRequest(
+        **body.model_dump(), requester_user_id=username
+    )
+
+    try:
+        draft, validator_results, warnings = svc.generate_and_create(request)
+    except DraftGenerationRejected as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "validation_status": "rejected",
+                "rejected_reason": exc.reason,
+                "validation_errors": [],
+                "warnings": [],
+            },
+        )
+    except DraftCandidateParseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "validation_status": "parse_error",
+                "validation_errors": exc.errors,
+                "warnings": [],
+            },
+        )
+
+    has_failures = any(
+        r.status == ValidatorStatus.FAILED for r in validator_results
+    )
+    return GenerateLabDraftResponse(
+        draft_id=draft.lab_id,
+        validation_status="validation_failed" if has_failures else "passed",
+        validation_errors=[
+            {
+                "check_id": r.check_id,
+                "blocking_level": r.blocking_level.value,
+                "field_path": r.field_path,
+                "message": r.message,
+            }
+            for r in validator_results
+            if r.status == ValidatorStatus.FAILED
+        ],
+        warnings=warnings,
+        candidate_summary=build_candidate_summary(draft),
+    )
