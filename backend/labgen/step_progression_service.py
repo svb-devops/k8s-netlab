@@ -16,9 +16,11 @@ from typing import TYPE_CHECKING, Optional
 from backend.labgen.models import (
     LabSessionStatus,
     PublishStatus,
+    RuntimeAuditEventType,
     SchemaVersionedModel,
     VerifyResult,
 )
+from backend.labgen.runtime_audit import RuntimeAuditService
 
 if TYPE_CHECKING:
     from backend.labgen.lab_session_repository import LabSessionRepository
@@ -77,10 +79,22 @@ class StepProgressionService:
         session_repo: "LabSessionRepository",
         draft_repo: "LabDraftRepository",
         verifier_svc: "VerifierService",
+        audit_svc: Optional[RuntimeAuditService] = None,
     ) -> None:
         self._session_repo = session_repo
         self._draft_repo = draft_repo
         self._verifier_svc = verifier_svc
+        self._audit_svc = audit_svc
+
+    def _audit(
+        self,
+        session_id: str,
+        event_type: RuntimeAuditEventType,
+        failure_reason: Optional[str] = None,
+        metadata: Optional[dict] = None,
+    ) -> None:
+        if self._audit_svc is not None:
+            self._audit_svc.record(session_id, event_type, failure_reason=failure_reason, metadata=metadata)
 
     def check_step(
         self,
@@ -134,6 +148,23 @@ class StepProgressionService:
 
             if session.current_step_index >= len(draft.steps):
                 session.ready_to_complete = True
+
+            self._audit(
+                session_id,
+                RuntimeAuditEventType.STEP_CHECK_PASSED,
+                metadata={"step_id": step_id, "step_index": current_idx},
+            )
+        else:
+            first_failure = next(
+                (r.failure_reason for r in verify_results if not r.passed and r.failure_reason),
+                None,
+            )
+            self._audit(
+                session_id,
+                RuntimeAuditEventType.STEP_CHECK_FAILED,
+                failure_reason=first_failure,
+                metadata={"step_id": step_id, "step_index": current_idx},
+            )
 
         self._session_repo.update(session)
 

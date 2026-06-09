@@ -20,11 +20,13 @@ from backend.labgen.models import (
     LabSessionState,
     LabSessionStatus,
     PublishStatus,
+    RuntimeAuditEventType,
 )
 from backend.labgen.namespace_lifecycle import (
     NamespaceLifecyclePort,
     StubNamespaceLifecycleAdapter,
 )
+from backend.labgen.runtime_audit import RuntimeAuditService
 
 if TYPE_CHECKING:
     from backend.labgen.image_resolver import ImageResolver
@@ -194,12 +196,24 @@ class LabSessionService:
         vm_tracker: VMTrackerPort,
         ns_lifecycle: NamespaceLifecyclePort,
         image_resolver: "ImageResolver",
+        audit_svc: Optional[RuntimeAuditService] = None,
     ) -> None:
         self._session_repo = session_repo
         self._draft_repo = draft_repo
         self._vm_tracker = vm_tracker
         self._ns_lifecycle = ns_lifecycle
         self._image_resolver = image_resolver
+        self._audit_svc = audit_svc
+
+    def _audit(
+        self,
+        session_id: str,
+        event_type: RuntimeAuditEventType,
+        failure_reason: Optional[str] = None,
+        metadata: Optional[dict] = None,
+    ) -> None:
+        if self._audit_svc is not None:
+            self._audit_svc.record(session_id, event_type, failure_reason=failure_reason, metadata=metadata)
 
     # ------------------------------------------------------------------
     # Precheck — 6 local/stub checks, no real K8s calls
@@ -265,7 +279,9 @@ class LabSessionService:
                 lab_session_status=LabSessionStatus.LAB_START_FAILED,
                 failure_reason=failure_reason,
             )
-            return self._session_repo.create(session)
+            session = self._session_repo.create(session)
+            self._audit(session.session_id, RuntimeAuditEventType.LAB_START_FAILED, failure_reason=failure_reason)
+            return session
 
         if any_rechecked and draft is not None:
             self._draft_repo.update(draft.model_copy(update={"image_resolution": updated_images}))
@@ -288,7 +304,9 @@ class LabSessionService:
         if not create_ok:
             session.lab_session_status = LabSessionStatus.LAB_START_FAILED
             session.failure_reason = FailureReason.NAMESPACE_CREATE_FAILED.value
-            return self._session_repo.create(session)
+            session = self._session_repo.create(session)
+            self._audit(session.session_id, RuntimeAuditEventType.LAB_START_FAILED, failure_reason=FailureReason.NAMESPACE_CREATE_FAILED.value)
+            return session
 
         try:
             exists = self._ns_lifecycle.namespace_exists(session.namespace)
@@ -298,7 +316,9 @@ class LabSessionService:
         if not exists:
             session.lab_session_status = LabSessionStatus.LAB_START_FAILED
             session.failure_reason = FailureReason.NAMESPACE_CREATE_FAILED.value
-            return self._session_repo.create(session)
+            session = self._session_repo.create(session)
+            self._audit(session.session_id, RuntimeAuditEventType.LAB_START_FAILED, failure_reason=FailureReason.NAMESPACE_CREATE_FAILED.value)
+            return session
 
         # VERIFIER_BINDING_CREATING: create RoleBinding, then verify existence
         session.lab_session_status = LabSessionStatus.VERIFIER_BINDING_CREATING
@@ -310,7 +330,9 @@ class LabSessionService:
         if not binding_ok:
             session.lab_session_status = LabSessionStatus.LAB_START_FAILED
             session.failure_reason = FailureReason.VERIFIER_ROLEBINDING_CREATE_FAILED.value
-            return self._session_repo.create(session)
+            session = self._session_repo.create(session)
+            self._audit(session.session_id, RuntimeAuditEventType.LAB_START_FAILED, failure_reason=FailureReason.VERIFIER_ROLEBINDING_CREATE_FAILED.value)
+            return session
 
         try:
             binding_exists = self._ns_lifecycle.verifier_rolebinding_exists(session.namespace)
@@ -320,12 +342,16 @@ class LabSessionService:
         if not binding_exists:
             session.lab_session_status = LabSessionStatus.LAB_START_FAILED
             session.failure_reason = FailureReason.VERIFIER_ROLEBINDING_VERIFY_FAILED.value
-            return self._session_repo.create(session)
+            session = self._session_repo.create(session)
+            self._audit(session.session_id, RuntimeAuditEventType.LAB_START_FAILED, failure_reason=FailureReason.VERIFIER_ROLEBINDING_VERIFY_FAILED.value)
+            return session
 
         session.lab_session_status = LabSessionStatus.LAB_ACTIVE
         session.connection_state = ConnectionState.CONNECTED
         session.started_at = datetime.now(tz=timezone.utc)
-        return self._session_repo.create(session)
+        session = self._session_repo.create(session)
+        self._audit(session.session_id, RuntimeAuditEventType.LAB_START_SUCCESS)
+        return session
 
     def complete_session(self, session_id: str) -> LabSessionState:
         session = self._require_session(session_id)
@@ -338,6 +364,7 @@ class LabSessionService:
         session.connection_state = ConnectionState.DISCONNECTED
         session.ended_at = datetime.now(tz=timezone.utc)
         session = self._session_repo.update(session)
+        self._audit(session.session_id, RuntimeAuditEventType.LAB_COMPLETE)
 
         return self._do_cleanup(session)
 
@@ -350,6 +377,7 @@ class LabSessionService:
         session.connection_state = ConnectionState.DISCONNECTED
         session.ended_at = datetime.now(tz=timezone.utc)
         session = self._session_repo.update(session)
+        self._audit(session.session_id, RuntimeAuditEventType.LAB_ABORT)
 
         return self._do_cleanup(session)
 
@@ -396,7 +424,9 @@ class LabSessionService:
         if session.namespace is None:
             session.lab_session_status = LabSessionStatus.LAB_CLOSED
             session.cleanup_verified = True
-            return self._session_repo.update(session)
+            session = self._session_repo.update(session)
+            self._audit(session.session_id, RuntimeAuditEventType.CLEANUP_SUCCESS)
+            return session
 
         # NAMESPACE_TERMINATING_WAIT: delete namespace, then verify deletion
         deleted = False
@@ -409,13 +439,18 @@ class LabSessionService:
         if deleted:
             session.lab_session_status = LabSessionStatus.LAB_CLOSED
             session.cleanup_verified = True
-        else:
-            session.lab_session_status = LabSessionStatus.LAB_CLEANUP_FAILED
-            session.failure_reason = FailureReason.NAMESPACE_CLEANUP_FAILED.value
-            session.cleanup_verified = False
-            self._vm_tracker.mark_vm_tainted(session.vm_id)
+            session = self._session_repo.update(session)
+            self._audit(session.session_id, RuntimeAuditEventType.CLEANUP_SUCCESS)
+            return session
 
-        return self._session_repo.update(session)
+        session.lab_session_status = LabSessionStatus.LAB_CLEANUP_FAILED
+        session.failure_reason = FailureReason.NAMESPACE_CLEANUP_FAILED.value
+        session.cleanup_verified = False
+        self._vm_tracker.mark_vm_tainted(session.vm_id)
+        session = self._session_repo.update(session)
+        self._audit(session.session_id, RuntimeAuditEventType.CLEANUP_FAILED, failure_reason=FailureReason.NAMESPACE_CLEANUP_FAILED.value)
+        self._audit(session.session_id, RuntimeAuditEventType.VM_TAINTED, metadata={"vm_id": session.vm_id})
+        return session
 
     def _require_session(self, session_id: str) -> LabSessionState:
         session = self._session_repo.get(session_id)

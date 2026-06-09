@@ -5,7 +5,7 @@ LabGen Pydantic models — all objects require schema_version per Contract §3.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -313,3 +313,31 @@ class LabSessionState(SchemaVersionedModel):
     completed_step_ids: list[str] = Field(default_factory=list)
     ready_to_complete: bool = False
     last_verify_results: list[VerifyResult] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Runtime Audit
+# ---------------------------------------------------------------------------
+
+
+class RuntimeAuditEventType(str, Enum):
+    LAB_START_SUCCESS = "lab_start_success"
+    LAB_START_FAILED = "lab_start_failed"
+    STEP_CHECK_PASSED = "step_check_passed"
+    STEP_CHECK_FAILED = "step_check_failed"
+    LAB_COMPLETE = "lab_complete"
+    LAB_ABORT = "lab_abort"
+    CLEANUP_SUCCESS = "cleanup_success"
+    CLEANUP_FAILED = "cleanup_failed"
+    VM_TAINTED = "vm_tainted"
+
+
+class RuntimeAuditEvent(SchemaVersionedModel):
+    """Append-only audit record. metadata MUST NOT contain tokens, passwords, or credential material."""
+
+    event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    session_id: str
+    event_type: RuntimeAuditEventType
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
+    failure_reason: Optional[str] = None
+    metadata: dict = Field(default_factory=dict)

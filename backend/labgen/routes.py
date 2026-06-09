@@ -60,6 +60,8 @@ from backend.labgen.step_progression_service import (
     StepSessionNotFound,
 )
 from backend.labgen.failure_reasons import FailureReason
+from backend.labgen.models import RuntimeAuditEvent
+from backend.labgen.runtime_audit import RuntimeAuditRepository, RuntimeAuditService
 from backend.labgen.verifier import VerifierService
 from backend.labgen.verifier_credentials import VerifierCredentialStore
 
@@ -81,6 +83,7 @@ _session_svc: Optional[LabSessionService] = None
 _image_resolver: Optional[ImageResolver] = None
 _verifier_svc: Optional[VerifierService] = None
 _step_progression_svc: Optional[StepProgressionService] = None
+_audit_repo: Optional[RuntimeAuditRepository] = None
 
 
 def get_repository() -> LabDraftRepository:
@@ -127,6 +130,7 @@ def get_session_service() -> LabSessionService:
             vm_tracker=RealVMTracker(),
             ns_lifecycle=StubNamespaceLifecycleAdapter(),
             image_resolver=get_image_resolver(),
+            audit_svc=RuntimeAuditService(repo=get_audit_repository()),
         )
     return _session_svc
 
@@ -161,6 +165,13 @@ def get_verifier_service() -> VerifierService:
     return _verifier_svc
 
 
+def get_audit_repository() -> RuntimeAuditRepository:
+    global _audit_repo
+    if _audit_repo is None:
+        _audit_repo = RuntimeAuditRepository()
+    return _audit_repo
+
+
 def get_step_progression_service() -> StepProgressionService:
     global _step_progression_svc
     if _step_progression_svc is None:
@@ -168,6 +179,7 @@ def get_step_progression_service() -> StepProgressionService:
             session_repo=get_session_repository(),
             draft_repo=get_repository(),
             verifier_svc=get_verifier_service(),
+            audit_svc=RuntimeAuditService(repo=get_audit_repository()),
         )
     return _step_progression_svc
 
@@ -558,3 +570,21 @@ async def check_step(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     except StepNotCurrent as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+
+@lab_session_router.get("/{session_id}/audit-events", response_model=list[RuntimeAuditEvent])
+async def get_audit_events(
+    session_id: str,
+    username: str = Depends(get_current_user),
+    svc: LabSessionService = Depends(get_session_service),
+    audit_repo: RuntimeAuditRepository = Depends(get_audit_repository),
+) -> list[RuntimeAuditEvent]:
+    try:
+        session = svc._require_session(session_id)
+    except SessionNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    if session.student_username != username and not auth_manager.is_admin(username):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    return audit_repo.list_by_session(session_id)
