@@ -117,6 +117,7 @@ class VerifyResult(SchemaVersionedModel):
     verify_type: str
     passed: bool
     error_code: Optional[str] = None
+    failure_reason: Optional[str] = None
     detail: str = ""
 
 

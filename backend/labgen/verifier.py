@@ -17,6 +17,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Callable, Optional
 
+from backend.labgen.failure_reasons import FailureReason
 from backend.labgen.models import (
     LabSessionStatus,
     VerifyResult,
@@ -145,35 +146,43 @@ class VerifierService:
         self._k8s_client_factory = k8s_client_factory
 
     def check(self, session_id: str, template: VerifyTemplate) -> VerifyResult:
-        def _fail(error_code: str, detail: str = "") -> VerifyResult:
+        def _fail(reason: FailureReason, detail: str = "") -> VerifyResult:
+            code = reason.value
             return VerifyResult(
                 session_id=session_id,
                 verify_id=template.verify_id,
                 verify_type=template.type.value,
                 passed=False,
-                error_code=error_code,
+                error_code=code,
+                failure_reason=code,
                 detail=detail,
             )
 
         session = self._session_repo.get(session_id)
         if session is None:
-            return _fail("session_not_found")
+            return _fail(FailureReason.VERIFIER_SESSION_NOT_FOUND)
 
         if session.lab_session_status != LabSessionStatus.LAB_ACTIVE:
-            return _fail("session_not_active", f"status={session.lab_session_status.value}")
+            return _fail(
+                FailureReason.VERIFIER_SESSION_NOT_ACTIVE,
+                f"status={session.lab_session_status.value}",
+            )
 
         if template.cluster_scope:
-            return _fail("cluster_scope_not_supported")
+            return _fail(FailureReason.VERIFIER_CLUSTER_SCOPE_NOT_SUPPORTED)
 
         resolved_ns = session.namespace
         if resolved_ns is None or template.namespace not in {_NS_SENTINEL, resolved_ns}:
-            return _fail("namespace_mismatch", f"expected={resolved_ns!r}")
+            return _fail(FailureReason.VERIFIER_NAMESPACE_MISMATCH, f"expected={resolved_ns!r}")
 
         if template.type not in _SUPPORTED_TYPES:
-            return _fail("verify_type_not_implemented", f"type={template.type.value}")
+            return _fail(
+                FailureReason.VERIFIER_TYPE_NOT_IMPLEMENTED,
+                f"type={template.type.value}",
+            )
 
         if not self._credential_store.exists(session.vm_id):
-            return _fail("credential_missing", f"vm_id={session.vm_id}")
+            return _fail(FailureReason.VERIFIER_CREDENTIAL_MISSING, f"vm_id={session.vm_id}")
 
         kubeconfig, _ = self._credential_store.load(session.vm_id)
         client = self._k8s_client_factory(kubeconfig)

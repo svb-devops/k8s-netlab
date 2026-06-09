@@ -59,6 +59,7 @@ from backend.labgen.step_progression_service import (
     StepSessionNotActive,
     StepSessionNotFound,
 )
+from backend.labgen.failure_reasons import FailureReason
 from backend.labgen.verifier import VerifierService
 from backend.labgen.verifier_credentials import VerifierCredentialStore
 
@@ -474,7 +475,7 @@ async def complete_lab_session(
     except SessionAlreadyTerminated:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session is already terminated")
     except LabNotReadyToComplete:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="lab_not_ready_to_complete")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=FailureReason.LAB_NOT_READY_TO_COMPLETE.value)
 
 
 @lab_session_router.post("/{session_id}/abort", response_model=LabSessionState)

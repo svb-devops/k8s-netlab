@@ -11,7 +11,7 @@ Security constraints:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from backend.labgen.models import (
     LabSessionStatus,
@@ -38,6 +38,7 @@ class StepCheckResponse(SchemaVersionedModel):
     advanced: bool
     ready_to_complete: bool
     verify_results: list[VerifyResult]
+    failure_reason: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

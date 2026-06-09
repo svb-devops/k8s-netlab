@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
+from backend.labgen.failure_reasons import FailureReason
 from backend.labgen.models import (
     ConnectionState,
     ImageResolutionResult,
@@ -214,26 +215,26 @@ class LabSessionService:
 
         draft = self._draft_repo.get(lab_id)
         if draft is None:
-            failures.append("precheck.draft_not_found")
+            failures.append(FailureReason.PRECHECK_DRAFT_NOT_FOUND.value)
         else:
             if draft.publish_status != PublishStatus.PUBLISHED:
-                failures.append("precheck.draft_not_published")
+                failures.append(FailureReason.PRECHECK_DRAFT_NOT_PUBLISHED.value)
             if draft.cleanup is None:
-                failures.append("precheck.cleanup_not_declared")
+                failures.append(FailureReason.PRECHECK_CLEANUP_NOT_DECLARED.value)
 
         if not self._vm_tracker.vm_exists(vm_id):
-            failures.append("precheck.vm_not_found")
+            failures.append(FailureReason.PRECHECK_VM_NOT_FOUND.value)
         elif not self._vm_tracker.is_vm_owned_by(vm_id, student_username):
-            failures.append("precheck.vm_not_owned_by_student")
+            failures.append(FailureReason.PRECHECK_VM_NOT_OWNED_BY_STUDENT.value)
         elif self._vm_tracker.is_vm_tainted(vm_id):
-            failures.append("precheck.vm_tainted")
+            failures.append(FailureReason.PRECHECK_VM_TAINTED.value)
 
         existing = self._session_repo.list_by_student(student_username)
         if any(
             s.lab_id == lab_id and s.lab_session_status in _ACTIVE_STATES
             for s in existing
         ):
-            failures.append("precheck.session_already_active")
+            failures.append(FailureReason.PRECHECK_SESSION_ALREADY_ACTIVE.value)
 
         return PrecheckResult(passed=len(failures) == 0, failures=failures)
 
@@ -286,7 +287,7 @@ class LabSessionService:
 
         if not create_ok:
             session.lab_session_status = LabSessionStatus.LAB_START_FAILED
-            session.failure_reason = "namespace_create_failed"
+            session.failure_reason = FailureReason.NAMESPACE_CREATE_FAILED.value
             return self._session_repo.create(session)
 
         try:
@@ -296,7 +297,7 @@ class LabSessionService:
 
         if not exists:
             session.lab_session_status = LabSessionStatus.LAB_START_FAILED
-            session.failure_reason = "namespace_create_failed"
+            session.failure_reason = FailureReason.NAMESPACE_CREATE_FAILED.value
             return self._session_repo.create(session)
 
         # VERIFIER_BINDING_CREATING: create RoleBinding, then verify existence
@@ -308,7 +309,7 @@ class LabSessionService:
 
         if not binding_ok:
             session.lab_session_status = LabSessionStatus.LAB_START_FAILED
-            session.failure_reason = "verifier_rolebinding_create_failed"
+            session.failure_reason = FailureReason.VERIFIER_ROLEBINDING_CREATE_FAILED.value
             return self._session_repo.create(session)
 
         try:
@@ -318,7 +319,7 @@ class LabSessionService:
 
         if not binding_exists:
             session.lab_session_status = LabSessionStatus.LAB_START_FAILED
-            session.failure_reason = "verifier_rolebinding_verify_failed"
+            session.failure_reason = FailureReason.VERIFIER_ROLEBINDING_VERIFY_FAILED.value
             return self._session_repo.create(session)
 
         session.lab_session_status = LabSessionStatus.LAB_ACTIVE
@@ -369,8 +370,8 @@ class LabSessionService:
         """
         Returns (all_passed, failure_reason, updated_images, any_rechecked).
 
-        - image_status != RESOLVED  → (False, "image_unresolved", ...)
-        - existence_check_passed is False → (False, "image_unavailable", ...)
+        - image_status != RESOLVED  → (False, FailureReason.IMAGE_UNRESOLVED.value, ...)
+        - existence_check_passed is False → (False, FailureReason.IMAGE_UNAVAILABLE.value, ...)
         - recheck performed          → any_rechecked=True so caller can persist fresh results
         """
         if draft is None or not draft.image_resolution:
@@ -381,12 +382,12 @@ class LabSessionService:
 
         for img in draft.image_resolution:
             if img.image_status != ImageStatus.RESOLVED:
-                return False, "image_unresolved", updated_images, False
+                return False, FailureReason.IMAGE_UNRESOLVED.value, updated_images, False
             if self._image_resolver.needs_recheck(img):
                 img = self._image_resolver.check_registry_existence(img)
                 any_rechecked = True
             if img.existence_check_passed is False:
-                return False, "image_unavailable", updated_images, False
+                return False, FailureReason.IMAGE_UNAVAILABLE.value, updated_images, False
             updated_images.append(img)
 
         return True, None, updated_images, any_rechecked
@@ -410,7 +411,7 @@ class LabSessionService:
             session.cleanup_verified = True
         else:
             session.lab_session_status = LabSessionStatus.LAB_CLEANUP_FAILED
-            session.failure_reason = "namespace_cleanup_failed"
+            session.failure_reason = FailureReason.NAMESPACE_CLEANUP_FAILED.value
             session.cleanup_verified = False
             self._vm_tracker.mark_vm_tainted(session.vm_id)
 
