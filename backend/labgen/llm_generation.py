@@ -16,6 +16,10 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from backend.labgen.generation_templates import (
+    GenerationTemplateId,
+    GenerationTemplateRegistry,
+)
 from backend.labgen.models import (
     BlockingLevel,
     CleanupNamespace,
@@ -105,6 +109,7 @@ class LabDraftGenerationResult(BaseModel):
     candidate: dict
     warnings: list[str] = Field(default_factory=list)
     rejected_reason: Optional[str] = None
+    template_id: Optional[str] = None  # set when template-based generation was used
 
 
 # ---------------------------------------------------------------------------
@@ -117,6 +122,7 @@ class GenerateLabDraftResponse(BaseModel):
     validation_status: str  # passed | validation_failed | parse_error | rejected
     validation_errors: list[dict] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    selected_template_id: Optional[str] = None
     candidate_summary: Optional[dict] = None
 
 
@@ -151,7 +157,7 @@ class FakeDraftGenerationAdapter(LabDraftGenerationPort):
     Deterministic generator.  No LLM, no network, no API keys.
 
     inject_mode controls the output:
-      "valid"     → complete Contract v0.1 candidate, passes StaticValidator
+      "valid"     → template-based Contract v0.1 candidate, passes StaticValidator
       "invalid"   → Pydantic-parseable but StaticValidator fails (cleanup=None)
       "malformed" → fails Pydantic parsing (steps is wrong type)
       "sensitive" → valid candidate + credential-like strings in warnings
@@ -161,6 +167,7 @@ class FakeDraftGenerationAdapter(LabDraftGenerationPort):
 
     def __init__(self, inject_mode: str = "valid") -> None:
         self._mode = inject_mode
+        self._registry = GenerationTemplateRegistry()
 
     def generate_lab_draft_candidate(
         self, request: LabDraftGenerationRequest
@@ -181,29 +188,47 @@ class FakeDraftGenerationAdapter(LabDraftGenerationPort):
                 },
             )
 
+        # For valid/invalid/sensitive: use template selection
+        selection = self._registry.select(
+            request.user_prompt, request.target_audience, request.difficulty
+        )
+        template = self._registry.get_by_id(selection.selected_template_id)
+        candidate = template.build_candidate(
+            request.user_prompt, request.target_audience, request.difficulty
+        )
+
         if self._mode == "invalid":
-            base = self._build_valid_candidate(request)
-            base["cleanup"] = None  # cleanup.declared check will fail
-            return LabDraftGenerationResult(candidate=base)
+            candidate["cleanup"] = None  # cleanup.declared check will fail
+            return LabDraftGenerationResult(
+                candidate=candidate,
+                template_id=selection.selected_template_id.value,
+                warnings=list(selection.warnings),
+            )
 
         if self._mode == "sensitive":
-            base = self._build_valid_candidate(request)
+            warnings = list(selection.warnings) + [
+                "note: generation used internal token=eyJhbGciOiJSUzI1NiJ9.fake.payload",
+                "provider raw: password=hunter2 in context window",
+            ]
             return LabDraftGenerationResult(
-                candidate=base,
-                warnings=[
-                    "note: generation used internal token=eyJhbGciOiJSUzI1NiJ9.fake.payload",
-                    "provider raw: password=hunter2 in context window",
-                ],
+                candidate=candidate,
+                template_id=selection.selected_template_id.value,
+                warnings=warnings,
             )
 
         # "valid" (default)
+        warnings = list(selection.warnings) or [
+            "fake generator: content is placeholder, admin review required"
+        ]
         return LabDraftGenerationResult(
-            candidate=self._build_valid_candidate(request),
-            warnings=["fake generator: content is placeholder, admin review required"],
+            candidate=candidate,
+            template_id=selection.selected_template_id.value,
+            warnings=warnings,
         )
 
     @staticmethod
     def _build_valid_candidate(request: LabDraftGenerationRequest) -> dict:
+        """Legacy static helper for test isolation — single-step minimal candidate."""
         step = Step(
             step_id="step-1",
             order=1,
@@ -272,9 +297,9 @@ class LabDraftGenerationService:
 
     def generate_and_create(
         self, request: LabDraftGenerationRequest
-    ) -> tuple[LabDraft, list[ValidatorResult], list[str]]:
+    ) -> tuple[LabDraft, list[ValidatorResult], list[str], Optional[str]]:
         """
-        Return (saved_draft, validator_results, sanitized_warnings).
+        Return (saved_draft, validator_results, sanitized_warnings, template_id).
 
         Raises DraftGenerationRejected if the adapter rejected the request.
         Raises DraftCandidateParseError if Pydantic parsing fails.
@@ -304,7 +329,7 @@ class LabDraftGenerationService:
 
         saved = self._repo.create(draft)
         sanitized = _sanitize_warnings(result.warnings)
-        return saved, validator_results, sanitized
+        return saved, validator_results, sanitized, result.template_id
 
 
 # ---------------------------------------------------------------------------
@@ -348,12 +373,18 @@ def _extract_pydantic_errors(exc: Exception) -> list[dict]:
     return [{"msg": "candidate parse failed", "type": "parse_error"}]
 
 
-def build_candidate_summary(draft: LabDraft) -> dict:
+def build_candidate_summary(
+    draft: LabDraft, template_id: Optional[str] = None
+) -> dict:
     """Safe high-level summary — never includes raw commands or explain text."""
-    return {
+    summary: dict = {
         "title": draft.title,
         "description_preview": draft.description[:120],
         "step_count": len(draft.steps),
+        "objective_count": len(draft.steps),
         "estimated_duration_minutes": draft.estimated_duration_minutes,
         "publish_status": draft.publish_status.value,
     }
+    if template_id is not None:
+        summary["template_id"] = template_id
+    return summary

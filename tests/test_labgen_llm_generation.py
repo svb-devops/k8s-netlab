@@ -587,7 +587,7 @@ class TestRegressionContract:
         req = LabDraftGenerationRequest(
             user_prompt="test", requester_user_id="user1"
         )
-        draft, results, _ = svc.generate_and_create(req)
+        draft, results, _, _template_id = svc.generate_and_create(req)
         # StaticValidator ran and produced results
         assert len(results) > 0
         # All checks in valid mode pass
@@ -607,10 +607,7 @@ class TestRegressionContract:
             req = LabDraftGenerationRequest(
                 user_prompt="test", requester_user_id="user1"
             )
-            if mode == "invalid":
-                draft, _, _ = svc.generate_and_create(req)
-            else:
-                draft, _, _ = svc.generate_and_create(req)
+            draft, _, _, _ = svc.generate_and_create(req)
             assert draft.publish_status != PublishStatus.PUBLISHED
 
     def test_rejected_raises_exception(self):
@@ -656,7 +653,7 @@ class TestRegressionContract:
         req = LabDraftGenerationRequest(
             user_prompt="test", requester_user_id="user1"
         )
-        draft, _, _ = svc.generate_and_create(req)
+        draft, _, _, _ = svc.generate_and_create(req)
         assert draft.publish_status != PublishStatus.PUBLISHED
 
     def test_generation_path_does_not_create_session(self):
@@ -687,3 +684,94 @@ class TestRegressionContract:
                 json={"user_prompt": "test prompt", "constraints": constraints},
             )
             assert resp.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# H. Template selection via API
+# ---------------------------------------------------------------------------
+
+
+class TestTemplateSelectionAPI:
+    def test_python_prompt_returns_python_basics(self):
+        with _gen_ctx("valid") as ctx:
+            resp = ctx["client"].post(
+                "/api/lab-drafts/generate",
+                json={"user_prompt": "Write a Python script with loops and functions"},
+            )
+            assert resp.status_code == 201
+            body = resp.json()
+            assert body["selected_template_id"] == "PYTHON_BASICS"
+
+    def test_api_prompt_returns_http_api_basics(self):
+        with _gen_ctx("valid") as ctx:
+            resp = ctx["client"].post(
+                "/api/lab-drafts/generate",
+                json={"user_prompt": "Build an HTTP API that handles JSON requests"},
+            )
+            assert resp.status_code == 201
+            body = resp.json()
+            assert body["selected_template_id"] == "HTTP_API_BASICS"
+
+    def test_csv_prompt_returns_data_transform_basics(self):
+        with _gen_ctx("valid") as ctx:
+            resp = ctx["client"].post(
+                "/api/lab-drafts/generate",
+                json={"user_prompt": "Parse a CSV file and aggregate data by column"},
+            )
+            assert resp.status_code == 201
+            body = resp.json()
+            assert body["selected_template_id"] == "DATA_TRANSFORM_BASICS"
+
+    def test_selected_template_id_present_in_response(self):
+        with _gen_ctx("valid") as ctx:
+            body = _post_generate(ctx["client"]).json()
+            assert "selected_template_id" in body
+            assert body["selected_template_id"] is not None
+
+    def test_candidate_summary_has_template_id(self):
+        with _gen_ctx("valid") as ctx:
+            body = _post_generate(ctx["client"]).json()
+            summary = body["candidate_summary"]
+            assert "template_id" in summary
+
+    def test_candidate_summary_has_objective_count(self):
+        with _gen_ctx("valid") as ctx:
+            body = _post_generate(ctx["client"]).json()
+            summary = body["candidate_summary"]
+            assert "objective_count" in summary
+            assert isinstance(summary["objective_count"], int)
+            assert summary["objective_count"] >= 1
+
+    def test_objective_count_equals_step_count(self):
+        with _gen_ctx("valid") as ctx:
+            body = _post_generate(ctx["client"]).json()
+            summary = body["candidate_summary"]
+            assert summary["objective_count"] == summary["step_count"]
+
+    def test_selected_template_id_is_known_value(self):
+        from backend.labgen.generation_templates import GenerationTemplateId
+        known = {t.value for t in GenerationTemplateId}
+        with _gen_ctx("valid") as ctx:
+            body = _post_generate(ctx["client"]).json()
+            assert body["selected_template_id"] in known
+
+    def test_invalid_mode_still_returns_template_id(self):
+        with _gen_ctx("invalid") as ctx:
+            body = _post_generate(ctx["client"]).json()
+            assert body.get("selected_template_id") is not None
+
+    def test_response_no_sensitive_data_for_all_templates(self):
+        for prompt, expected in [
+            ("Python loops and functions", "PYTHON_BASICS"),
+            ("HTTP API with JSON endpoint", "HTTP_API_BASICS"),
+            ("CSV data transform and aggregate", "DATA_TRANSFORM_BASICS"),
+        ]:
+            with _gen_ctx("valid") as ctx:
+                resp = ctx["client"].post(
+                    "/api/lab-drafts/generate",
+                    json={"user_prompt": prompt},
+                )
+                assert resp.status_code == 201
+                body = resp.json()
+                assert body["selected_template_id"] == expected
+                assert_no_sensitive_runtime_data(body)

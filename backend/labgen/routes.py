@@ -637,7 +637,9 @@ async def generate_lab_draft(
     )
 
     try:
-        draft, validator_results, warnings = svc.generate_and_create(request)
+        draft, validator_results, warnings, template_id = svc.generate_and_create(
+            request
+        )
     except DraftGenerationRejected as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -675,5 +677,6 @@ async def generate_lab_draft(
             if r.status == ValidatorStatus.FAILED
         ],
         warnings=warnings,
-        candidate_summary=build_candidate_summary(draft),
+        selected_template_id=template_id,
+        candidate_summary=build_candidate_summary(draft, template_id=template_id),
     )
