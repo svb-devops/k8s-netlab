@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab Catalog — K8S NetLab</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/js/tailwind-config.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- ── Header ── -->
+<header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+        <a href="/app" class="text-sm text-gray-500 hover:text-gray-700">← Home</a>
+        <span class="text-gray-300">|</span>
+        <h1 class="text-sm font-semibold text-gray-900">Lab Catalog</h1>
+    </div>
+    <div id="dev-user-info" class="text-xs text-gray-400"></div>
+</header>
+
+<!-- ── Main ── -->
+<main class="max-w-5xl mx-auto px-6 py-8">
+    <div class="mb-6">
+        <h2 class="text-2xl font-bold text-gray-900">Available Labs</h2>
+        <p class="text-gray-500 text-sm mt-1">Select a lab to view details and start.</p>
+    </div>
+    <div id="root"><!-- populated by JS --></div>
+</main>
+
+<script type="module">
+import { LabGenClient, LabGenApiError } from '/js/labgenClient.js';
+import { renderLabCatalog, renderErrorState, renderLoading } from '/js/labgenViews.js';
+
+const root = document.getElementById('root');
+const devInfo = document.getElementById('dev-user-info');
+
+async function init() {
+    root.innerHTML = renderLoading();
+
+    const client = new LabGenClient();
+    const me = await client.getMe();
+    if (!me) {
+        window.location.href = '/login.html?next=' + encodeURIComponent(window.location.href);
+        return;
+    }
+    devInfo.textContent = me.username;
+
+    try {
+        const labs = await client.listLabs();
+        root.innerHTML = renderLabCatalog(labs);
+    } catch (e) {
+        root.innerHTML = renderErrorState(
+            e instanceof LabGenApiError ? e.message : 'Failed to load labs.'
+        );
+    }
+}
+
+init();
+</script>
+</body>
+</html>

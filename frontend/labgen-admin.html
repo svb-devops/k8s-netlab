@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin: Draft Review — K8S NetLab LabGen</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/js/tailwind-config.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- ── Header ── -->
+<header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+        <a href="/admin.html" class="text-sm text-gray-500 hover:text-gray-700">← Admin</a>
+        <span class="text-gray-300">|</span>
+        <span class="text-sm font-medium text-gray-700">Draft Review</span>
+    </div>
+    <div id="dev-user-info" class="text-xs text-gray-400"></div>
+</header>
+
+<!-- ── Main ── -->
+<main class="max-w-3xl mx-auto px-6 py-8">
+    <div id="root">
+        <!-- Loading spinner injected by renderLoading() -->
+    </div>
+</main>
+
+<script type="module">
+import { LabGenClient, LabGenApiError } from '/js/labgenClient.js';
+import {
+    renderAdminDraftView,
+    renderErrorState,
+    renderNotFound,
+    renderLoading,
+} from '/js/labgenViews.js';
+
+const root = document.getElementById('root');
+const devInfo = document.getElementById('dev-user-info');
+
+async function init() {
+    root.innerHTML = renderLoading();
+
+    // Auth guard — redirect to login if not authenticated
+    const client = new LabGenClient();
+    const me = await client.getMe();
+    if (!me) {
+        window.location.href = '/login.html?next=' + encodeURIComponent(window.location.href);
+        return;
+    }
+    if (!me.is_admin) {
+        root.innerHTML = renderErrorState('Admin access required.');
+        return;
+    }
+    devInfo.textContent = me.username + ' (admin)';
+
+    // Draft ID from URL param
+    const params = new URLSearchParams(window.location.search);
+    const draftId = params.get('draftId');
+    if (!draftId) {
+        root.innerHTML = renderErrorState('Missing ?draftId= parameter.');
+        return;
+    }
+
+    try {
+        const [preview, decision] = await Promise.all([
+            client.getDraftPreview(draftId),
+            client.getPublishDecision(draftId),
+        ]);
+        root.innerHTML = renderAdminDraftView({ preview, decision });
+        attachPublishAction(client, draftId);
+    } catch (e) {
+        if (e instanceof LabGenApiError && e.status === 404) {
+            root.innerHTML = renderNotFound('Draft');
+        } else {
+            root.innerHTML = renderErrorState(
+                e instanceof LabGenApiError ? e.message : 'Failed to load draft.'
+            );
+        }
+    }
+}
+
+function attachPublishAction(client, draftId) {
+    const btn = root.querySelector('[data-action="publish"]');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+        if (btn.disabled) return;
+        btn.disabled = true;
+        btn.textContent = 'Publishing…';
+        try {
+            await client.publishDraft(draftId);
+            btn.textContent = 'Published ✓';
+            btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+            btn.classList.add('bg-green-600');
+        } catch (e) {
+            btn.disabled = false;
+            btn.textContent = 'Publish Lab';
+            const msg = e instanceof LabGenApiError ? e.message : 'Publish failed.';
+            const errDiv = document.createElement('p');
+            errDiv.className = 'text-red-600 text-sm mt-2';
+            errDiv.textContent = msg;
+            btn.insertAdjacentElement('afterend', errDiv);
+        }
+    });
+}
+
+init();
+</script>
+</body>
+</html>

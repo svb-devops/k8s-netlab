@@ -1,0 +1,388 @@
+/**
+ * LabGen Pure View Renderers
+ *
+ * Every exported function is pure: it takes a plain data object and returns
+ * an HTML string. No DOM side-effects, no module-level state.
+ * This design allows node:test to import and assert on output without jsdom.
+ *
+ * All dynamic values are passed through escapeHtml / sanitizeDisplayText
+ * before being embedded in HTML.
+ */
+
+import { escapeHtml, sanitizeDisplayText } from './labgenSecurity.js';
+
+// ─── Shared primitives ────────────────────────────────────────────────────────
+
+function _safe(v) {
+    return escapeHtml(sanitizeDisplayText(String(v ?? '')));
+}
+
+function _badge(text, colorClass) {
+    return `<span class="inline-block px-2 py-0.5 rounded text-xs font-medium ${colorClass}">${_safe(text)}</span>`;
+}
+
+function _statusBadge(status) {
+    const map = {
+        LAB_ACTIVE:         'bg-green-100 text-green-800',
+        LAB_COMPLETED:      'bg-blue-100 text-blue-800',
+        LAB_CLOSED:         'bg-gray-100 text-gray-600',
+        LAB_ABORTED:        'bg-red-100 text-red-700',
+        LAB_CLEANUP_FAILED: 'bg-orange-100 text-orange-800',
+        IMAGE_CHECK_RUNNING:'bg-yellow-100 text-yellow-800',
+    };
+    return _badge(status, map[status] ?? 'bg-gray-100 text-gray-600');
+}
+
+// ─── Error / empty states ─────────────────────────────────────────────────────
+
+export function renderErrorState(message) {
+    const safeMsg = _safe(message);
+    return `<div class="p-6 rounded-lg bg-red-50 border border-red-200 text-red-700">
+        <p class="font-medium">Unable to load</p>
+        <p class="text-sm mt-1">${safeMsg}</p>
+    </div>`;
+}
+
+export function renderNotFound(entity = 'Resource') {
+    return `<div class="p-6 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 text-center">
+        <p class="font-medium">${_safe(entity)} not found</p>
+    </div>`;
+}
+
+export function renderLoading() {
+    return `<div class="flex items-center gap-2 text-gray-500 p-6">
+        <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+        </svg>
+        <span>Loading…</span>
+    </div>`;
+}
+
+// ─── Admin: Draft Review ──────────────────────────────────────────────────────
+
+/**
+ * @param {object} p
+ * @param {object} p.preview   - DraftPreviewSnapshot
+ * @param {object} p.decision  - PublishDecision
+ */
+export function renderAdminDraftView({ preview, decision }) {
+    const isAllowed   = decision?.status === 'ALLOWED';
+    const isBlocked   = decision?.status === 'BLOCKED';
+    const decBadge    = isAllowed
+        ? _badge('ALLOWED', 'bg-green-100 text-green-800')
+        : isBlocked
+            ? _badge('BLOCKED', 'bg-red-100 text-red-700')
+            : _badge(decision?.status ?? 'UNKNOWN', 'bg-gray-100 text-gray-600');
+
+    const blockedIssues = isBlocked && Array.isArray(decision?.blocked_reasons)
+        ? decision.blocked_reasons.map(r =>
+            `<li class="text-red-700 text-sm">${_safe(r?.message ?? r)}</li>`
+          ).join('')
+        : '';
+
+    const validationIssues = Array.isArray(preview?.validation_issues)
+        ? preview.validation_issues.map(i =>
+            `<li class="text-yellow-700 text-sm">${_safe(i?.check_id ?? '')} — ${_safe(i?.message ?? i)}</li>`
+          ).join('')
+        : '';
+
+    const objectives = Array.isArray(preview?.objectives)
+        ? preview.objectives.map(o => `<li class="text-sm text-gray-700">${_safe(o)}</li>`).join('')
+        : '';
+
+    const steps = Array.isArray(preview?.steps)
+        ? preview.steps.map((s, idx) => `
+            <div class="border border-gray-200 rounded p-3 mb-2">
+                <p class="font-medium text-sm">${_safe(idx + 1)}. ${_safe(s?.title ?? s?.step_id ?? '')}</p>
+                ${s?.description ? `<p class="text-xs text-gray-500 mt-1">${_safe(s.description)}</p>` : ''}
+            </div>`
+          ).join('')
+        : '';
+
+    return `
+    <div class="space-y-6">
+        <div class="flex items-center justify-between">
+            <h2 class="text-xl font-semibold text-gray-900">${_safe(preview?.title ?? 'Draft')}</h2>
+            ${decBadge}
+        </div>
+
+        ${preview?.summary ? `<p class="text-gray-600">${_safe(preview.summary)}</p>` : ''}
+
+        ${objectives ? `
+        <div>
+            <h3 class="font-medium text-gray-700 mb-2">Objectives</h3>
+            <ul class="list-disc pl-5 space-y-1">${objectives}</ul>
+        </div>` : ''}
+
+        ${steps ? `
+        <div>
+            <h3 class="font-medium text-gray-700 mb-2">Steps</h3>
+            ${steps}
+        </div>` : ''}
+
+        ${validationIssues ? `
+        <div class="bg-yellow-50 border border-yellow-200 rounded p-4">
+            <h3 class="font-medium text-yellow-800 mb-2">Validation Issues</h3>
+            <ul class="list-disc pl-5 space-y-1">${validationIssues}</ul>
+        </div>` : ''}
+
+        <div class="border-t pt-4">
+            <h3 class="font-medium text-gray-700 mb-2">Publish Decision</h3>
+            <div class="mb-3">${decBadge}</div>
+            ${isBlocked && blockedIssues ? `
+            <div class="bg-red-50 border border-red-200 rounded p-3 mb-4">
+                <p class="text-sm font-medium text-red-700 mb-1">Blocked reasons:</p>
+                <ul class="list-disc pl-5 space-y-1">${blockedIssues}</ul>
+            </div>` : ''}
+            <button
+                data-action="publish"
+                data-publish-enabled="${isAllowed}"
+                ${!isAllowed ? 'disabled' : ''}
+                class="px-4 py-2 rounded font-medium text-sm
+                    ${isAllowed
+                        ? 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
+                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'}">
+                Publish Lab
+            </button>
+        </div>
+    </div>`;
+}
+
+// ─── Learner: Lab Catalog ─────────────────────────────────────────────────────
+
+/**
+ * @param {object[]} labs - LearnerLabCatalogItem[]
+ */
+export function renderLabCatalog(labs) {
+    if (!Array.isArray(labs) || labs.length === 0) {
+        return `<p class="text-gray-500 text-center py-12">No published labs available yet.</p>`;
+    }
+
+    const cards = labs.map(lab => {
+        const startable = lab?.is_startable === true;
+        return `
+        <a href="/labgen-lab.html?labId=${encodeURIComponent(lab?.lab_id ?? '')}"
+           class="block border border-gray-200 rounded-lg p-5 hover:border-blue-400 hover:shadow-sm transition">
+            <div class="flex items-start justify-between gap-3">
+                <h3 class="font-semibold text-gray-900">${_safe(lab?.title ?? 'Untitled')}</h3>
+                ${startable
+                    ? _badge('Startable', 'bg-green-100 text-green-700')
+                    : _badge('Not available', 'bg-gray-100 text-gray-500')}
+            </div>
+            ${lab?.summary ? `<p class="text-sm text-gray-500 mt-2">${_safe(lab.summary)}</p>` : ''}
+            <div class="flex gap-4 mt-3 text-xs text-gray-400">
+                ${lab?.objective_count != null ? `<span>${_safe(lab.objective_count)} objectives</span>` : ''}
+                ${lab?.step_count != null ? `<span>${_safe(lab.step_count)} steps</span>` : ''}
+            </div>
+        </a>`;
+    }).join('');
+
+    return `<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">${cards}</div>`;
+}
+
+// ─── Learner: Lab Detail ──────────────────────────────────────────────────────
+
+/**
+ * @param {object} p
+ * @param {object} p.lab         - LearnerLabDetail
+ * @param {object} p.eligibility - LearnerLabEligibility
+ */
+export function renderLabDetail({ lab, eligibility }) {
+    const canStart  = eligibility?.is_eligible === true;
+    const deferred  = eligibility?.runtime_checks_deferred === true;
+
+    const objectives = Array.isArray(lab?.objectives)
+        ? lab.objectives.map(o => `<li class="text-sm text-gray-700">${_safe(o)}</li>`).join('')
+        : '';
+
+    const steps = Array.isArray(lab?.steps)
+        ? lab.steps.map((s, idx) => `
+            <div class="border border-gray-100 rounded p-3">
+                <p class="text-sm font-medium">${_safe(idx + 1)}. ${_safe(s?.title ?? s?.step_id ?? '')}</p>
+            </div>`
+          ).join('')
+        : '';
+
+    const eligibilityWarning = deferred
+        ? `<div class="bg-yellow-50 border border-yellow-300 rounded p-3 text-yellow-800 text-sm">
+               <strong>Note:</strong> Runtime environment checks are deferred and will run when you start.
+               Your eligibility may change at start time.
+           </div>`
+        : '';
+
+    const ineligibleReasons = !canStart && Array.isArray(eligibility?.reasons)
+        ? `<ul class="mt-2 list-disc pl-5 text-sm text-red-600">${
+              eligibility.reasons.map(r => `<li>${_safe(r?.message ?? r)}</li>`).join('')
+          }</ul>`
+        : '';
+
+    return `
+    <div class="space-y-6">
+        <h2 class="text-2xl font-semibold text-gray-900">${_safe(lab?.title ?? 'Lab')}</h2>
+
+        ${lab?.summary ? `<p class="text-gray-600">${_safe(lab.summary)}</p>` : ''}
+
+        ${eligibilityWarning}
+
+        ${objectives ? `
+        <div>
+            <h3 class="font-medium text-gray-700 mb-2">Objectives</h3>
+            <ul class="list-disc pl-5 space-y-1">${objectives}</ul>
+        </div>` : ''}
+
+        ${steps ? `
+        <div>
+            <h3 class="font-medium text-gray-700 mb-2">Steps (${_safe(lab?.steps?.length ?? 0)})</h3>
+            <div class="space-y-2">${steps}</div>
+        </div>` : ''}
+
+        <div class="border-t pt-4">
+            ${!canStart && ineligibleReasons ? `
+            <div class="bg-red-50 border border-red-200 rounded p-3 mb-3">
+                <p class="text-sm font-medium text-red-700">Not eligible to start:</p>
+                ${ineligibleReasons}
+            </div>` : ''}
+            <button
+                data-action="start-lab"
+                data-startable="${canStart}"
+                ${!canStart ? 'disabled' : ''}
+                class="px-5 py-2 rounded font-medium text-sm
+                    ${canStart
+                        ? 'bg-blue-600 text-white hover:bg-blue-700'
+                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'}">
+                Start Lab
+            </button>
+        </div>
+    </div>`;
+}
+
+// ─── Learner: Session ─────────────────────────────────────────────────────────
+
+/**
+ * @param {object} snapshot - LearnerSessionSnapshot
+ */
+export function renderSessionView(snapshot) {
+    if (!snapshot) return renderErrorState('Session not found');
+
+    const actions   = snapshot?.action_availability ?? {};
+    const canCheck  = actions?.can_check_step   === true;
+    const canComplete = actions?.can_complete   === true;
+    const canAbort  = actions?.can_abort        === true;
+    const readyToComplete = snapshot?.ready_to_complete === true;
+
+    const steps = Array.isArray(snapshot?.steps)
+        ? snapshot.steps.map((s, idx) => {
+            const isCurrent  = s?.step_id === snapshot?.current_step_id;
+            const isPassed   = snapshot?.completed_step_ids?.includes(s?.step_id);
+            const border     = isCurrent ? 'border-blue-400' : isPassed ? 'border-green-300' : 'border-gray-200';
+            const icon       = isPassed ? '✓' : isCurrent ? '→' : String(idx + 1);
+            const statusText = isPassed ? 'passed' : isCurrent ? 'current' : 'pending';
+            return `
+            <div class="flex items-start gap-3 border ${border} rounded p-3" data-step-status="${_safe(statusText)}">
+                <span class="text-sm font-bold w-6 text-center ${isPassed ? 'text-green-600' : isCurrent ? 'text-blue-600' : 'text-gray-400'}">${_safe(icon)}</span>
+                <div class="flex-1">
+                    <p class="text-sm font-medium text-gray-800">${_safe(s?.title ?? s?.step_id ?? '')}</p>
+                    ${isCurrent && Array.isArray(snapshot?.last_verify_results) ? _renderVerifyResults(snapshot.last_verify_results) : ''}
+                </div>
+            </div>`;
+          }).join('')
+        : '';
+
+    const failureReason = snapshot?.failure_reason
+        ? `<div class="bg-orange-50 border border-orange-200 rounded p-3 text-orange-800 text-sm">
+               <strong>Failure reason:</strong> ${_safe(snapshot.failure_reason)}
+           </div>`
+        : '';
+
+    return `
+    <div class="space-y-5">
+        <div class="flex items-center justify-between">
+            <h2 class="text-xl font-semibold text-gray-900">Lab Session</h2>
+            ${_statusBadge(snapshot?.state ?? 'UNKNOWN')}
+        </div>
+
+        ${snapshot?.lab_title ? `<p class="text-gray-600 font-medium">${_safe(snapshot.lab_title)}</p>` : ''}
+
+        ${failureReason}
+
+        ${steps ? `<div class="space-y-2">${steps}</div>` : ''}
+
+        <div class="flex gap-3 pt-4 border-t flex-wrap">
+            <button
+                data-action="check-step"
+                ${!canCheck ? 'disabled' : ''}
+                class="px-4 py-2 rounded text-sm font-medium
+                    ${canCheck ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}">
+                Check Current Step
+            </button>
+            <button
+                data-action="complete"
+                data-ready="${readyToComplete}"
+                ${!canComplete ? 'disabled' : ''}
+                class="px-4 py-2 rounded text-sm font-medium
+                    ${canComplete ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}">
+                Complete Lab
+            </button>
+            <button
+                data-action="abort"
+                ${!canAbort ? 'disabled' : ''}
+                class="px-4 py-2 rounded text-sm font-medium
+                    ${canAbort ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}">
+                Abort
+            </button>
+        </div>
+    </div>`;
+}
+
+function _renderVerifyResults(results) {
+    if (!Array.isArray(results) || results.length === 0) return '';
+    const items = results.map(r => {
+        const passed = r?.passed === true;
+        return `<div class="flex items-center gap-2 text-xs mt-1 ${passed ? 'text-green-600' : 'text-red-500'}">
+            <span>${passed ? '✓' : '✗'}</span>
+            <span>${_safe(r?.check_name ?? r?.check_id ?? 'check')}</span>
+            ${!passed && r?.failure_reason ? `<span class="text-gray-400">— ${_safe(r.failure_reason)}</span>` : ''}
+        </div>`;
+    }).join('');
+    return `<div class="mt-2">${items}</div>`;
+}
+
+// ─── Dev: Contract Pack viewer ────────────────────────────────────────────────
+
+/**
+ * @param {object} pack - ApiContractPack
+ */
+export function renderContractPackSummary(pack) {
+    if (!pack) return renderErrorState('Failed to load contract pack');
+
+    const endpoints = Array.isArray(pack?.endpoints)
+        ? pack.endpoints.map(ep => `
+            <tr class="border-t border-gray-100">
+                <td class="py-2 pr-4">
+                    <span class="font-mono text-xs px-1.5 py-0.5 rounded ${ep.method === 'GET' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}">${_safe(ep.method)}</span>
+                </td>
+                <td class="py-2 pr-4 font-mono text-xs text-gray-700">${_safe(ep.path)}</td>
+                <td class="py-2 text-xs text-gray-500">${_safe(ep.response_model)}</td>
+            </tr>`
+          ).join('')
+        : '';
+
+    return `
+    <div class="space-y-4">
+        <div class="flex items-center gap-3">
+            <h2 class="text-lg font-semibold">Contract Pack</h2>
+            ${_badge('v' + _safe(pack?.version ?? '?'), 'bg-blue-100 text-blue-700')}
+        </div>
+        <table class="w-full text-left text-sm">
+            <thead>
+                <tr class="text-xs text-gray-400 uppercase tracking-wide">
+                    <th class="pb-2 pr-4">Method</th>
+                    <th class="pb-2 pr-4">Path</th>
+                    <th class="pb-2">Response Model</th>
+                </tr>
+            </thead>
+            <tbody>${endpoints}</tbody>
+        </table>
+    </div>`;
+}

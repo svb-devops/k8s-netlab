@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lab Detail — K8S NetLab</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/js/tailwind-config.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- ── Header ── -->
+<header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+        <a href="/labgen-catalog.html" class="text-sm text-gray-500 hover:text-gray-700">← Catalog</a>
+        <span class="text-gray-300">|</span>
+        <h1 class="text-sm font-semibold text-gray-900" id="page-title">Lab Detail</h1>
+    </div>
+    <div id="dev-user-info" class="text-xs text-gray-400"></div>
+</header>
+
+<!-- ── Main ── -->
+<main class="max-w-3xl mx-auto px-6 py-8">
+    <div id="root"><!-- populated by JS --></div>
+</main>
+
+<script type="module">
+import { LabGenClient, LabGenApiError } from '/js/labgenClient.js';
+import { renderLabDetail, renderErrorState, renderNotFound, renderLoading } from '/js/labgenViews.js';
+
+const root = document.getElementById('root');
+const devInfo = document.getElementById('dev-user-info');
+
+async function init() {
+    root.innerHTML = renderLoading();
+
+    const client = new LabGenClient();
+    const me = await client.getMe();
+    if (!me) {
+        window.location.href = '/login.html?next=' + encodeURIComponent(window.location.href);
+        return;
+    }
+    devInfo.textContent = me.username;
+
+    const labId = new URLSearchParams(window.location.search).get('labId');
+    if (!labId) {
+        root.innerHTML = renderErrorState('Missing ?labId= parameter.');
+        return;
+    }
+
+    try {
+        const [lab, eligibility] = await Promise.all([
+            client.getLabDetail(labId),
+            client.getStartEligibility(labId),
+        ]);
+        document.getElementById('page-title').textContent = lab?.title ?? 'Lab Detail';
+        root.innerHTML = renderLabDetail({ lab, eligibility });
+        attachStartAction(client, labId);
+    } catch (e) {
+        if (e instanceof LabGenApiError && e.status === 404) {
+            // Do not reveal whether unpublished versions exist
+            root.innerHTML = renderNotFound('Lab');
+        } else {
+            root.innerHTML = renderErrorState(
+                e instanceof LabGenApiError ? e.message : 'Failed to load lab.'
+            );
+        }
+    }
+}
+
+function attachStartAction(client, labId) {
+    const btn = root.querySelector('[data-action="start-lab"]');
+    if (!btn || btn.disabled) return;
+    btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        btn.textContent = 'Starting…';
+        try {
+            const session = await client.startLab(labId);
+            window.location.href = `/labgen-session.html?sessionId=${encodeURIComponent(session?.session_id ?? session?.id ?? '')}`;
+        } catch (e) {
+            btn.disabled = false;
+            btn.textContent = 'Start Lab';
+            const msg = e instanceof LabGenApiError ? e.message : 'Failed to start lab.';
+            const errDiv = document.createElement('p');
+            errDiv.className = 'text-red-600 text-sm mt-2';
+            errDiv.textContent = msg;
+            btn.insertAdjacentElement('afterend', errDiv);
+        }
+    });
+}
+
+init();
+</script>
+</body>
+</html>

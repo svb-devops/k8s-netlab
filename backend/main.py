@@ -414,6 +414,36 @@ async def admin_page():
     return FileResponse(str(FRONTEND_DIR / "admin.html"))
 
 
+@app.get("/labgen-admin.html", include_in_schema=False)
+async def labgen_admin_page():
+    from fastapi.responses import FileResponse
+    return FileResponse(str(FRONTEND_DIR / "labgen-admin.html"))
+
+
+@app.get("/labgen-catalog.html", include_in_schema=False)
+async def labgen_catalog_page():
+    from fastapi.responses import FileResponse
+    return FileResponse(str(FRONTEND_DIR / "labgen-catalog.html"))
+
+
+@app.get("/labgen-lab.html", include_in_schema=False)
+async def labgen_lab_page():
+    from fastapi.responses import FileResponse
+    return FileResponse(str(FRONTEND_DIR / "labgen-lab.html"))
+
+
+@app.get("/labgen-session.html", include_in_schema=False)
+async def labgen_session_page():
+    from fastapi.responses import FileResponse
+    return FileResponse(str(FRONTEND_DIR / "labgen-session.html"))
+
+
+@app.get("/labgen-dev.html", include_in_schema=False)
+async def labgen_dev_page():
+    from fastapi.responses import FileResponse
+    return FileResponse(str(FRONTEND_DIR / "labgen-dev.html"))
+
+
 @app.get(
     "/api",
     summary="API Information",

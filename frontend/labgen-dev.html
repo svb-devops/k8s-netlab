@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<!--
+  DEV-ONLY page — not linked from production navigation.
+  Purpose: verify contract pack is reachable, inspect endpoint inventory,
+           and show current auth context.
+  Does not auto-generate anything or modify backend state.
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>[DEV] LabGen Contract Inspector</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/js/tailwind-config.js"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+
+<!-- ── DEV banner ── -->
+<div class="bg-yellow-400 text-yellow-900 text-xs font-bold text-center py-1 tracking-wide">
+    DEV-ONLY — not for production use
+</div>
+
+<header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+    <h1 class="text-sm font-semibold text-gray-900">LabGen Contract Inspector</h1>
+    <div id="auth-status" class="text-xs text-gray-400">checking auth…</div>
+</header>
+
+<main class="max-w-4xl mx-auto px-6 py-8 space-y-8">
+
+    <!-- Auth context -->
+    <section class="bg-white rounded-lg border border-gray-200 p-5">
+        <h2 class="font-semibold text-gray-700 mb-3">Auth Context</h2>
+        <div id="auth-details" class="text-sm text-gray-500">Loading…</div>
+        <div class="mt-4 flex gap-3">
+            <a href="/login.html" class="text-xs text-blue-600 hover:underline">Switch user → /login.html</a>
+            <a href="/labgen-catalog.html" class="text-xs text-blue-600 hover:underline">Learner Catalog</a>
+            <a href="/labgen-admin.html" class="text-xs text-blue-600 hover:underline">Admin Draft Review</a>
+        </div>
+    </section>
+
+    <!-- Contract Pack -->
+    <section class="bg-white rounded-lg border border-gray-200 p-5">
+        <div class="flex items-center justify-between mb-3">
+            <h2 class="font-semibold text-gray-700">Contract Pack</h2>
+            <button id="btn-fetch-contract"
+                class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+                Fetch
+            </button>
+        </div>
+        <div id="contract-root" class="text-sm text-gray-400">Click Fetch to load.</div>
+    </section>
+
+    <!-- Quick nav -->
+    <section class="bg-white rounded-lg border border-gray-200 p-5">
+        <h2 class="font-semibold text-gray-700 mb-3">Quick Navigation (dev role selector)</h2>
+        <p class="text-xs text-gray-400 mb-4">
+            Use the links below to navigate to each view. Auth is based on your current session cookie —
+            log in as admin to test admin views, as a student to test learner views.
+        </p>
+        <div class="grid grid-cols-2 gap-3 text-sm">
+            <div>
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Admin</p>
+                <div id="admin-nav" class="space-y-1">
+                    <p class="text-gray-400 text-xs">Enter a Draft ID below:</p>
+                    <div class="flex gap-2 mt-1">
+                        <input id="draft-id-input" type="text" placeholder="draft-id"
+                            class="border border-gray-200 rounded px-2 py-1 text-xs flex-1 font-mono">
+                        <button id="btn-go-admin"
+                            class="px-2 py-1 text-xs bg-gray-700 text-white rounded hover:bg-gray-900">
+                            Open →
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div>
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Learner</p>
+                <div class="space-y-1">
+                    <a href="/labgen-catalog.html"
+                       class="block text-xs text-blue-600 hover:underline">Lab Catalog</a>
+                    <div class="flex gap-2 mt-2">
+                        <input id="session-id-input" type="text" placeholder="session-id"
+                            class="border border-gray-200 rounded px-2 py-1 text-xs flex-1 font-mono">
+                        <button id="btn-go-session"
+                            class="px-2 py-1 text-xs bg-gray-700 text-white rounded hover:bg-gray-900">
+                            Open →
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<script type="module">
+import { LabGenClient, LabGenApiError } from '/js/labgenClient.js';
+import { renderContractPackSummary, renderErrorState } from '/js/labgenViews.js';
+
+const client = new LabGenClient();
+
+// Auth context
+async function loadAuth() {
+    const authStatus = document.getElementById('auth-status');
+    const authDetails = document.getElementById('auth-details');
+    const me = await client.getMe();
+    if (!me) {
+        authStatus.textContent = 'Not authenticated';
+        authDetails.innerHTML = '<span class="text-red-500">Not logged in.</span> <a href="/login.html" class="text-blue-600 underline">Login →</a>';
+        return;
+    }
+    authStatus.textContent = me.username + (me.is_admin ? ' (admin)' : ' (learner)');
+    authDetails.innerHTML = `
+        <span class="font-mono">${me.username}</span>
+        <span class="ml-2 px-2 py-0.5 rounded text-xs ${me.is_admin ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}">
+            ${me.is_admin ? 'admin' : 'learner'}
+        </span>
+    `;
+}
+
+// Contract pack
+document.getElementById('btn-fetch-contract').addEventListener('click', async () => {
+    const contractRoot = document.getElementById('contract-root');
+    contractRoot.textContent = 'Loading…';
+    try {
+        const pack = await client.getContractPack();
+        contractRoot.innerHTML = renderContractPackSummary(pack);
+    } catch (e) {
+        const msg = e instanceof LabGenApiError
+            ? `${e.status}: ${e.message}`
+            : 'Failed to fetch contract pack.';
+        contractRoot.innerHTML = renderErrorState(msg);
+    }
+});
+
+// Quick nav
+document.getElementById('btn-go-admin').addEventListener('click', () => {
+    const id = document.getElementById('draft-id-input').value.trim();
+    if (id) window.open(`/labgen-admin.html?draftId=${encodeURIComponent(id)}`, '_blank');
+});
+
+document.getElementById('btn-go-session').addEventListener('click', () => {
+    const id = document.getElementById('session-id-input').value.trim();
+    if (id) window.open(`/labgen-session.html?sessionId=${encodeURIComponent(id)}`, '_blank');
+});
+
+loadAuth();
+</script>
+</body>
+</html>
