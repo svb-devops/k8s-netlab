@@ -987,3 +987,63 @@ async def seed_demo_data(
         reset=body.reset,
         include_runtime_sessions=body.include_runtime_sessions,
     )
+
+
+# ===========================================================================
+# Image API — POST /api/images/resolve  and  POST /api/images/check-existence
+# ===========================================================================
+
+
+class ImageResolveRequest(BaseModel):
+    """Batch image resolve request."""
+    images: list[dict]  # each: {requested_image: str, image_intent?: str}
+
+
+class ImageCheckExistenceRequest(BaseModel):
+    """Batch registry existence check request."""
+    images: list[ImageResolutionResult]
+
+
+image_router = APIRouter(prefix="/api/images", tags=["images"])
+
+
+@image_router.post(
+    "/resolve",
+    response_model=list[ImageResolutionResult],
+    status_code=status.HTTP_200_OK,
+    summary="Resolve image intents to internal registry images (batch)",
+    description=(
+        "Maps LLM image intents to concrete internal registry images via the whitelist. "
+        "Admin only. Returns ImageResolutionResult for each input. "
+        "Does NOT run registry existence checks — call /check-existence separately."
+    ),
+)
+async def resolve_images(
+    body: ImageResolveRequest,
+    _admin: str = Depends(require_admin_user),
+    resolver: ImageResolver = Depends(get_image_resolver),
+) -> list[ImageResolutionResult]:
+    requests = [
+        (item.get("requested_image", ""), item.get("image_intent"))
+        for item in body.images
+    ]
+    return resolver.resolve_images(requests)
+
+
+@image_router.post(
+    "/check-existence",
+    response_model=list[ImageResolutionResult],
+    status_code=status.HTTP_200_OK,
+    summary="Check resolved images exist in internal registry (batch)",
+    description=(
+        "Runs registry existence checks for a list of already-resolved ImageResolutionResult objects. "
+        "Only RESOLVED images are checked; BLOCKED/UNRESOLVED pass through unchanged. "
+        "Admin only."
+    ),
+)
+async def check_image_existence(
+    body: ImageCheckExistenceRequest,
+    _admin: str = Depends(require_admin_user),
+    resolver: ImageResolver = Depends(get_image_resolver),
+) -> list[ImageResolutionResult]:
+    return [resolver.check_registry_existence(img) for img in body.images]
