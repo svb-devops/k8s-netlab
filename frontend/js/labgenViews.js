@@ -75,11 +75,32 @@ export function renderAdminDraftView({ preview, decision }) {
             ? _badge('BLOCKED', 'bg-red-100 text-red-700')
             : _badge(decision?.status ?? 'UNKNOWN', 'bg-gray-100 text-gray-600');
 
-    const blockedIssues = isBlocked && Array.isArray(decision?.blocked_reasons)
-        ? decision.blocked_reasons.map(r =>
-            `<li class="text-red-700 text-sm">${_safe(r?.message ?? r)}</li>`
-          ).join('')
+    const blockedIssues = isBlocked && Array.isArray(decision?.issues)
+        ? decision.issues
+            .filter(i => i?.severity === 'error')
+            .map(i => `<li class="text-red-700 text-sm">${_safe(i?.message ?? i)}</li>`)
+            .join('')
         : '';
+
+    // Image readiness section (admin-only; never shows registry credentials)
+    const ir = preview?.image_readiness;
+    const irStatus = ir?.status ?? null;
+    const irStatusClass = irStatus === 'READY'
+        ? 'bg-green-100 text-green-800'
+        : irStatus ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600';
+    const irBadge = irStatus ? _badge(irStatus, irStatusClass) : '';
+    const irIssues = Array.isArray(ir?.issues) && ir.issues.length > 0
+        ? ir.issues.map(i => {
+            const cls = i?.severity === 'error' ? 'text-red-700' : 'text-yellow-700';
+            return `<li class="${cls} text-sm">[${_safe(i?.code ?? '')}] ${_safe(i?.message ?? '')}</li>`;
+          }).join('')
+        : '';
+    const irCountSummary = ir ? [
+        ir.resolved_image_count > 0 ? `${_safe(ir.resolved_image_count)} resolved` : null,
+        ir.unresolved_image_count > 0 ? `${_safe(ir.unresolved_image_count)} unresolved` : null,
+        ir.blocked_image_count > 0 ? `${_safe(ir.blocked_image_count)} blocked` : null,
+        ir.missing_image_count > 0 ? `${_safe(ir.missing_image_count)} missing` : null,
+    ].filter(Boolean).join(', ') : '';
 
     const validationIssues = Array.isArray(preview?.validation_issues)
         ? preview.validation_issues.map(i =>
@@ -125,6 +146,16 @@ export function renderAdminDraftView({ preview, decision }) {
         <div class="bg-yellow-50 border border-yellow-200 rounded p-4">
             <h3 class="font-medium text-yellow-800 mb-2">Validation Issues</h3>
             <ul class="list-disc pl-5 space-y-1">${validationIssues}</ul>
+        </div>` : ''}
+
+        ${irStatus ? `
+        <div class="border border-gray-200 rounded p-4">
+            <div class="flex items-center gap-2 mb-2">
+                <h3 class="font-medium text-gray-700">Image Readiness</h3>
+                ${irBadge}
+            </div>
+            ${irCountSummary ? `<p class="text-xs text-gray-500 mb-2">${irCountSummary}</p>` : ''}
+            ${irIssues ? `<ul class="list-disc pl-5 space-y-1">${irIssues}</ul>` : ''}
         </div>` : ''}
 
         <div class="border-t pt-4">

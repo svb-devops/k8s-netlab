@@ -18,6 +18,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from backend.labgen.draft_preview import DraftPreviewService, DraftPreviewSummary
+from backend.labgen.image_readiness import ImageReadinessStatus
 
 
 class PublishDecisionStatus(str, Enum):
@@ -28,6 +29,7 @@ class PublishDecisionStatus(str, Enum):
 class PublishBlockReasonCode(str, Enum):
     VALIDATION_FAILED = "VALIDATION_FAILED"
     PREVIEW_NOT_PUBLISHABLE = "PREVIEW_NOT_PUBLISHABLE"
+    IMAGE_READINESS_BLOCKED = "IMAGE_READINESS_BLOCKED"
     DRAFT_NOT_FOUND = "DRAFT_NOT_FOUND"
     UNAUTHORIZED = "UNAUTHORIZED"
     INVALID_DRAFT_STATE = "INVALID_DRAFT_STATE"
@@ -102,27 +104,61 @@ class PublishDecisionService:
             for issue in snapshot.issues
         ]
 
+        # Map image readiness issues — include both errors and warnings so callers can
+        # distinguish validator failures from image resolution failures.
+        image_readiness_blocked = False
+        if snapshot.image_readiness is not None:
+            for ir_issue in snapshot.image_readiness.issues:
+                decision_issues.append(PublishDecisionIssue(
+                    code=ir_issue.code,
+                    message=sanitize_text(ir_issue.message),
+                    severity=ir_issue.severity,
+                    path=ir_issue.path,
+                    source="image_readiness",
+                ))
+            if snapshot.image_readiness.status != ImageReadinessStatus.READY:
+                image_readiness_blocked = True
+
         if not snapshot.is_publishable:
-            # Always include a top-level summary code so callers can check for
-            # VALIDATION_FAILED / PREVIEW_NOT_PUBLISHABLE without inspecting every issue.
+            # Add top-level summary codes so callers can quickly filter issues by source.
+            # Multiple summary codes can coexist (e.g. validator + image readiness both fail).
             has_validator_failure = snapshot.validation_status == "failed"
-            block_code = (
-                PublishBlockReasonCode.VALIDATION_FAILED
-                if has_validator_failure
-                else PublishBlockReasonCode.PREVIEW_NOT_PUBLISHABLE
-            )
-            decision_issues.append(
-                PublishDecisionIssue(
-                    code=block_code.value,
-                    message=sanitize_text(
-                        "Validation failed: draft cannot be published"
-                        if has_validator_failure
-                        else "Preview indicates draft is not publishable"
-                    ),
-                    severity="error",
-                    source="validator" if has_validator_failure else "preview",
+
+            if image_readiness_blocked:
+                decision_issues.append(
+                    PublishDecisionIssue(
+                        code=PublishBlockReasonCode.IMAGE_READINESS_BLOCKED.value,
+                        message=sanitize_text(
+                            "Image readiness check failed — resolve all images before publishing"
+                        ),
+                        severity="error",
+                        source="image_readiness",
+                    )
                 )
-            )
+
+            if has_validator_failure:
+                decision_issues.append(
+                    PublishDecisionIssue(
+                        code=PublishBlockReasonCode.VALIDATION_FAILED.value,
+                        message=sanitize_text(
+                            "Validation failed: draft cannot be published"
+                        ),
+                        severity="error",
+                        source="validator",
+                    )
+                )
+            elif not image_readiness_blocked:
+                # Not publishable for some other reason (should be rare)
+                decision_issues.append(
+                    PublishDecisionIssue(
+                        code=PublishBlockReasonCode.PREVIEW_NOT_PUBLISHABLE.value,
+                        message=sanitize_text(
+                            "Preview indicates draft is not publishable"
+                        ),
+                        severity="error",
+                        source="preview",
+                    )
+                )
 
         decision_status = (
             PublishDecisionStatus.ALLOWED

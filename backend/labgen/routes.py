@@ -65,6 +65,7 @@ from backend.labgen.runtime_audit import RuntimeAuditRepository, RuntimeAuditSer
 from backend.labgen.verifier import VerifierService
 from backend.labgen.verifier_credentials import VerifierCredentialStore
 from backend.labgen.draft_preview import DraftPreviewService, DraftPreviewSnapshot
+from backend.labgen.image_readiness import ImageReadinessService
 from backend.labgen.publish_decision import PublishDecision, PublishDecisionService, PublishDecisionStatus
 from backend.labgen.learner_catalog import (
     LearnerCatalogService,
@@ -207,6 +208,7 @@ def get_preview_service() -> DraftPreviewService:
         _preview_svc = DraftPreviewService(
             repo=get_repository(),
             validator=StaticValidator(),
+            image_readiness_svc=ImageReadinessService(),
         )
     return _preview_svc
 
@@ -228,7 +230,11 @@ def get_decision_service(
 ) -> PublishDecisionService:
     """Per-request factory so that test repo overrides propagate correctly."""
     return PublishDecisionService(
-        preview_svc=DraftPreviewService(repo=repo, validator=StaticValidator())
+        preview_svc=DraftPreviewService(
+            repo=repo,
+            validator=StaticValidator(),
+            image_readiness_svc=ImageReadinessService(),
+        )
     )
 
 

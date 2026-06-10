@@ -14,6 +14,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
+from backend.labgen.image_readiness import ImageReadinessResult, ImageReadinessService, ImageReadinessStatus
 from backend.labgen.models import BlockingLevel, LabDraft, ValidatorStatus
 from backend.labgen.repository import LabDraftRepository
 from backend.labgen.static_validator import StaticValidator
@@ -76,6 +77,7 @@ class DraftPreviewSnapshot(BaseModel):
     issues: list[DraftPreviewIssue] = Field(default_factory=list)
     generated_at: Optional[str] = None
     updated_at: Optional[str] = None
+    image_readiness: Optional[ImageReadinessResult] = None
     is_publishable: bool
 
 
@@ -111,10 +113,14 @@ def sanitize_value(v: Any) -> Any:
 
 class DraftPreviewService:
     def __init__(
-        self, repo: LabDraftRepository, validator: StaticValidator
+        self,
+        repo: LabDraftRepository,
+        validator: StaticValidator,
+        image_readiness_svc: Optional[ImageReadinessService] = None,
     ) -> None:
         self._repo = repo
         self._validator = validator
+        self._image_readiness_svc = image_readiness_svc
 
     def build_snapshot(self, draft_id: str) -> Optional[DraftPreviewSnapshot]:
         """
@@ -160,14 +166,24 @@ class DraftPreviewService:
                 )
             )
 
-        # is_publishable: no PUBLISH_BLOCKING or REVIEW_REQUIRED failures
+        # is_publishable: no PUBLISH_BLOCKING or REVIEW_REQUIRED failures + image readiness
         publish_blocking = any(
             r.blocking_level == BlockingLevel.PUBLISH_BLOCKING for r in failed_results
         )
         review_required = any(
             r.blocking_level == BlockingLevel.REVIEW_REQUIRED for r in failed_results
         )
-        is_publishable = not publish_blocking and not review_required
+
+        # Image readiness — only gates is_publishable when service is injected
+        image_readiness: Optional[ImageReadinessResult] = None
+        if self._image_readiness_svc is not None:
+            image_readiness = self._image_readiness_svc.evaluate(list(draft.image_resolution))
+
+        image_ready = (
+            image_readiness is None
+            or image_readiness.status == ImageReadinessStatus.READY
+        )
+        is_publishable = not publish_blocking and not review_required and image_ready
 
         # Build steps
         steps: list[DraftPreviewStep] = []
@@ -236,5 +252,6 @@ class DraftPreviewService:
             updated_at=(
                 draft.updated_at.isoformat() if draft.updated_at else None
             ),
+            image_readiness=image_readiness,
             is_publishable=is_publishable,
         )
