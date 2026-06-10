@@ -48,3 +48,13 @@ class LabDraftRepository:
 
         safe_update_json(self._path, _upd)
         return draft
+
+    def list_all(self) -> list[LabDraft]:
+        data = safe_read_json(self._path)
+        result = []
+        for lab_id, raw in data.items():
+            try:
+                result.append(LabDraft.model_validate(raw))
+            except Exception as exc:
+                logger.error("LabDraftRepository.list_all(%s) deserialization failed: %s", lab_id, exc)
+        return result

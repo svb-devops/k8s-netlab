@@ -66,6 +66,12 @@ from backend.labgen.verifier import VerifierService
 from backend.labgen.verifier_credentials import VerifierCredentialStore
 from backend.labgen.draft_preview import DraftPreviewService, DraftPreviewSnapshot
 from backend.labgen.publish_decision import PublishDecision, PublishDecisionService, PublishDecisionStatus
+from backend.labgen.learner_catalog import (
+    LearnerCatalogService,
+    LearnerLabCatalogItem,
+    LearnerLabDetail,
+    LearnerLabEligibility,
+)
 
 router = APIRouter(prefix="/api/labgen", tags=["labgen"])
 
@@ -195,6 +201,18 @@ def get_preview_service() -> DraftPreviewService:
             validator=StaticValidator(),
         )
     return _preview_svc
+
+
+def get_catalog_service(
+    repo: LabDraftRepository = Depends(get_repository),
+) -> LearnerCatalogService:
+    """Per-request factory — test repo overrides propagate via Depends(get_repository)."""
+    from backend.labgen.lab_session_repository import LabSessionRepository as _SessionRepo
+    return LearnerCatalogService(
+        draft_repo=repo,
+        validator=StaticValidator(),
+        session_repo=_SessionRepo(),
+    )
 
 
 def get_decision_service(
@@ -782,3 +800,56 @@ async def generate_lab_draft(
         repair_attempted=outcome.repair_attempted,
         repair_applied=outcome.repair_applied,
     )
+
+
+# ---------------------------------------------------------------------------
+# Learner Lab Catalog API  — GET /api/labs  (any authenticated user)
+# ---------------------------------------------------------------------------
+
+learner_catalog_router = APIRouter(prefix="/api/labs", tags=["labs"])
+
+
+@learner_catalog_router.get("", response_model=list[LearnerLabCatalogItem])
+async def list_labs(
+    current_user: str = Depends(get_current_user),
+    svc: LearnerCatalogService = Depends(get_catalog_service),
+) -> list[LearnerLabCatalogItem]:
+    """
+    List all published labs. Only PUBLISHED labs are returned; drafts are never revealed.
+    Available to any authenticated user (learner or admin — both receive the learner-safe view).
+    """
+    return svc.list_published_labs(actor_user=current_user)
+
+
+@learner_catalog_router.get("/{lab_id}", response_model=LearnerLabDetail)
+async def get_lab_detail(
+    lab_id: str,
+    current_user: str = Depends(get_current_user),
+    svc: LearnerCatalogService = Depends(get_catalog_service),
+) -> LearnerLabDetail:
+    """
+    Return learner-safe detail for a published lab, including start eligibility.
+    Returns 404 for both missing and unpublished labs — does not reveal draft existence.
+    """
+    detail = svc.get_published_lab_detail(lab_id=lab_id, actor_user=current_user)
+    if detail is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lab not found")
+    return detail
+
+
+@learner_catalog_router.get("/{lab_id}/start-eligibility", response_model=LearnerLabEligibility)
+async def get_start_eligibility(
+    lab_id: str,
+    current_user: str = Depends(get_current_user),
+    svc: LearnerCatalogService = Depends(get_catalog_service),
+) -> LearnerLabEligibility:
+    """
+    Evaluate whether the current user may start this lab.
+    READ-ONLY: does not create sessions, namespaces, audit events, or VM operations.
+    is_startable=true does NOT guarantee start will succeed — start re-runs image TTL recheck.
+    Returns 404 for missing or unpublished labs.
+    """
+    eligibility = svc.evaluate_start_eligibility(lab_id=lab_id, actor_user=current_user)
+    if eligibility is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lab not found")
+    return eligibility

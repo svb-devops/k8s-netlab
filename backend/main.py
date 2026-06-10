@@ -37,6 +37,7 @@ from backend.labgen.routes import (
     internal_router,
     verifier_router,
     lab_draft_gen_router,
+    learner_catalog_router,
 )
 from backend.middleware import JsonFormatter, RequestIDMiddleware, SecurityHeadersMiddleware
 from backend.proxmox_api import connect_proxmox
@@ -236,6 +237,7 @@ app.include_router(lab_session_router)    # Lab session lifecycle
 app.include_router(internal_router)       # Internal cleanup (admin only)
 app.include_router(verifier_router)       # Internal verifier check (admin only)
 app.include_router(lab_draft_gen_router)  # LLM draft generation
+app.include_router(learner_catalog_router)  # Learner lab catalog & eligibility
 
 
 # ============================================================
