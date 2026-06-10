@@ -227,6 +227,27 @@ _ENDPOINTS: list[ApiContractEndpoint] = [
         is_read_only=True,
         tags=["lab-sessions"],
     ),
+    # --- provider diagnostics ---
+    ApiContractEndpoint(
+        path="/api/labgen/llm-provider/status",
+        method="GET",
+        summary="LLM provider boundary status — mode, dry_run_available, safety policy (admin-only)",
+        category=ApiContractCategory.ADMIN_REVIEW,
+        auth="admin",
+        response_model="LLMProviderStatusResponse",
+        is_read_only=True,
+        tags=["labgen"],
+    ),
+    ApiContractEndpoint(
+        path="/api/labgen/llm-provider/dry-run",
+        method="POST",
+        summary="Test provider boundary with dry-run — no draft created, no real LLM (admin-only)",
+        category=ApiContractCategory.ADMIN_REVIEW,
+        auth="admin",
+        response_model="DryRunResponse",
+        is_read_only=False,
+        tags=["labgen"],
+    ),
 ]
 
 
@@ -260,6 +281,9 @@ _SENSITIVE_FIELD_POLICY = SensitiveFieldPolicy(
         "internal registry auth",
         "demo seed registry credential",
         "demo seed runtime internal",
+        "api_key",
+        "provider_trace_id",
+        "chain_of_thought",
     ],
     prohibited_patterns=[
         "eyJ[A-Za-z0-9._-]+\\.[A-Za-z0-9._-]+\\.[A-Za-z0-9._-]+",
@@ -724,6 +748,45 @@ _EXAMPLES: list[ApiContractExample] = [
             "checked_at": "2026-06-10T00:00:00+00:00",
         },
     ),
+    ApiContractExample(
+        name="llm_provider_status",
+        category=ApiContractCategory.ADMIN_REVIEW,
+        description=(
+            "GET /api/labgen/llm-provider/status — admin-only provider boundary diagnostics. "
+            "live_enabled is always false. No API keys or raw output in response."
+        ),
+        endpoint_path="/api/labgen/llm-provider/status",
+        response={
+            "provider_name": "fake",
+            "mode": "fake_only",
+            "live_enabled": False,
+            "dry_run_available": False,
+            "timeout_ms": 30000,
+            "max_output_tokens": 4096,
+            "safety_policy_summary": (
+                "Prohibited: raw output, chain of thought, hidden prompts, "
+                "provider data, API keys. sanitize_text() applied to all dynamic content."
+            ),
+            "warnings": [],
+        },
+    ),
+    ApiContractExample(
+        name="llm_provider_dry_run_disabled",
+        category=ApiContractCategory.ADMIN_REVIEW,
+        description=(
+            "POST /api/labgen/llm-provider/dry-run — admin-only boundary test. "
+            "No draft created. No real LLM. No raw output returned."
+        ),
+        endpoint_path="/api/labgen/llm-provider/dry-run",
+        response={
+            "provider_name": "fake",
+            "mode": "disabled",
+            "candidate_json": None,
+            "warnings": [],
+            "usage_summary": None,
+            "rejected_reason": "provider_disabled",
+        },
+    ),
 ]
 
 
@@ -743,6 +806,8 @@ _NOTES = [
     "LabSessionState (start/complete/abort responses) includes internal fields not safe for direct UI display; "
     "use LearnerSessionSnapshot for learner-facing runtime state",
     "GET /api/labgen/contract-pack itself is admin-only and does not appear in the learner-facing categories",
+    "LLM provider boundary (GET /api/labgen/llm-provider/status): live_enabled is always false — "
+    "live providers exist as config enum values only and cannot be activated without code change",
 ]
 
 

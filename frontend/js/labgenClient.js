@@ -10,8 +10,10 @@
 
 // Contract-sourced path templates — keep in sync with api_contract.py
 const PATHS = {
-    demoSeed:        '/api/labgen/demo/seed',
-    contractPack:    '/api/labgen/contract-pack',
+    demoSeed:           '/api/labgen/demo/seed',
+    contractPack:       '/api/labgen/contract-pack',
+    llmProviderStatus:  '/api/labgen/llm-provider/status',
+    llmProviderDryRun:  '/api/labgen/llm-provider/dry-run',
     generateDraft:   '/api/lab-drafts/generate',
     draftPreview:    '/api/labgen/drafts/:lab_id/preview',
     publishDecision: '/api/labgen/drafts/:lab_id/publish-decision',
@@ -179,6 +181,25 @@ export class LabGenClient {
     /** GET /api/lab-sessions/:session_id/audit-events */
     async getAuditEvents(sessionId) {
         return this._request('GET', _fill(PATHS.auditEvents, { session_id: sessionId }));
+    }
+
+    // ── LLM provider boundary (admin-only, diagnostics) ──────────────────────
+    /** GET /api/labgen/llm-provider/status */
+    async getLLMProviderStatus() {
+        return this._request('GET', PATHS.llmProviderStatus);
+    }
+
+    /**
+     * POST /api/labgen/llm-provider/dry-run
+     * @param {object} opts
+     * @param {string} [opts.sanitizedPrompt='test prompt'] - sanitized user prompt
+     * @param {string} [opts.injectMode='valid_candidate']  - dry-run inject mode
+     */
+    async runProviderDryRun({ sanitizedPrompt = 'test prompt', injectMode = 'valid_candidate' } = {}) {
+        return this._request('POST', PATHS.llmProviderDryRun, {
+            sanitized_prompt: sanitizedPrompt,
+            inject_mode: injectMode,
+        });
     }
 
     // ── Demo seed (admin-only, dev/demo use only) ─────────────────────────────

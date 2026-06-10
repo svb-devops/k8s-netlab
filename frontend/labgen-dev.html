@@ -68,6 +68,49 @@
         <div id="seed-result" class="mt-4"></div>
     </section>
 
+    <!-- LLM Provider Status (admin-only diagnostics) -->
+    <section class="bg-white rounded-lg border border-gray-200 p-5">
+        <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+                <h2 class="font-semibold text-gray-700">LLM Provider Status</h2>
+                <span class="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 font-medium">ADMIN-ONLY</span>
+            </div>
+            <button id="btn-fetch-provider-status"
+                class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+                Fetch Status
+            </button>
+        </div>
+        <p class="text-xs text-gray-400 mb-3">
+            Shows the current provider mode and safety policy.
+            Never shows API keys, raw output, or provider metadata.
+        </p>
+        <div id="provider-status-root" class="text-sm text-gray-400">Click Fetch Status to load.</div>
+
+        <div class="mt-4 border-t pt-3">
+            <p class="text-xs font-medium text-gray-600 mb-2">Dry-Run Test (admin-only)</p>
+            <p class="text-xs text-gray-400 mb-2">
+                Exercises the provider boundary without creating a draft or calling a real LLM.
+            </p>
+            <div class="flex items-center gap-3">
+                <select id="dry-run-inject-mode"
+                    class="text-xs border border-gray-300 rounded px-2 py-1">
+                    <option value="valid_candidate">valid_candidate</option>
+                    <option value="invalid_candidate">invalid_candidate</option>
+                    <option value="malformed">malformed</option>
+                    <option value="timeout">timeout</option>
+                    <option value="provider_disabled">provider_disabled</option>
+                    <option value="safety_rejection">safety_rejection</option>
+                    <option value="sensitive_output">sensitive_output</option>
+                </select>
+                <button id="btn-run-dry-run"
+                    class="px-3 py-1 text-xs bg-yellow-500 text-white rounded hover:bg-yellow-600 font-medium">
+                    Run Dry-Run
+                </button>
+            </div>
+            <div id="dry-run-result" class="mt-3"></div>
+        </div>
+    </section>
+
     <!-- Contract Pack -->
     <section class="bg-white rounded-lg border border-gray-200 p-5">
         <div class="flex items-center justify-between mb-3">
@@ -167,7 +210,7 @@
 
 <script type="module">
 import { LabGenClient, LabGenApiError } from '/js/labgenClient.js';
-import { renderContractPackSummary, renderDemoSeedResult, renderErrorState } from '/js/labgenViews.js';
+import { renderContractPackSummary, renderDemoSeedResult, renderErrorState, renderLLMProviderStatus } from '/js/labgenViews.js';
 
 const client = new LabGenClient();
 
@@ -220,6 +263,42 @@ document.getElementById('btn-seed-demo').addEventListener('click', async () => {
     } finally {
         btn.disabled = false;
         btn.textContent = 'Seed Demo Data';
+    }
+});
+
+// LLM provider status
+document.getElementById('btn-fetch-provider-status').addEventListener('click', async () => {
+    const root = document.getElementById('provider-status-root');
+    root.textContent = 'Loading…';
+    try {
+        const status = await client.getLLMProviderStatus();
+        root.innerHTML = renderLLMProviderStatus(status);
+    } catch (e) {
+        const msg = e instanceof LabGenApiError ? `${e.status}: ${e.message}` : 'Failed to load.';
+        root.innerHTML = renderErrorState(msg);
+    }
+});
+
+document.getElementById('btn-run-dry-run').addEventListener('click', async () => {
+    const resultEl = document.getElementById('dry-run-result');
+    const mode = document.getElementById('dry-run-inject-mode').value;
+    resultEl.textContent = 'Running…';
+    try {
+        const resp = await client.runProviderDryRun({ injectMode: mode });
+        const lines = [
+            `mode: ${resp.mode}`,
+            `provider: ${resp.provider_name}`,
+            resp.rejected_reason ? `rejected: ${resp.rejected_reason}` : null,
+            resp.candidate_json ? `candidate_json: present (${Object.keys(resp.candidate_json).length} keys)` : 'candidate_json: null',
+            resp.usage_summary ? `usage: ${resp.usage_summary}` : null,
+        ].filter(Boolean);
+        const pre = document.createElement('pre');
+        pre.className = 'text-xs text-gray-700 bg-gray-50 p-2 rounded border overflow-auto';
+        pre.textContent = lines.join('\n');
+        resultEl.replaceChildren(pre);
+    } catch (e) {
+        const msg = e instanceof LabGenApiError ? `${e.status}: ${e.message}` : 'Dry-run failed.';
+        resultEl.innerHTML = renderErrorState(msg);
     }
 });
 

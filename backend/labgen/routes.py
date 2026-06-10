@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from backend import config
 from backend.auth import auth_manager
@@ -527,6 +527,156 @@ async def get_contract_pack(
     READ-ONLY: does not publish, start, create sessions, or emit audit events.
     """
     return build_contract_pack()
+
+
+# ===========================================================================
+# LLM Provider Boundary — GET /api/labgen/llm-provider/status  (admin-only)
+#                          POST /api/labgen/llm-provider/dry-run (admin-only)
+# ===========================================================================
+
+from backend.labgen.llm_provider_boundary import (  # noqa: E402
+    DryRunLLMProviderAdapter,
+    DryRunTimeoutSimulated,
+    LLMProviderBoundaryService,
+    LLMProviderMode,
+    LLMProviderRequest,
+    _ALLOWED_INJECT_MODES,
+)
+
+_llm_provider_svc: Optional[LLMProviderBoundaryService] = None
+
+
+def get_llm_provider_service() -> LLMProviderBoundaryService:
+    global _llm_provider_svc
+    if _llm_provider_svc is None:
+        _llm_provider_svc = LLMProviderBoundaryService.create_from_env()
+    return _llm_provider_svc
+
+
+class LLMProviderStatusResponse(BaseModel):
+    provider_name: str
+    mode: str
+    live_enabled: bool
+    dry_run_available: bool
+    timeout_ms: int
+    max_output_tokens: int
+    safety_policy_summary: str
+    warnings: list[str]
+
+
+class DryRunRequest(BaseModel):
+    sanitized_prompt: str = Field(..., min_length=1, max_length=2000)
+    inject_mode: str = Field(default="valid_candidate", max_length=40)
+
+    @field_validator("inject_mode")
+    @classmethod
+    def _validate_inject_mode(cls, v: str) -> str:
+        if v not in _ALLOWED_INJECT_MODES:
+            raise ValueError(
+                f"inject_mode {v!r} must be one of {sorted(_ALLOWED_INJECT_MODES)}"
+            )
+        return v
+
+
+class DryRunResponse(BaseModel):
+    provider_name: str
+    mode: str
+    candidate_json: Optional[dict] = None
+    warnings: list[str] = Field(default_factory=list)
+    usage_summary: Optional[str] = None
+    rejected_reason: Optional[str] = None
+
+
+_SAFETY_POLICY_SUMMARY = (
+    "Prohibited: raw output, chain of thought, hidden prompts, provider data, API keys. "
+    "sanitize_text() applied to all dynamic content."
+)
+
+
+@router.get(
+    "/llm-provider/status",
+    response_model=LLMProviderStatusResponse,
+    summary="LLM provider boundary status (admin-only diagnostics)",
+    tags=["labgen"],
+)
+async def get_llm_provider_status(
+    admin: str = Depends(require_admin_user),
+    svc: LLMProviderBoundaryService = Depends(get_llm_provider_service),
+) -> LLMProviderStatusResponse:
+    """
+    READ-ONLY: returns provider config status.
+    Never returns API keys, raw output, hidden prompts, or provider metadata.
+    """
+    cfg = svc.config
+    warnings: list[str] = []
+    if cfg.mode in (LLMProviderMode.DISABLED, LLMProviderMode.LIVE_DISABLED):
+        warnings.append(
+            f"LLM provider mode is {cfg.mode.value} — generation uses fake/template path."
+        )
+    return LLMProviderStatusResponse(
+        provider_name=cfg.provider_name.value,
+        mode=cfg.mode.value,
+        live_enabled=False,
+        dry_run_available=svc.dry_run_available,
+        timeout_ms=cfg.timeout_ms,
+        max_output_tokens=cfg.max_output_tokens,
+        safety_policy_summary=_SAFETY_POLICY_SUMMARY,
+        warnings=warnings,
+    )
+
+
+@router.post(
+    "/llm-provider/dry-run",
+    response_model=DryRunResponse,
+    summary="Test provider boundary with dry-run — no draft created, no real LLM",
+    tags=["labgen"],
+)
+async def run_llm_provider_dry_run(
+    body: DryRunRequest,
+    admin: str = Depends(require_admin_user),
+) -> DryRunResponse:
+    """
+    Dry-run the provider boundary.
+
+    Admin-only. Does NOT create a draft. Does NOT touch the repository.
+    Does NOT call a real LLM. Does NOT return raw output.
+    """
+    cfg = LLMProviderBoundaryService.create_from_env().config
+    from backend.labgen.llm_provider_boundary import LLMProviderConfig
+
+    dry_run_config = LLMProviderConfig(
+        provider_name=cfg.provider_name,
+        mode=LLMProviderMode.DRY_RUN,
+        timeout_ms=cfg.timeout_ms,
+        max_output_tokens=cfg.max_output_tokens,
+    )
+    svc = LLMProviderBoundaryService(
+        config=dry_run_config,
+        dry_run_adapter=DryRunLLMProviderAdapter(inject_mode=body.inject_mode),
+    )
+    pr = LLMProviderRequest(
+        purpose="draft_generation",
+        sanitized_user_prompt=body.sanitized_prompt,
+    )
+    try:
+        resp = svc.call(pr)
+    except DryRunTimeoutSimulated:
+        resp_name = cfg.provider_name.value
+        return DryRunResponse(
+            provider_name=resp_name,
+            mode=LLMProviderMode.DRY_RUN.value,
+            rejected_reason="timeout_simulated",
+            warnings=["dry-run: provider timeout was simulated"],
+        )
+
+    return DryRunResponse(
+        provider_name=resp.provider_name.value,
+        mode=resp.mode.value,
+        candidate_json=resp.candidate_json,
+        warnings=resp.warnings,
+        usage_summary=resp.usage_summary,
+        rejected_reason=resp.rejected_reason,
+    )
 
 
 # ===========================================================================

@@ -379,6 +379,7 @@ class TestEndpointInventory:
             "backend.labgen.learner_session_snapshot",
             "backend.labgen.runtime_audit",
             "backend.labgen.step_progression_service",
+            "backend.labgen.routes",
         ]
         known: dict[str, type] = {}
         for mod_name in _MODULES:
@@ -713,11 +714,11 @@ class TestRegression:
     def test_contract_pack_endpoint_count(self):
         """Endpoint count must match the number of declared routes."""
         pack = build_contract_pack()
-        # 14 endpoints: 1 generate + 3 admin_review + 3 learner_catalog +
-        # 2 learner_runtime + 5 runtime_actions
-        assert len(pack.endpoints) == 14
+        # 16 endpoints: 1 generate + 3 admin_review + 3 learner_catalog +
+        # 2 learner_runtime + 5 runtime_actions + 2 llm_provider
+        assert len(pack.endpoints) == 16
 
     def test_contract_pack_example_count(self):
         pack = build_contract_pack()
-        # 13 examples: 12 previous + demo_seed_success
-        assert len(pack.example_responses) == 13
+        # 15 examples: 13 previous + llm_provider_status + llm_provider_dry_run_disabled
+        assert len(pack.example_responses) == 15

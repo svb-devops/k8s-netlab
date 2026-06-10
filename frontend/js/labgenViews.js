@@ -428,6 +428,70 @@ export function renderContractPackSummary(pack) {
  * @param {object} result - DemoSeedResult from POST /api/labgen/demo/seed
  * @returns {string} HTML string (safe to set as innerHTML)
  */
+/**
+ * Render LLM provider boundary status (admin-only diagnostics).
+ * Never renders API keys, raw output, hidden prompts, or provider metadata.
+ * @param {object} status - LLMProviderStatusResponse
+ */
+export function renderLLMProviderStatus(status) {
+    if (!status || typeof status !== 'object') {
+        return renderErrorState('No provider status available.');
+    }
+
+    const modeBadge = status.mode === 'fake_only'
+        ? _badge('FAKE_ONLY', 'bg-blue-100 text-blue-800')
+        : status.mode === 'dry_run'
+            ? _badge('DRY_RUN', 'bg-yellow-100 text-yellow-800')
+            : status.mode === 'disabled'
+                ? _badge('DISABLED', 'bg-gray-100 text-gray-500')
+                : _badge(_safe(status.mode ?? 'UNKNOWN'), 'bg-gray-100 text-gray-600');
+
+    const dryRunBadge = status.dry_run_available
+        ? _badge('available', 'bg-green-100 text-green-700')
+        : _badge('not available', 'bg-gray-100 text-gray-500');
+
+    const warnings = Array.isArray(status.warnings) && status.warnings.length > 0
+        ? `<div class="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
+            <ul class="space-y-0.5">
+                ${status.warnings.map(w => `<li>${_safe(w)}</li>`).join('')}
+            </ul>
+          </div>`
+        : '';
+
+    return `<div class="space-y-3">
+        <div class="grid grid-cols-2 gap-3 text-xs">
+            <div>
+                <p class="font-medium text-gray-500 uppercase tracking-wide mb-1">Provider</p>
+                <p class="font-mono text-gray-800">${_safe(status.provider_name ?? 'unknown')}</p>
+            </div>
+            <div>
+                <p class="font-medium text-gray-500 uppercase tracking-wide mb-1">Mode</p>
+                <p>${modeBadge}</p>
+            </div>
+            <div>
+                <p class="font-medium text-gray-500 uppercase tracking-wide mb-1">Live Enabled</p>
+                <p class="font-mono text-gray-800">${_safe(String(status.live_enabled ?? false))}</p>
+            </div>
+            <div>
+                <p class="font-medium text-gray-500 uppercase tracking-wide mb-1">Dry-Run</p>
+                <p>${dryRunBadge}</p>
+            </div>
+            <div>
+                <p class="font-medium text-gray-500 uppercase tracking-wide mb-1">Timeout (ms)</p>
+                <p class="font-mono text-gray-800">${_safe(String(status.timeout_ms ?? 0))}</p>
+            </div>
+            <div>
+                <p class="font-medium text-gray-500 uppercase tracking-wide mb-1">Max Output</p>
+                <p class="font-mono text-gray-800">${_safe(String(status.max_output_tokens ?? 0))}</p>
+            </div>
+        </div>
+        <div class="text-xs text-gray-500 border-t pt-2">
+            <span class="font-medium">Safety:</span> ${_safe(status.safety_policy_summary ?? '')}
+        </div>
+        ${warnings}
+    </div>`;
+}
+
 export function renderDemoSeedResult(result) {
     if (!result) return renderErrorState('No seed result received');
 

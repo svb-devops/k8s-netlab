@@ -214,6 +214,15 @@ AI_TUTOR_MAX_TURNS: int = _get_env_int("AI_TUTOR_MAX_TURNS", 20)
 if not DEEPSEEK_API_KEY:
     logger.warning("DEEPSEEK_API_KEY not set — AI tutor (/api/ai/chat) will be unavailable")
 
+# --- LabGen LLM Provider Configuration ---
+# Controls the provider boundary for LabGen draft generation.
+# Default: fake_only — no real LLM, no API keys, no network calls.
+# Changing to a live provider requires separate credential injection (not implemented here).
+LABGEN_LLM_PROVIDER_MODE: str = os.getenv("LABGEN_LLM_PROVIDER_MODE", "fake_only")
+LABGEN_LLM_PROVIDER_NAME: str = os.getenv("LABGEN_LLM_PROVIDER_NAME", "fake")
+LABGEN_LLM_TIMEOUT_MS: int = min(_get_env_int("LABGEN_LLM_TIMEOUT_MS", 30000), 60000)
+LABGEN_LLM_MAX_OUTPUT_TOKENS: int = min(_get_env_int("LABGEN_LLM_MAX_OUTPUT_TOKENS", 4096), 8192)
+
 
 def _warn_insecure_defaults() -> None:
     """Log warnings for insecure default configuration values."""

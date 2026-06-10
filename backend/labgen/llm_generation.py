@@ -337,6 +337,10 @@ class LabDraftGenerationService:
       - Adapter output is fully untrusted; only Pydantic + StaticValidator gate it
       - Generation failure never corrupts runtime session state
       - Repair adapter output is also fully untrusted; always re-validated
+
+    provider_boundary: optional LLMProviderBoundaryService.  When injected and
+    dry_run_available is True, calls the boundary service to obtain a candidate_json
+    instead of self._port.  Default behaviour (port only) is unchanged.
     """
 
     def __init__(
@@ -344,10 +348,12 @@ class LabDraftGenerationService:
         port: LabDraftGenerationPort,
         validator: StaticValidator,
         repo: LabDraftRepository,
+        provider_boundary=None,  # Optional[LLMProviderBoundaryService]
     ) -> None:
         self._port = port
         self._validator = validator
         self._repo = repo
+        self._provider_boundary = provider_boundary
 
     def generate_and_create(
         self, request: LabDraftGenerationRequest
@@ -359,7 +365,7 @@ class LabDraftGenerationService:
         Raises DraftCandidateParseError if Pydantic parsing fails.
         Never raises on StaticValidator failures — they are returned as results.
         """
-        result = self._port.generate_lab_draft_candidate(request)
+        result = self._generate_result(request)
 
         if result.rejected_reason:
             raise DraftGenerationRejected(result.rejected_reason)
@@ -439,7 +445,7 @@ class LabDraftGenerationService:
         Never raises for repair-path failures — those are returned in the outcome.
         """
         # --- 1. Generate ---
-        gen_result = self._port.generate_lab_draft_candidate(request)
+        gen_result = self._generate_result(request)
         if gen_result.rejected_reason:
             raise DraftGenerationRejected(gen_result.rejected_reason)
 
@@ -608,6 +614,52 @@ class LabDraftGenerationService:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _generate_result(
+        self, request: LabDraftGenerationRequest
+    ) -> "LabDraftGenerationResult":
+        """
+        Dispatch generation to either provider_boundary (when dry_run_available)
+        or the configured port (default: FakeDraftGenerationAdapter).
+
+        When provider_boundary is active:
+          - DryRunTimeoutSimulated is caught and converted to DraftGenerationRejected
+          - LLMProviderResponse.candidate_json is wrapped in LabDraftGenerationResult
+          - Redaction of warnings is already applied by the boundary service
+        """
+        if self._provider_boundary is not None and self._provider_boundary.dry_run_available:
+            from backend.labgen.llm_provider_boundary import (
+                DryRunTimeoutSimulated,
+                LLMProviderRequest,
+            )
+
+            pr = LLMProviderRequest(
+                purpose="draft_generation",
+                sanitized_user_prompt=request.user_prompt,
+                constraints_summary=(
+                    ", ".join(f"{k}={v}" for k, v in request.constraints.items())
+                    if request.constraints else ""
+                ),
+            )
+            try:
+                resp = self._provider_boundary.call(pr)
+            except DryRunTimeoutSimulated as exc:
+                raise DraftGenerationRejected(f"provider_timeout: {exc}") from exc
+            except Exception as exc:
+                raise DraftGenerationRejected("provider_error") from exc
+
+            if resp.rejected_reason:
+                raise DraftGenerationRejected(resp.rejected_reason)
+            if resp.candidate_json is None:
+                raise DraftGenerationRejected("provider_no_candidate")
+
+            return LabDraftGenerationResult(
+                candidate=resp.candidate_json,
+                warnings=list(resp.warnings),
+                template_id=resp.usage_summary,
+            )
+
+        return self._port.generate_lab_draft_candidate(request)
 
     def _build_review_result(
         self,
