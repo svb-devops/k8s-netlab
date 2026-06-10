@@ -28,7 +28,9 @@ const DEMO_RESULT = {
     seeded_scenarios: [
         'PYTHON_BASICS_PUBLISHED',
         'HTTP_API_BASICS_PUBLISHED',
-        'DATA_TRANSFORM_REVIEW_BLOCKED',
+        'DATA_TRANSFORM_IMAGE_BLOCKED_DRAFT',
+        'PYTHON_IMAGE_UNRESOLVED_DRAFT',
+        'HTTP_IMAGE_NOT_FOUND_DRAFT',
         'RUNTIME_ACTIVE_SESSION',
         'RUNTIME_READY_TO_COMPLETE_SESSION',
         'RUNTIME_CLEANUP_FAILED_TAINTED_SESSION',
@@ -37,6 +39,8 @@ const DEMO_RESULT = {
         'demo-python-basics-v1',
         'demo-http-api-basics-v1',
         'demo-data-transform-blocked-v1',
+        'demo-python-unresolved-v1',
+        'demo-http-not-found-v1',
     ],
     created_or_updated_lab_ids: [
         'demo-python-basics-v1',
@@ -54,6 +58,7 @@ const DEMO_RESULT = {
         { label: 'Learner lab detail: demo-python-basics-v1', path: '/labgen-lab.html?labId=demo-python-basics-v1' },
         { label: 'Learner session snapshot: demo-session-active-v1', path: '/labgen-session.html?sessionId=demo-session-active-v1' },
     ],
+    checked_at: '2026-06-10T10:00:00.000000+00:00',
 };
 
 const RESULT_WITH_WARNINGS = {
@@ -63,7 +68,7 @@ const RESULT_WITH_WARNINGS = {
 
 // ── renderDemoSeedResult ──────────────────────────────────────────────────────
 
-test('renderDemoSeedResult - renders all 6 scenario names', () => {
+test('renderDemoSeedResult - renders all 8 scenario names', () => {
     const html = renderDemoSeedResult(DEMO_RESULT);
     for (const scenario of DEMO_RESULT.seeded_scenarios) {
         assert.ok(html.includes(scenario), `Missing scenario: ${scenario}`);
@@ -293,4 +298,38 @@ test('next_steps rejects non-root-relative paths', () => {
     };
     const html = renderDemoSeedResult(result);
     assert.ok(!html.includes('https://evil.example.com'), 'Non-root-relative path must not be rendered as href');
+});
+
+// ── New scenario names (image readiness scenarios) ────────────────────────────
+
+test('renderDemoSeedResult - renders DATA_TRANSFORM_IMAGE_BLOCKED_DRAFT scenario', () => {
+    const html = renderDemoSeedResult(DEMO_RESULT);
+    assert.ok(html.includes('DATA_TRANSFORM_IMAGE_BLOCKED_DRAFT'), 'Missing DATA_TRANSFORM_IMAGE_BLOCKED_DRAFT');
+});
+
+test('renderDemoSeedResult - renders PYTHON_IMAGE_UNRESOLVED_DRAFT scenario', () => {
+    const html = renderDemoSeedResult(DEMO_RESULT);
+    assert.ok(html.includes('PYTHON_IMAGE_UNRESOLVED_DRAFT'), 'Missing PYTHON_IMAGE_UNRESOLVED_DRAFT');
+});
+
+test('renderDemoSeedResult - renders HTTP_IMAGE_NOT_FOUND_DRAFT scenario', () => {
+    const html = renderDemoSeedResult(DEMO_RESULT);
+    assert.ok(html.includes('HTTP_IMAGE_NOT_FOUND_DRAFT'), 'Missing HTTP_IMAGE_NOT_FOUND_DRAFT');
+});
+
+test('renderDemoSeedResult - renders new draft IDs for image scenarios', () => {
+    const html = renderDemoSeedResult(DEMO_RESULT);
+    assert.ok(html.includes('demo-python-unresolved-v1'), 'Missing demo-python-unresolved-v1');
+    assert.ok(html.includes('demo-http-not-found-v1'), 'Missing demo-http-not-found-v1');
+});
+
+test('renderDemoSeedResult - does not render DATA_TRANSFORM_REVIEW_BLOCKED (old name)', () => {
+    const html = renderDemoSeedResult(DEMO_RESULT);
+    assert.ok(!html.includes('DATA_TRANSFORM_REVIEW_BLOCKED'), 'Old scenario name must not appear');
+});
+
+test('renderDemoSeedResult - checked_at field does not appear as sensitive data', () => {
+    const html = renderDemoSeedResult(DEMO_RESULT);
+    // checked_at is in response but not displayed in rendered HTML (display only shows IDs/scenarios/steps)
+    assert.doesNotThrow(() => assertNoSensitiveDisplayData(html, []));
 });

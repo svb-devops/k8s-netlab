@@ -9,7 +9,8 @@ Design invariants:
   - No real LLM, no real K8s/VM operations, no real namespace/credential creation.
   - All session objects are constructed in-memory and written directly to repo.
   - Published drafts pass through PublishService (StaticValidator + ImageResolver).
-  - Blocked draft uses StaticValidator with a deterministic invalid mutation.
+  - Blocked/unresolved/not-found drafts have deterministic image_resolution injected
+    and are validated by StaticValidator without going through PublishService.
   - Repeated seed is idempotent: upsert (overwrite) for reset=False/True alike.
   - reset=True: delete demo-owned records first, then rebuild.
   - reset=False: overwrite in place (same result since IDs are deterministic).
@@ -28,6 +29,8 @@ from backend.labgen.image_resolver import ImageResolver
 from backend.labgen.lab_session_repository import LabSessionRepository
 from backend.labgen.models import (
     BlockingLevel,
+    ImageResolutionResult,
+    ImageStatus,
     LabDraft,
     LabSessionState,
     LabSessionStatus,
@@ -45,6 +48,8 @@ from backend.labgen.static_validator import StaticValidator
 DEMO_DRAFT_ID_PYTHON = "demo-python-basics-v1"
 DEMO_DRAFT_ID_HTTP = "demo-http-api-basics-v1"
 DEMO_DRAFT_ID_DATA_BLOCKED = "demo-data-transform-blocked-v1"
+DEMO_DRAFT_ID_PYTHON_UNRESOLVED = "demo-python-unresolved-v1"
+DEMO_DRAFT_ID_HTTP_NOT_FOUND = "demo-http-not-found-v1"
 
 DEMO_SESSION_ID_ACTIVE = "demo-session-active-v1"
 DEMO_SESSION_ID_READY = "demo-session-ready-v1"
@@ -60,8 +65,55 @@ DEMO_STUDENT_USERNAME = "demo-student"
 _PYTHON_BASICS_STEP_IDS = ["pb-step-1", "pb-step-2", "pb-step-3"]
 
 # All demo-owned draft and session IDs — used for targeted delete on reset=True
-_ALL_DEMO_DRAFT_IDS = [DEMO_DRAFT_ID_PYTHON, DEMO_DRAFT_ID_HTTP, DEMO_DRAFT_ID_DATA_BLOCKED]
-_ALL_DEMO_SESSION_IDS = [DEMO_SESSION_ID_ACTIVE, DEMO_SESSION_ID_READY, DEMO_SESSION_ID_CLEANUP_FAILED]
+_ALL_DEMO_DRAFT_IDS = [
+    DEMO_DRAFT_ID_PYTHON,
+    DEMO_DRAFT_ID_HTTP,
+    DEMO_DRAFT_ID_DATA_BLOCKED,
+    DEMO_DRAFT_ID_PYTHON_UNRESOLVED,
+    DEMO_DRAFT_ID_HTTP_NOT_FOUND,
+]
+_ALL_DEMO_SESSION_IDS = [
+    DEMO_SESSION_ID_ACTIVE,
+    DEMO_SESSION_ID_READY,
+    DEMO_SESSION_ID_CLEANUP_FAILED,
+]
+
+
+# ---------------------------------------------------------------------------
+# Deterministic demo image_resolution fixtures — no real registry secrets
+# ---------------------------------------------------------------------------
+
+def _blocked_image() -> ImageResolutionResult:
+    """Demonstrates IMAGE_READINESS_BLOCKED: external registry image is forbidden."""
+    return ImageResolutionResult(
+        image_intent="pandas",
+        requested_image="docker.io/library/pandas:latest",
+        resolved_image=None,
+        image_status=ImageStatus.BLOCKED,
+        existence_check_passed=None,
+    )
+
+
+def _unresolved_image() -> ImageResolutionResult:
+    """Demonstrates IMAGE_READINESS_UNRESOLVED: intent has no whitelist mapping."""
+    return ImageResolutionResult(
+        image_intent="matplotlib",
+        requested_image="matplotlib:3.8.0",
+        resolved_image=None,
+        image_status=ImageStatus.UNRESOLVED,
+        existence_check_passed=None,
+    )
+
+
+def _not_found_image() -> ImageResolutionResult:
+    """Demonstrates IMAGE_READINESS_NOT_FOUND: resolved but not present in registry."""
+    return ImageResolutionResult(
+        image_intent="httpie",
+        requested_image="httpie:3.2",
+        resolved_image="172.16.100.1:5000/httpie:3.2",
+        image_status=ImageStatus.RESOLVED,
+        existence_check_passed=False,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -72,7 +124,9 @@ _ALL_DEMO_SESSION_IDS = [DEMO_SESSION_ID_ACTIVE, DEMO_SESSION_ID_READY, DEMO_SES
 class DemoSeedScenarioId(str, Enum):
     PYTHON_BASICS_PUBLISHED = "PYTHON_BASICS_PUBLISHED"
     HTTP_API_BASICS_PUBLISHED = "HTTP_API_BASICS_PUBLISHED"
-    DATA_TRANSFORM_REVIEW_BLOCKED = "DATA_TRANSFORM_REVIEW_BLOCKED"
+    DATA_TRANSFORM_IMAGE_BLOCKED_DRAFT = "DATA_TRANSFORM_IMAGE_BLOCKED_DRAFT"
+    PYTHON_IMAGE_UNRESOLVED_DRAFT = "PYTHON_IMAGE_UNRESOLVED_DRAFT"
+    HTTP_IMAGE_NOT_FOUND_DRAFT = "HTTP_IMAGE_NOT_FOUND_DRAFT"
     RUNTIME_ACTIVE_SESSION = "RUNTIME_ACTIVE_SESSION"
     RUNTIME_READY_TO_COMPLETE_SESSION = "RUNTIME_READY_TO_COMPLETE_SESSION"
     RUNTIME_CLEANUP_FAILED_TAINTED_SESSION = "RUNTIME_CLEANUP_FAILED_TAINTED_SESSION"
@@ -93,6 +147,7 @@ class DemoSeedResult(BaseModel):
     created_or_updated_session_ids: list[str]
     warnings: list[str] = Field(default_factory=list)
     next_steps: list[DemoNextStep] = Field(default_factory=list)
+    checked_at: str = Field(default_factory=lambda: datetime.now(tz=timezone.utc).isoformat())
 
 
 class DemoSeedRequest(BaseModel):
@@ -173,8 +228,20 @@ class DemoSeedService:
                     )
                 seeded.append(scenario.value)
 
-            elif scenario == DemoSeedScenarioId.DATA_TRANSFORM_REVIEW_BLOCKED:
-                draft, w = self._seed_blocked_draft(DEMO_DRAFT_ID_DATA_BLOCKED)
+            elif scenario == DemoSeedScenarioId.DATA_TRANSFORM_IMAGE_BLOCKED_DRAFT:
+                draft, w = self._seed_image_blocked_draft(DEMO_DRAFT_ID_DATA_BLOCKED)
+                draft_ids.append(draft.lab_id)
+                warnings.extend(w)
+                seeded.append(scenario.value)
+
+            elif scenario == DemoSeedScenarioId.PYTHON_IMAGE_UNRESOLVED_DRAFT:
+                draft, w = self._seed_image_unresolved_draft(DEMO_DRAFT_ID_PYTHON_UNRESOLVED)
+                draft_ids.append(draft.lab_id)
+                warnings.extend(w)
+                seeded.append(scenario.value)
+
+            elif scenario == DemoSeedScenarioId.HTTP_IMAGE_NOT_FOUND_DRAFT:
+                draft, w = self._seed_image_not_found_draft(DEMO_DRAFT_ID_HTTP_NOT_FOUND)
                 draft_ids.append(draft.lab_id)
                 warnings.extend(w)
                 seeded.append(scenario.value)
@@ -228,30 +295,66 @@ class DemoSeedService:
 
         return self._upsert_draft(published)
 
-    def _seed_blocked_draft(self, draft_id: str) -> tuple[LabDraft, list[str]]:
+    def _seed_image_blocked_draft(self, draft_id: str) -> tuple[LabDraft, list[str]]:
         """
-        Build a DATA_TRANSFORM_BASICS draft with a deterministic invalid mutation
-        so it fails StaticValidator's namespace check (PUBLISH_BLOCKING).
+        DATA_TRANSFORM scenario: inject a BLOCKED image into image_resolution.
 
-        Mutation: first verify template's namespace is set to "default"
-        (a hardcoded forbidden namespace per §9), triggering
-        _check_namespace_no_hardcoded → BlockingLevel.PUBLISH_BLOCKING.
+        Demonstrates IMAGE_READINESS_BLOCKED gate: an external/forbidden image
+        blocks both StaticValidator (image.all_resolved) and ImageReadinessService.
+        Does NOT call PublishService (image resolver would attempt real resolution).
         """
         template = self._registry.get_by_id(GenerationTemplateId.DATA_TRANSFORM_BASICS)
         candidate_dict = template.build_candidate(user_prompt="")
         candidate_dict["lab_id"] = draft_id
         draft = LabDraft.model_validate(candidate_dict)
 
-        # Inject deterministic invalid mutation
-        if draft.steps and draft.steps[0].verify:
-            mutated_vt = draft.steps[0].verify[0].model_copy(update={"namespace": "default"})
-            mutated_step = draft.steps[0].model_copy(
-                update={"verify": [mutated_vt] + list(draft.steps[0].verify[1:])}
-            )
-            draft = draft.model_copy(
-                update={"steps": [mutated_step] + list(draft.steps[1:])}
-            )
+        # Inject deterministic BLOCKED image — no real registry secrets
+        draft = draft.model_copy(update={"image_resolution": [_blocked_image()]})
 
+        return self._validate_and_block_draft(draft, "DATA_TRANSFORM IMAGE_BLOCKED")
+
+    def _seed_image_unresolved_draft(self, draft_id: str) -> tuple[LabDraft, list[str]]:
+        """
+        PYTHON scenario: inject an UNRESOLVED image.
+
+        Demonstrates IMAGE_READINESS_UNRESOLVED: intent exists but no whitelist mapping.
+        StaticValidator's image.all_resolved fails (PUBLISH_BLOCKING).
+        """
+        template = self._registry.get_by_id(GenerationTemplateId.PYTHON_BASICS)
+        candidate_dict = template.build_candidate(user_prompt="")
+        candidate_dict["lab_id"] = draft_id
+        draft = LabDraft.model_validate(candidate_dict)
+
+        # Inject deterministic UNRESOLVED image
+        draft = draft.model_copy(update={"image_resolution": [_unresolved_image()]})
+
+        return self._validate_and_block_draft(draft, "PYTHON IMAGE_UNRESOLVED")
+
+    def _seed_image_not_found_draft(self, draft_id: str) -> tuple[LabDraft, list[str]]:
+        """
+        HTTP scenario: inject a RESOLVED-but-missing image.
+
+        Demonstrates IMAGE_READINESS_NOT_FOUND: image resolves to internal registry
+        URL but existence check fails (not pushed yet).
+        StaticValidator's image.all_exist_in_registry fails (PUBLISH_BLOCKING).
+        """
+        template = self._registry.get_by_id(GenerationTemplateId.HTTP_API_BASICS)
+        candidate_dict = template.build_candidate(user_prompt="")
+        candidate_dict["lab_id"] = draft_id
+        draft = LabDraft.model_validate(candidate_dict)
+
+        # Inject deterministic NOT_FOUND image (resolved URL, existence_check_passed=False)
+        draft = draft.model_copy(update={"image_resolution": [_not_found_image()]})
+
+        return self._validate_and_block_draft(draft, "HTTP IMAGE_NOT_FOUND")
+
+    def _validate_and_block_draft(
+        self, draft: LabDraft, scenario_label: str
+    ) -> tuple[LabDraft, list[str]]:
+        """
+        Run StaticValidator, set publish_status=PUBLISH_BLOCKED if any PUBLISH_BLOCKING
+        failure found, then upsert. Used by all image-readiness-blocked scenarios.
+        """
         results = self._validator.validate(draft)
         draft.validator_results = results
 
@@ -267,8 +370,8 @@ class DemoSeedService:
         warnings: list[str] = []
         if not has_blocking:
             warnings.append(
-                "DATA_TRANSFORM blocked scenario: expected PUBLISH_BLOCKED "
-                "but StaticValidator found no blocking failures — mutation may have changed"
+                f"{scenario_label} scenario: expected PUBLISH_BLOCKED but StaticValidator "
+                "found no blocking failures — image injection may not be triggering the gate"
             )
 
         return self._upsert_draft(draft), warnings

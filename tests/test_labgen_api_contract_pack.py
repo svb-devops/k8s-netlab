@@ -719,5 +719,5 @@ class TestRegression:
 
     def test_contract_pack_example_count(self):
         pack = build_contract_pack()
-        # 12 examples: 11 original + publish_decision_blocked_image
-        assert len(pack.example_responses) == 12
+        # 13 examples: 12 previous + demo_seed_success
+        assert len(pack.example_responses) == 13

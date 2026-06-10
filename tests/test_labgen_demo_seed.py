@@ -5,8 +5,9 @@ Coverage areas:
   A. Seed API (HTTP layer)
   B. Idempotency
   C. Scenario correctness
-  D. Safety (no sensitive data)
-  E. Regression (no Contract v0.1 modifications, no audit event types added)
+  D. Image readiness scenarios (BLOCKED / UNRESOLVED / NOT_FOUND)
+  E. Safety (no sensitive data)
+  F. Regression (no Contract v0.1 modifications, no audit event types added)
 """
 from __future__ import annotations
 
@@ -20,16 +21,19 @@ from backend.labgen.demo_seed import (
     ALL_DEMO_SCENARIOS,
     DEMO_DRAFT_ID_DATA_BLOCKED,
     DEMO_DRAFT_ID_HTTP,
+    DEMO_DRAFT_ID_HTTP_NOT_FOUND,
     DEMO_DRAFT_ID_PYTHON,
+    DEMO_DRAFT_ID_PYTHON_UNRESOLVED,
     DEMO_SESSION_ID_ACTIVE,
     DEMO_SESSION_ID_CLEANUP_FAILED,
     DEMO_SESSION_ID_READY,
-    DEMO_VM_ID,
     DEMO_STUDENT_USERNAME,
+    DEMO_VM_ID,
     DemoSeedScenarioId,
     DemoSeedService,
 )
 from backend.labgen.models import (
+    ImageStatus,
     LabDraft,
     LabSessionState,
     LabSessionStatus,
@@ -46,6 +50,7 @@ from backend.labgen.routes import (
 )
 from backend.auth_deps import get_current_user
 from backend.labgen.draft_preview import DraftPreviewService
+from backend.labgen.image_readiness import ImageReadinessService, ImageReadinessStatus
 from backend.labgen.learner_session_snapshot import LearnerSessionSnapshotService
 from backend.labgen.static_validator import StaticValidator
 
@@ -151,7 +156,11 @@ def seed_svc(draft_repo, session_repo) -> DemoSeedService:
 def admin_client(draft_repo, session_repo):
     from backend.main import app
 
-    preview_svc = DraftPreviewService(repo=draft_repo, validator=StaticValidator())
+    preview_svc = DraftPreviewService(
+        repo=draft_repo,
+        validator=StaticValidator(),
+        image_readiness_svc=ImageReadinessService(),
+    )
     snapshot_svc = LearnerSessionSnapshotService(
         session_repo=session_repo, draft_repo=draft_repo
     )
@@ -208,6 +217,8 @@ class TestSeedApi:
         assert DEMO_DRAFT_ID_PYTHON in body["created_or_updated_draft_ids"]
         assert DEMO_DRAFT_ID_HTTP in body["created_or_updated_draft_ids"]
         assert DEMO_DRAFT_ID_DATA_BLOCKED in body["created_or_updated_draft_ids"]
+        assert DEMO_DRAFT_ID_PYTHON_UNRESOLVED in body["created_or_updated_draft_ids"]
+        assert DEMO_DRAFT_ID_HTTP_NOT_FOUND in body["created_or_updated_draft_ids"]
         assert DEMO_SESSION_ID_ACTIVE in body["created_or_updated_session_ids"]
         assert DEMO_SESSION_ID_READY in body["created_or_updated_session_ids"]
         assert DEMO_SESSION_ID_CLEANUP_FAILED in body["created_or_updated_session_ids"]
@@ -226,6 +237,7 @@ class TestSeedApi:
         assert "created_or_updated_session_ids" in body
         assert "warnings" in body
         assert "next_steps" in body
+        assert "checked_at" in body
 
     def test_response_contains_no_sensitive_data(self, admin_client):
         r = admin_client.post("/api/labgen/demo/seed", json={})
@@ -290,6 +302,8 @@ class TestIdempotency:
         assert ids.count(DEMO_DRAFT_ID_PYTHON) == 1
         assert ids.count(DEMO_DRAFT_ID_HTTP) == 1
         assert ids.count(DEMO_DRAFT_ID_DATA_BLOCKED) == 1
+        assert ids.count(DEMO_DRAFT_ID_PYTHON_UNRESOLVED) == 1
+        assert ids.count(DEMO_DRAFT_ID_HTTP_NOT_FOUND) == 1
 
     def test_repeated_seed_does_not_duplicate_sessions(self, admin_client, session_repo):
         admin_client.post("/api/labgen/demo/seed", json={})
@@ -314,8 +328,6 @@ class TestIdempotency:
 
     def test_reset_does_not_affect_non_demo_records(self, seed_svc, draft_repo):
         from backend.labgen.generation_templates import GenerationTemplateId, GenerationTemplateRegistry
-        from backend.labgen.models import RuntimeRequirements
-        from backend.labgen.models import CleanupSpec, CleanupNamespace
 
         # Create a non-demo draft
         reg = GenerationTemplateRegistry()
@@ -362,19 +374,32 @@ class TestScenarioCorrectness:
         assert draft is not None
         assert draft.publish_status == PublishStatus.PUBLISHED
 
-    def test_data_transform_is_publish_blocked(self, seed_svc, draft_repo):
+    def test_data_transform_image_blocked_is_publish_blocked(self, seed_svc, draft_repo):
         seed_svc.seed()
         draft = draft_repo.get(DEMO_DRAFT_ID_DATA_BLOCKED)
         assert draft is not None
         assert draft.publish_status == PublishStatus.PUBLISH_BLOCKED
 
-    def test_blocked_draft_not_in_learner_catalog(self, admin_client, draft_repo):
+    def test_python_unresolved_is_publish_blocked(self, seed_svc, draft_repo):
+        seed_svc.seed()
+        draft = draft_repo.get(DEMO_DRAFT_ID_PYTHON_UNRESOLVED)
+        assert draft is not None
+        assert draft.publish_status == PublishStatus.PUBLISH_BLOCKED
+
+    def test_http_not_found_is_publish_blocked(self, seed_svc, draft_repo):
+        seed_svc.seed()
+        draft = draft_repo.get(DEMO_DRAFT_ID_HTTP_NOT_FOUND)
+        assert draft is not None
+        assert draft.publish_status == PublishStatus.PUBLISH_BLOCKED
+
+    def test_blocked_drafts_not_in_learner_catalog(self, admin_client, draft_repo):
         admin_client.post("/api/labgen/demo/seed", json={})
-        # GET /api/labs lists only published labs
         r = admin_client.get("/api/labs")
         assert r.status_code == 200
         lab_ids = [lab["lab_id"] for lab in r.json()]
         assert DEMO_DRAFT_ID_DATA_BLOCKED not in lab_ids
+        assert DEMO_DRAFT_ID_PYTHON_UNRESOLVED not in lab_ids
+        assert DEMO_DRAFT_ID_HTTP_NOT_FOUND not in lab_ids
 
     def test_published_labs_visible_in_learner_catalog(self, admin_client, draft_repo):
         admin_client.post("/api/labgen/demo/seed", json={})
@@ -434,7 +459,6 @@ class TestScenarioCorrectness:
         body = r.json()
         eligibility = body.get("start_eligibility", {})
         issue_codes = [i["code"] for i in eligibility.get("issues", [])]
-        # RUNTIME_CHECKS_DEFERRED is expected since no real K3s environment
         assert "RUNTIME_CHECKS_DEFERRED" in issue_codes
 
     def test_active_session_vm_id_absent_from_snapshot(self, admin_client):
@@ -452,7 +476,109 @@ class TestScenarioCorrectness:
 
 
 # ===========================================================================
-# D. Safety
+# D. Image readiness scenarios
+# ===========================================================================
+
+
+class TestImageReadinessScenarios:
+    def test_data_transform_has_blocked_image_resolution(self, seed_svc, draft_repo):
+        seed_svc.seed()
+        draft = draft_repo.get(DEMO_DRAFT_ID_DATA_BLOCKED)
+        assert draft is not None
+        assert len(draft.image_resolution) == 1
+        assert draft.image_resolution[0].image_status == ImageStatus.BLOCKED
+
+    def test_python_unresolved_has_unresolved_image_resolution(self, seed_svc, draft_repo):
+        seed_svc.seed()
+        draft = draft_repo.get(DEMO_DRAFT_ID_PYTHON_UNRESOLVED)
+        assert draft is not None
+        assert len(draft.image_resolution) == 1
+        assert draft.image_resolution[0].image_status == ImageStatus.UNRESOLVED
+
+    def test_http_not_found_has_resolved_but_missing_image(self, seed_svc, draft_repo):
+        seed_svc.seed()
+        draft = draft_repo.get(DEMO_DRAFT_ID_HTTP_NOT_FOUND)
+        assert draft is not None
+        assert len(draft.image_resolution) == 1
+        img = draft.image_resolution[0]
+        assert img.image_status == ImageStatus.RESOLVED
+        assert img.existence_check_passed is False
+
+    def test_data_transform_preview_image_readiness_blocked(self, admin_client, draft_repo):
+        admin_client.post("/api/labgen/demo/seed", json={})
+        r = admin_client.get(f"/api/labgen/drafts/{DEMO_DRAFT_ID_DATA_BLOCKED}/preview")
+        assert r.status_code == 200
+        body = r.json()
+        ir = body.get("image_readiness")
+        assert ir is not None
+        assert ir["status"] == "BLOCKED"
+
+    def test_python_unresolved_preview_image_readiness_unresolved(self, admin_client, draft_repo):
+        admin_client.post("/api/labgen/demo/seed", json={})
+        r = admin_client.get(f"/api/labgen/drafts/{DEMO_DRAFT_ID_PYTHON_UNRESOLVED}/preview")
+        assert r.status_code == 200
+        body = r.json()
+        ir = body.get("image_readiness")
+        assert ir is not None
+        assert ir["status"] == "UNRESOLVED"
+
+    def test_http_not_found_preview_image_readiness_not_found(self, admin_client, draft_repo):
+        admin_client.post("/api/labgen/demo/seed", json={})
+        r = admin_client.get(f"/api/labgen/drafts/{DEMO_DRAFT_ID_HTTP_NOT_FOUND}/preview")
+        assert r.status_code == 200
+        body = r.json()
+        ir = body.get("image_readiness")
+        assert ir is not None
+        assert ir["status"] == "NOT_FOUND"
+
+    def test_python_unresolved_publish_decision_blocked(self, admin_client, draft_repo):
+        admin_client.post("/api/labgen/demo/seed", json={})
+        r = admin_client.get(f"/api/labgen/drafts/{DEMO_DRAFT_ID_PYTHON_UNRESOLVED}/publish-decision")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "BLOCKED"
+        assert body["is_publishable"] is False
+
+    def test_http_not_found_publish_decision_blocked(self, admin_client, draft_repo):
+        admin_client.post("/api/labgen/demo/seed", json={})
+        r = admin_client.get(f"/api/labgen/drafts/{DEMO_DRAFT_ID_HTTP_NOT_FOUND}/publish-decision")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["status"] == "BLOCKED"
+        assert body["is_publishable"] is False
+
+    def test_published_scenarios_image_readiness_ready(self, seed_svc, draft_repo):
+        """PUBLISHED drafts must have image_readiness READY (set by PublishService)."""
+        seed_svc.seed()
+        from backend.labgen.image_readiness import ImageReadinessService
+        svc = ImageReadinessService()
+        for draft_id in [DEMO_DRAFT_ID_PYTHON, DEMO_DRAFT_ID_HTTP]:
+            draft = draft_repo.get(draft_id)
+            assert draft is not None
+            result = svc.evaluate(list(draft.image_resolution))
+            assert result.status == ImageReadinessStatus.READY, (
+                f"Draft {draft_id} image_readiness should be READY, got {result.status}"
+            )
+
+    def test_image_resolution_contains_no_real_secrets(self, seed_svc, draft_repo):
+        seed_svc.seed()
+        for draft_id in [
+            DEMO_DRAFT_ID_DATA_BLOCKED,
+            DEMO_DRAFT_ID_PYTHON_UNRESOLVED,
+            DEMO_DRAFT_ID_HTTP_NOT_FOUND,
+        ]:
+            draft = draft_repo.get(draft_id)
+            assert draft is not None
+            for img in draft.image_resolution:
+                payload = str(img.model_dump())
+                assert "token" not in payload.lower() or "existence" in payload.lower()
+                assert "password" not in payload.lower()
+                assert "secret" not in payload.lower()
+                assert "-----BEGIN" not in payload
+
+
+# ===========================================================================
+# E. Safety
 # ===========================================================================
 
 
@@ -502,9 +628,19 @@ class TestSafety:
         assert failed is not None
         assert failed.lab_session_status == LabSessionStatus.LAB_CLEANUP_FAILED
 
+    def test_unresolved_preview_no_sensitive(self, admin_client):
+        admin_client.post("/api/labgen/demo/seed", json={})
+        r = admin_client.get(f"/api/labgen/drafts/{DEMO_DRAFT_ID_PYTHON_UNRESOLVED}/preview")
+        _assert_no_sensitive(r.json(), "unresolved preview")
+
+    def test_not_found_preview_no_sensitive(self, admin_client):
+        admin_client.post("/api/labgen/demo/seed", json={})
+        r = admin_client.get(f"/api/labgen/drafts/{DEMO_DRAFT_ID_HTTP_NOT_FOUND}/preview")
+        _assert_no_sensitive(r.json(), "not_found preview")
+
 
 # ===========================================================================
-# E. Regression
+# F. Regression
 # ===========================================================================
 
 
@@ -546,7 +682,7 @@ class TestRegression:
         assert len(draft.steps) == 3
 
     def test_all_demo_scenarios_covered(self):
-        assert len(ALL_DEMO_SCENARIOS) == 6
+        assert len(ALL_DEMO_SCENARIOS) == 8
 
     def test_blocked_draft_has_blocking_validator_results(self, seed_svc, draft_repo):
         seed_svc.seed()
@@ -573,3 +709,14 @@ class TestRegression:
         assert session is not None
         assert session.failure_reason == "namespace_cleanup_failed"
         assert session.cleanup_verified is False
+
+    def test_demo_scenario_ids_are_stable_strings(self):
+        """Enum values must not change — they're part of the API surface."""
+        assert DemoSeedScenarioId.PYTHON_BASICS_PUBLISHED.value == "PYTHON_BASICS_PUBLISHED"
+        assert DemoSeedScenarioId.HTTP_API_BASICS_PUBLISHED.value == "HTTP_API_BASICS_PUBLISHED"
+        assert DemoSeedScenarioId.DATA_TRANSFORM_IMAGE_BLOCKED_DRAFT.value == "DATA_TRANSFORM_IMAGE_BLOCKED_DRAFT"
+        assert DemoSeedScenarioId.PYTHON_IMAGE_UNRESOLVED_DRAFT.value == "PYTHON_IMAGE_UNRESOLVED_DRAFT"
+        assert DemoSeedScenarioId.HTTP_IMAGE_NOT_FOUND_DRAFT.value == "HTTP_IMAGE_NOT_FOUND_DRAFT"
+        assert DemoSeedScenarioId.RUNTIME_ACTIVE_SESSION.value == "RUNTIME_ACTIVE_SESSION"
+        assert DemoSeedScenarioId.RUNTIME_READY_TO_COMPLETE_SESSION.value == "RUNTIME_READY_TO_COMPLETE_SESSION"
+        assert DemoSeedScenarioId.RUNTIME_CLEANUP_FAILED_TAINTED_SESSION.value == "RUNTIME_CLEANUP_FAILED_TAINTED_SESSION"

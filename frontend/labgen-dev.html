@@ -80,6 +80,49 @@
         <div id="contract-root" class="text-sm text-gray-400">Click Fetch to load.</div>
     </section>
 
+    <!-- Demo scenario entry points -->
+    <section class="bg-white rounded-lg border border-gray-200 p-5">
+        <h2 class="font-semibold text-gray-700 mb-3">Demo Scenario Entry Points</h2>
+        <p class="text-xs text-gray-400 mb-4">
+            Seed demo data first, then use these links to explore each scenario type.
+        </p>
+        <div class="grid grid-cols-2 gap-4 text-xs">
+            <div>
+                <p class="font-medium text-green-700 mb-2">✓ READY (Published Labs)</p>
+                <div class="space-y-1">
+                    <a href="/labgen-admin.html?draftId=demo-python-basics-v1"
+                       class="block text-blue-600 hover:underline font-mono">demo-python-basics-v1</a>
+                    <a href="/labgen-admin.html?draftId=demo-http-api-basics-v1"
+                       class="block text-blue-600 hover:underline font-mono">demo-http-api-basics-v1</a>
+                    <a href="/labgen-catalog.html"
+                       class="block text-blue-600 hover:underline mt-1">→ Learner Catalog</a>
+                </div>
+            </div>
+            <div>
+                <p class="font-medium text-red-700 mb-2">✗ BLOCKED (Image Gate)</p>
+                <div class="space-y-1">
+                    <a href="/labgen-admin.html?draftId=demo-data-transform-blocked-v1"
+                       class="block text-blue-600 hover:underline font-mono">blocked (docker.io forbidden)</a>
+                    <a href="/labgen-admin.html?draftId=demo-python-unresolved-v1"
+                       class="block text-blue-600 hover:underline font-mono">unresolved (no whitelist)</a>
+                    <a href="/labgen-admin.html?draftId=demo-http-not-found-v1"
+                       class="block text-blue-600 hover:underline font-mono">not-found (not pushed)</a>
+                </div>
+            </div>
+            <div>
+                <p class="font-medium text-gray-700 mb-2">Runtime Sessions</p>
+                <div class="space-y-1">
+                    <a href="/labgen-session.html?sessionId=demo-session-active-v1"
+                       class="block text-blue-600 hover:underline font-mono">active session</a>
+                    <a href="/labgen-session.html?sessionId=demo-session-ready-v1"
+                       class="block text-blue-600 hover:underline font-mono">ready to complete</a>
+                    <a href="/labgen-session.html?sessionId=demo-session-cleanup-failed-v1"
+                       class="block text-blue-600 hover:underline font-mono">cleanup failed / tainted</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
     <!-- Quick nav -->
     <section class="bg-white rounded-lg border border-gray-200 p-5">
         <h2 class="font-semibold text-gray-700 mb-3">Quick Navigation (dev role selector)</h2>

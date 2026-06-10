@@ -258,6 +258,8 @@ _SENSITIVE_FIELD_POLICY = SensitiveFieldPolicy(
         "registry token",
         "registry auth",
         "internal registry auth",
+        "demo seed registry credential",
+        "demo seed runtime internal",
     ],
     prohibited_patterns=[
         "eyJ[A-Za-z0-9._-]+\\.[A-Za-z0-9._-]+\\.[A-Za-z0-9._-]+",
@@ -675,6 +677,52 @@ _EXAMPLES: list[ApiContractExample] = [
                 "metadata": {},
             },
         ],
+    ),
+    ApiContractExample(
+        name="demo_seed_success",
+        category=ApiContractCategory.ADMIN_REVIEW,
+        description=(
+            "[DEMO-ONLY] POST /api/labgen/demo/seed — seeds 8 deterministic demo scenarios. "
+            "Admin-only. No real LLM, no real K3s, no real VMs. "
+            "Response contains only IDs, scenario names, warnings, and next steps."
+        ),
+        endpoint_path="/api/labgen/demo/seed",
+        response={
+            "seeded_scenarios": [
+                "PYTHON_BASICS_PUBLISHED",
+                "HTTP_API_BASICS_PUBLISHED",
+                "DATA_TRANSFORM_IMAGE_BLOCKED_DRAFT",
+                "PYTHON_IMAGE_UNRESOLVED_DRAFT",
+                "HTTP_IMAGE_NOT_FOUND_DRAFT",
+                "RUNTIME_ACTIVE_SESSION",
+                "RUNTIME_READY_TO_COMPLETE_SESSION",
+                "RUNTIME_CLEANUP_FAILED_TAINTED_SESSION",
+            ],
+            "created_or_updated_draft_ids": [
+                "demo-python-basics-v1",
+                "demo-http-api-basics-v1",
+                "demo-data-transform-blocked-v1",
+                "demo-python-unresolved-v1",
+                "demo-http-not-found-v1",
+            ],
+            "created_or_updated_lab_ids": [
+                "demo-python-basics-v1",
+                "demo-http-api-basics-v1",
+            ],
+            "created_or_updated_session_ids": [
+                "demo-session-active-v1",
+                "demo-session-ready-v1",
+                "demo-session-cleanup-failed-v1",
+            ],
+            "warnings": [],
+            "next_steps": [
+                {"label": "Admin draft review: demo-python-basics-v1", "path": "/labgen-admin.html?draftId=demo-python-basics-v1"},
+                {"label": "Learner catalog (all published labs)", "path": "/labgen-catalog.html"},
+                {"label": "Learner lab detail: demo-python-basics-v1", "path": "/labgen-lab.html?labId=demo-python-basics-v1"},
+                {"label": "Learner session snapshot: demo-session-active-v1", "path": "/labgen-session.html?sessionId=demo-session-active-v1"},
+            ],
+            "checked_at": "2026-06-10T00:00:00+00:00",
+        },
     ),
 ]
 
