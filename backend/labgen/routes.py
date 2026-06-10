@@ -79,6 +79,7 @@ from backend.labgen.learner_session_snapshot import (
     SnapshotAccessDenied,
     SnapshotNotFound,
 )
+from backend.labgen.api_contract import ApiContractPack, build_contract_pack
 
 router = APIRouter(prefix="/api/labgen", tags=["labgen"])
 
@@ -498,6 +499,28 @@ async def publish_draft(
         )
 
     return saved
+
+
+# ===========================================================================
+# Contract Pack — GET /api/labgen/contract-pack  (admin-only, read-only)
+# ===========================================================================
+
+
+@router.get(
+    "/contract-pack",
+    response_model=ApiContractPack,
+    summary="Frontend Integration Contract Pack v0.1",
+    tags=["labgen"],
+)
+async def get_contract_pack(
+    admin: str = Depends(require_admin_user),
+) -> ApiContractPack:
+    """
+    Return the API contract pack for frontend/UI integration.
+
+    READ-ONLY: does not publish, start, create sessions, or emit audit events.
+    """
+    return build_contract_pack()
 
 
 # ===========================================================================
