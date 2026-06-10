@@ -64,6 +64,7 @@ from backend.labgen.models import RuntimeAuditEvent
 from backend.labgen.runtime_audit import RuntimeAuditRepository, RuntimeAuditService
 from backend.labgen.verifier import VerifierService
 from backend.labgen.verifier_credentials import VerifierCredentialStore
+from backend.labgen.draft_preview import DraftPreviewService, DraftPreviewSnapshot
 
 router = APIRouter(prefix="/api/labgen", tags=["labgen"])
 
@@ -84,6 +85,7 @@ _image_resolver: Optional[ImageResolver] = None
 _verifier_svc: Optional[VerifierService] = None
 _step_progression_svc: Optional[StepProgressionService] = None
 _audit_repo: Optional[RuntimeAuditRepository] = None
+_preview_svc: Optional[DraftPreviewService] = None
 
 
 def get_repository() -> LabDraftRepository:
@@ -182,6 +184,16 @@ def get_step_progression_service() -> StepProgressionService:
             audit_svc=RuntimeAuditService(repo=get_audit_repository()),
         )
     return _step_progression_svc
+
+
+def get_preview_service() -> DraftPreviewService:
+    global _preview_svc
+    if _preview_svc is None:
+        _preview_svc = DraftPreviewService(
+            repo=get_repository(),
+            validator=StaticValidator(),
+        )
+    return _preview_svc
 
 
 async def require_admin_user(
@@ -365,6 +377,18 @@ async def list_draft_diffs(
     if repo.get(lab_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
     return diff_repo.list_by_draft(lab_id)
+
+
+@router.get("/drafts/{lab_id}/preview", response_model=DraftPreviewSnapshot)
+async def get_draft_preview(
+    lab_id: str,
+    admin: str = Depends(require_admin_user),
+    svc: DraftPreviewService = Depends(get_preview_service),
+) -> DraftPreviewSnapshot:
+    snapshot = svc.build_snapshot(lab_id)
+    if snapshot is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
+    return snapshot
 
 
 @router.post("/drafts/{lab_id}/publish", response_model=LabDraft)
