@@ -65,6 +65,7 @@ from backend.labgen.runtime_audit import RuntimeAuditRepository, RuntimeAuditSer
 from backend.labgen.verifier import VerifierService
 from backend.labgen.verifier_credentials import VerifierCredentialStore
 from backend.labgen.draft_preview import DraftPreviewService, DraftPreviewSnapshot
+from backend.labgen.publish_decision import PublishDecision, PublishDecisionService, PublishDecisionStatus
 
 router = APIRouter(prefix="/api/labgen", tags=["labgen"])
 
@@ -194,6 +195,15 @@ def get_preview_service() -> DraftPreviewService:
             validator=StaticValidator(),
         )
     return _preview_svc
+
+
+def get_decision_service(
+    repo: LabDraftRepository = Depends(get_repository),
+) -> PublishDecisionService:
+    """Per-request factory so that test repo overrides propagate correctly."""
+    return PublishDecisionService(
+        preview_svc=DraftPreviewService(repo=repo, validator=StaticValidator())
+    )
 
 
 async def require_admin_user(
@@ -391,20 +401,56 @@ async def get_draft_preview(
     return snapshot
 
 
+@router.get("/drafts/{lab_id}/publish-decision", response_model=PublishDecision)
+async def get_publish_decision(
+    lab_id: str,
+    admin: str = Depends(require_admin_user),
+    decision_svc: PublishDecisionService = Depends(get_decision_service),
+) -> PublishDecision:
+    """
+    Read-only: evaluate whether this draft may be published.
+    Does not publish, does not start a lab, does not create sessions or audit events.
+    """
+    decision = decision_svc.evaluate(lab_id)
+    if any(i.code == "DRAFT_NOT_FOUND" for i in decision.issues):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
+    return decision
+
+
 @router.post("/drafts/{lab_id}/publish", response_model=LabDraft)
 async def publish_draft(
     lab_id: str,
     admin: str = Depends(require_admin_user),
     repo: LabDraftRepository = Depends(get_repository),
     svc: PublishService = Depends(get_publish_service),
+    decision_svc: PublishDecisionService = Depends(get_decision_service),
 ) -> LabDraft:
     draft = repo.get(lab_id)
     if draft is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
 
+    # Gate: evaluate before publishing — no force-publish bypass allowed.
+    # TOCTOU note: PublishService.publish() always re-runs StaticValidator atomically
+    # under the flock write lock, so any concurrent PATCH cannot silently bypass the
+    # real validator.  Optimistic locking is explicitly out-of-scope per Contract v0.1.
+    decision = decision_svc.evaluate(lab_id)
+    if decision.status == PublishDecisionStatus.BLOCKED:
+        # Return only the actionable fields in the 409 body; omit preview_summary
+        # to keep the error payload minimal and avoid leaking non-essential detail.
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "status": decision.status.value,
+                "is_publishable": decision.is_publishable,
+                "draft_id": decision.draft_id,
+                "issues": [i.model_dump() for i in decision.issues],
+            },
+        )
+
     updated = svc.publish(draft)
     saved = repo.update(updated)
 
+    # Defense-in-depth: if publish service somehow blocked despite ALLOWED decision
     if saved.publish_status == PublishStatus.PUBLISH_BLOCKED:
         blocking = [
             r.check_id for r in saved.validator_results
