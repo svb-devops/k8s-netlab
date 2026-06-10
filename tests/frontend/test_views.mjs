@@ -42,13 +42,13 @@ function hasDisabled(html, action) {
 
 const ALLOWED_DECISION = {
     status: 'ALLOWED',
-    blocked_reasons: [],
+    issues: [],
 };
 const BLOCKED_DECISION = {
     status: 'BLOCKED',
-    blocked_reasons: [
-        { check_id: 'has_steps', message: 'No steps defined' },
-        { check_id: 'has_objectives', message: 'Must have at least one objective' },
+    issues: [
+        { code: 'has_steps', message: 'No steps defined', severity: 'error' },
+        { code: 'has_objectives', message: 'Must have at least one objective', severity: 'error' },
     ],
 };
 const PREVIEW = {
