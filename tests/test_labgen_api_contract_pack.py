@@ -363,6 +363,93 @@ class TestEndpointInventory:
         for ep in pack.endpoints:
             assert ep.tags, f"{ep.method} {ep.path} has no tags"
 
+    def test_response_model_classes_exist_in_backend(self):
+        """Every response_model string must resolve to a real Pydantic class in the backend.
+        Catches silent failures when a model is renamed without updating the contract pack."""
+        import inspect
+        import importlib
+        from pydantic import BaseModel
+
+        _MODULES = [
+            "backend.labgen.models",
+            "backend.labgen.llm_generation",
+            "backend.labgen.draft_preview",
+            "backend.labgen.publish_decision",
+            "backend.labgen.learner_catalog",
+            "backend.labgen.learner_session_snapshot",
+            "backend.labgen.runtime_audit",
+            "backend.labgen.step_progression_service",
+        ]
+        known: dict[str, type] = {}
+        for mod_name in _MODULES:
+            mod = importlib.import_module(mod_name)
+            for name, obj in inspect.getmembers(mod, inspect.isclass):
+                if issubclass(obj, BaseModel):
+                    known[name] = obj
+
+        pack = build_contract_pack()
+        unresolved = []
+        for ep in pack.endpoints:
+            raw = ep.response_model
+            # strip list[...] wrapper
+            class_name = raw[5:-1] if raw.startswith("list[") and raw.endswith("]") else raw
+            if class_name not in known:
+                unresolved.append(f"{ep.method} {ep.path} → '{raw}'")
+
+        assert not unresolved, (
+            "Contract response_model strings do not resolve to Pydantic classes:\n"
+            + "\n".join(unresolved)
+            + "\nUpdate api_contract.py if a model was renamed."
+        )
+
+    def test_response_model_matches_openapi_schema_ref(self, openapi):
+        """For each contract endpoint the declared response_model must match the actual
+        OpenAPI $ref. Catches divergence between the contract documentation and reality."""
+        pack = build_contract_pack()
+        oapi_paths = openapi.get("paths", {})
+
+        mismatches = []
+        for ep in pack.endpoints:
+            op = oapi_paths.get(ep.path, {}).get(ep.method.lower(), {})
+            if not op:
+                continue  # already caught by test_all_contract_endpoints_exist_in_openapi
+
+            # Determine the expected bare class name (strip list[...])
+            raw = ep.response_model
+            is_list = raw.startswith("list[") and raw.endswith("]")
+            expected_class = raw[5:-1] if is_list else raw
+
+            # Find the $ref in the 2xx response content schema
+            responses = op.get("responses", {})
+            resp_body = responses.get("200") or responses.get("201") or {}
+            content = resp_body.get("content", {}).get("application/json", {})
+            schema = content.get("schema", {})
+
+            if is_list:
+                ref = schema.get("items", {}).get("$ref", "")
+            else:
+                ref = schema.get("$ref", "")
+                if not ref:
+                    # FastAPI sometimes wraps in allOf for response models
+                    allof = schema.get("allOf", [])
+                    ref = allof[0].get("$ref", "") if allof else ""
+
+            if not ref:
+                continue  # schema structure not verifiable (e.g. inline/primitive)
+
+            actual_class = ref.split("/")[-1]
+            if actual_class != expected_class:
+                mismatches.append(
+                    f"{ep.method} {ep.path}: contract declares '{raw}' "
+                    f"but OpenAPI schema ref is '{actual_class}'"
+                )
+
+        assert not mismatches, (
+            "Contract response_model diverges from actual OpenAPI schema:\n"
+            + "\n".join(mismatches)
+            + "\nUpdate api_contract.py response_model strings to match the real models."
+        )
+
     def test_contract_has_all_five_categories(self):
         pack = build_contract_pack()
         categories = {ep.category for ep in pack.endpoints}
