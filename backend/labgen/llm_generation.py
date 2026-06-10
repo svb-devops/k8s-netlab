@@ -1,5 +1,5 @@
 """
-LLM Draft Generation Contract Adapter v0.1.
+LLM Draft Generation Contract Adapter v0.1 + Review & Repair Loop.
 
 Port interface + request/result models + deterministic fake adapter +
 LabDraftGenerationService.  No real LLM, no provider SDK, no API keys.
@@ -11,11 +11,21 @@ parsing and StaticValidator before any LabDraft is persisted.
 from __future__ import annotations
 
 import abc
+import dataclasses
 import re
 from typing import Optional
 
 from pydantic import BaseModel, Field, field_validator
 
+from backend.labgen.draft_repair import (
+    DraftRepairRequest,
+    DraftRepairResult,
+    DraftReviewIssue,
+    DraftReviewResult,
+    IssueSource,
+    IssueSeverity,
+    LabDraftRepairPort,
+)
 from backend.labgen.generation_templates import (
     GenerationTemplateId,
     GenerationTemplateRegistry,
@@ -39,17 +49,23 @@ from backend.labgen.static_validator import StaticValidator
 _MAX_PROMPT_LEN = 2000
 _MAX_CONSTRAINTS_KEYS = 10
 
-# Redact credential-like patterns from adapter warnings before returning to caller
+# Redact credential-like patterns from adapter output before returning to caller.
+# Applied to both generation warnings and repair warnings/summaries.
 _REDACT_PATTERNS = [
-    re.compile(
-        r"(?i)(token|password|secret|private_key|credential|kubeconfig)\s*=\s*\S+"
-    ),
+    # Bearer before kv so "token: Bearer <val>" doesn't leave <val> exposed after kv match
     re.compile(r"(?i)Bearer\s+[A-Za-z0-9._=+/\-]{8,}"),
-    # JWT tokens (header starts with eyJ which is Base64url for {"...)
+    # key=value or key: value credential patterns
+    re.compile(
+        r"(?i)(token|password|secret|private_key|credential|kubeconfig)\s*[=:]\s*\S+"
+    ),
+    # JWT tokens (header starts with eyJ — Base64url for {"...)
     re.compile(r"eyJ[A-Za-z0-9._\-]+\.[A-Za-z0-9._\-]+\.[A-Za-z0-9._\-]+"),
     # Long Base64 blocks (certs, kubeconfig data, raw tokens without key=value prefix)
     re.compile(r"[A-Za-z0-9+/]{60,}={0,2}"),
+    # Python tracebacks
     re.compile(r"(?si)(Traceback \(most recent call last\):.*?(?:\n[^\n]+)+)"),
+    # Stack trace / raw exception label lines
+    re.compile(r"(?i)(stack\s+trace|raw\s+exception)\s*[=:\-]?\s*\S.*"),
 ]
 
 
@@ -66,6 +82,8 @@ class LabDraftGenerationBody(BaseModel):
     difficulty: Optional[str] = None
     constraints: dict = Field(default_factory=dict)
     idempotency_key: Optional[str] = None
+    enable_repair: bool = False
+    max_repair_attempts: int = Field(default=1, ge=1, le=2)
 
     @field_validator("constraints")
     @classmethod
@@ -117,6 +135,19 @@ class LabDraftGenerationResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class DraftRepairResultView(BaseModel):
+    """
+    API-safe projection of DraftRepairResult.
+    repaired_candidate is intentionally absent — it is raw adapter output and
+    must never be serialised into an HTTP response.
+    """
+
+    repaired_validation_status: str = "not_attempted"
+    repair_applied: bool = False
+    repair_warnings: list[str] = Field(default_factory=list)
+    rejected_reason: Optional[str] = None
+
+
 class GenerateLabDraftResponse(BaseModel):
     draft_id: Optional[str] = None
     validation_status: str  # passed | validation_failed | parse_error | rejected
@@ -124,6 +155,11 @@ class GenerateLabDraftResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     selected_template_id: Optional[str] = None
     candidate_summary: Optional[dict] = None
+    # Review & repair fields (null when repair was not attempted)
+    review_result: Optional[DraftReviewResult] = None
+    repair_result: Optional[DraftRepairResultView] = None
+    repair_attempted: bool = False
+    repair_applied: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +306,23 @@ class DraftGenerationRejected(Exception):
 
 
 # ---------------------------------------------------------------------------
+# Repair loop outcome (internal to service, not exposed in HTTP response)
+# ---------------------------------------------------------------------------
+
+
+@dataclasses.dataclass
+class RepairLoopOutcome:
+    draft: Optional[LabDraft]
+    validator_results: list[ValidatorResult]
+    warnings: list[str]
+    template_id: Optional[str]
+    review_result: Optional[DraftReviewResult]
+    repair_result: Optional[DraftRepairResult]
+    repair_attempted: bool
+    repair_applied: bool
+
+
+# ---------------------------------------------------------------------------
 # Generation service
 # ---------------------------------------------------------------------------
 
@@ -283,6 +336,7 @@ class LabDraftGenerationService:
       - Never auto-starts a lab session
       - Adapter output is fully untrusted; only Pydantic + StaticValidator gate it
       - Generation failure never corrupts runtime session state
+      - Repair adapter output is also fully untrusted; always re-validated
     """
 
     def __init__(
@@ -331,10 +385,271 @@ class LabDraftGenerationService:
         sanitized = _sanitize_warnings(result.warnings)
         return saved, validator_results, sanitized, result.template_id
 
+    def review_candidate(
+        self,
+        candidate: dict,
+        template_id: Optional[str] = None,
+    ) -> tuple[Optional[LabDraft], DraftReviewResult]:
+        """
+        Parse and validate a candidate dict.  Returns (draft_or_None, review_result).
+        Does NOT persist anything.  Safe to call without side effects.
+        """
+        try:
+            draft = LabDraft.model_validate(candidate)
+        except Exception as exc:
+            errors = _extract_pydantic_errors(exc)
+            issues = [
+                DraftReviewIssue(
+                    code=e.get("type", "parse_error"),
+                    message=sanitize_text(e.get("msg", "parse error")),
+                    path=(
+                        ".".join(str(p) for p in e.get("loc", []))
+                        if e.get("loc") else None
+                    ),
+                    severity=IssueSeverity.ERROR,
+                    source=IssueSource.PYDANTIC,
+                )
+                for e in errors
+            ]
+            return None, DraftReviewResult(
+                is_valid=False,
+                issues=issues,
+                sanitized_summary=f"parse failed: {len(issues)} error(s)",
+                selected_template_id=template_id,
+            )
+
+        draft = draft.model_copy(update={"publish_status": PublishStatus.DRAFT})
+        validator_results = self._validator.validate(draft)
+        review = self._build_review_result(validator_results, template_id)
+        return draft, review
+
+    def generate_with_repair(
+        self,
+        request: LabDraftGenerationRequest,
+        enable_repair: bool = False,
+        max_repair_attempts: int = 1,
+        repair_port: Optional[LabDraftRepairPort] = None,
+    ) -> RepairLoopOutcome:
+        """
+        Generate → validate → optionally repair → validate again → persist.
+
+        Raises DraftGenerationRejected if the adapter rejects the request.
+        Raises DraftCandidateParseError if the INITIAL Pydantic parse fails.
+          (Repair is only attempted for StaticValidator failures, not parse failures.)
+        Never raises for repair-path failures — those are returned in the outcome.
+        """
+        # --- 1. Generate ---
+        gen_result = self._port.generate_lab_draft_candidate(request)
+        if gen_result.rejected_reason:
+            raise DraftGenerationRejected(gen_result.rejected_reason)
+
+        warnings = _sanitize_warnings(gen_result.warnings)
+        template_id = gen_result.template_id
+
+        # --- 2. Pydantic parse (always raises on failure, repair not attempted) ---
+        try:
+            draft = LabDraft.model_validate(gen_result.candidate)
+        except Exception as exc:
+            raise DraftCandidateParseError(_extract_pydantic_errors(exc)) from exc
+
+        draft = draft.model_copy(update={"publish_status": PublishStatus.DRAFT})
+
+        # --- 3. Validate initial candidate ---
+        validator_results = self._validator.validate(draft)
+        initial_valid = not any(
+            r.status == ValidatorStatus.FAILED for r in validator_results
+        )
+        review_result = self._build_review_result(validator_results, template_id)
+
+        if initial_valid or not enable_repair or repair_port is None:
+            # No repair: persist and return (consistent with generate_and_create)
+            draft = draft.model_copy(
+                update={"publish_status": _compute_publish_status(validator_results)}
+            )
+            draft.validator_results = validator_results
+            saved = self._repo.create(draft)
+            return RepairLoopOutcome(
+                draft=saved,
+                validator_results=validator_results,
+                warnings=warnings,
+                template_id=template_id,
+                review_result=review_result,
+                repair_result=None,
+                repair_attempted=False,
+                repair_applied=False,
+            )
+
+        # --- 4. Repair attempt ---
+        repair_req = DraftRepairRequest(
+            original_candidate=gen_result.candidate,
+            review_result=review_result,
+            selected_template_id=template_id,
+            requester_user_id=request.requester_user_id,
+            max_repair_attempts=min(max_repair_attempts, 2),
+        )
+        try:
+            raw_repair = repair_port.repair_draft_candidate(repair_req)
+        except Exception:
+            # Adapter raised — fall back to initial draft, never 500
+            fallback_result = DraftRepairResult(
+                repaired_validation_status="repair_failed",
+                rejected_reason="adapter_error",
+            )
+            draft = draft.model_copy(
+                update={"publish_status": _compute_publish_status(validator_results)}
+            )
+            draft.validator_results = validator_results
+            saved = self._repo.create(draft)
+            return RepairLoopOutcome(
+                draft=saved,
+                validator_results=validator_results,
+                warnings=warnings,
+                template_id=template_id,
+                review_result=review_result,
+                repair_result=fallback_result,
+                repair_attempted=True,
+                repair_applied=False,
+            )
+
+        # Sanitize repair warnings before they can reach the API response
+        repair_result = raw_repair.model_copy(
+            update={"repair_warnings": _sanitize_warnings(raw_repair.repair_warnings)}
+        )
+
+        # --- 5. Adapter refused or returned no candidate ---
+        if repair_result.rejected_reason or repair_result.repaired_candidate is None:
+            repair_result = repair_result.model_copy(
+                update={
+                    "repaired_validation_status": "repair_failed",
+                    "repair_applied": False,
+                }
+            )
+            # Consistent with current behaviour: persist the initial (invalid) draft
+            draft = draft.model_copy(
+                update={"publish_status": _compute_publish_status(validator_results)}
+            )
+            draft.validator_results = validator_results
+            saved = self._repo.create(draft)
+            return RepairLoopOutcome(
+                draft=saved,
+                validator_results=validator_results,
+                warnings=warnings,
+                template_id=template_id,
+                review_result=review_result,
+                repair_result=repair_result,
+                repair_attempted=True,
+                repair_applied=False,
+            )
+
+        # --- 6. Pydantic parse on repaired candidate ---
+        try:
+            repaired_draft = LabDraft.model_validate(
+                repair_result.repaired_candidate
+            )
+        except Exception:
+            # Repair produced unparseable output — fall back to initial draft
+            repair_result = repair_result.model_copy(
+                update={
+                    "repaired_validation_status": "malformed",
+                    "repair_applied": False,
+                }
+            )
+            draft = draft.model_copy(
+                update={"publish_status": _compute_publish_status(validator_results)}
+            )
+            draft.validator_results = validator_results
+            saved = self._repo.create(draft)
+            return RepairLoopOutcome(
+                draft=saved,
+                validator_results=validator_results,
+                warnings=warnings,
+                template_id=template_id,
+                review_result=review_result,
+                repair_result=repair_result,
+                repair_attempted=True,
+                repair_applied=False,
+            )
+
+        # --- 7. Validate repaired candidate ---
+        repaired_draft = repaired_draft.model_copy(
+            update={"publish_status": PublishStatus.DRAFT}
+        )
+        repaired_results = self._validator.validate(repaired_draft)
+        repaired_has_failures = any(
+            r.status == ValidatorStatus.FAILED for r in repaired_results
+        )
+        repaired_status = "still_invalid" if repaired_has_failures else "passed"
+
+        repair_result = repair_result.model_copy(
+            update={
+                "repaired_validation_status": repaired_status,
+                "repair_applied": True,
+            }
+        )
+
+        # --- 8. Persist repaired draft (consistent: always persist when Pydantic passes) ---
+        repaired_draft = repaired_draft.model_copy(
+            update={"publish_status": _compute_publish_status(repaired_results)}
+        )
+        repaired_draft.validator_results = repaired_results
+        saved = self._repo.create(repaired_draft)
+
+        return RepairLoopOutcome(
+            draft=saved,
+            validator_results=repaired_results,
+            warnings=warnings,
+            template_id=template_id,
+            review_result=review_result,
+            repair_result=repair_result,
+            repair_attempted=True,
+            repair_applied=True,
+        )
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _build_review_result(
+        self,
+        validator_results: list[ValidatorResult],
+        template_id: Optional[str] = None,
+    ) -> DraftReviewResult:
+        failed = [r for r in validator_results if r.status == ValidatorStatus.FAILED]
+        issues = [
+            DraftReviewIssue(
+                code=r.check_id,
+                message=sanitize_text(r.message),
+                path=r.field_path if r.field_path else None,
+                severity=(
+                    IssueSeverity.ERROR
+                    if r.blocking_level == BlockingLevel.PUBLISH_BLOCKING
+                    else IssueSeverity.WARNING
+                ),
+                source=IssueSource.STATIC_VALIDATOR,
+            )
+            for r in failed
+        ]
+        is_valid = not bool(failed)
+        summary = "candidate valid" if is_valid else f"validation failed: {len(failed)} check(s)"
+        return DraftReviewResult(
+            is_valid=is_valid,
+            issues=issues,
+            sanitized_summary=summary,
+            selected_template_id=template_id,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def sanitize_text(text: str) -> str:
+    """Apply _REDACT_PATTERNS to a single string. Safe for use in API responses."""
+    cleaned = text
+    for pat in _REDACT_PATTERNS:
+        cleaned = pat.sub("[REDACTED]", cleaned)
+    return cleaned
 
 
 def _compute_publish_status(results: list[ValidatorResult]) -> PublishStatus:
@@ -348,13 +663,7 @@ def _compute_publish_status(results: list[ValidatorResult]) -> PublishStatus:
 
 def _sanitize_warnings(warnings: list[str]) -> list[str]:
     """Strip credential-like patterns from adapter-generated warnings."""
-    result = []
-    for w in warnings:
-        cleaned = w
-        for pat in _REDACT_PATTERNS:
-            cleaned = pat.sub("[REDACTED]", cleaned)
-        result.append(cleaned)
-    return result
+    return [sanitize_text(w) for w in warnings]
 
 
 def _extract_pydantic_errors(exc: Exception) -> list[dict]:

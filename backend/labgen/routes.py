@@ -596,9 +596,14 @@ async def get_audit_events(
 
 lab_draft_gen_router = APIRouter(prefix="/api/lab-drafts", tags=["lab-drafts"])
 
+from backend.labgen.draft_repair import (  # noqa: E402
+    DeterministicFakeDraftRepairAdapter,
+    LabDraftRepairPort,
+)
 from backend.labgen.llm_generation import (  # noqa: E402
     DraftCandidateParseError,
     DraftGenerationRejected,
+    DraftRepairResultView,
     FakeDraftGenerationAdapter,
     GenerateLabDraftResponse,
     LabDraftGenerationBody,
@@ -609,6 +614,7 @@ from backend.labgen.llm_generation import (  # noqa: E402
 )
 
 _generation_svc: Optional[LabDraftGenerationService] = None
+_repair_port: Optional[LabDraftRepairPort] = None
 
 
 def get_generation_service() -> LabDraftGenerationService:
@@ -622,6 +628,13 @@ def get_generation_service() -> LabDraftGenerationService:
     return _generation_svc
 
 
+def get_repair_port() -> LabDraftRepairPort:
+    global _repair_port
+    if _repair_port is None:
+        _repair_port = DeterministicFakeDraftRepairAdapter()
+    return _repair_port
+
+
 @lab_draft_gen_router.post(
     "/generate",
     response_model=GenerateLabDraftResponse,
@@ -631,14 +644,18 @@ async def generate_lab_draft(
     body: LabDraftGenerationBody,
     username: str = Depends(get_current_user),
     svc: LabDraftGenerationService = Depends(get_generation_service),
+    repair: LabDraftRepairPort = Depends(get_repair_port),
 ) -> GenerateLabDraftResponse:
     request = LabDraftGenerationRequest(
         **body.model_dump(), requester_user_id=username
     )
 
     try:
-        draft, validator_results, warnings, template_id = svc.generate_and_create(
-            request
+        outcome = svc.generate_with_repair(
+            request=request,
+            enable_repair=body.enable_repair,
+            max_repair_attempts=body.max_repair_attempts,
+            repair_port=repair if body.enable_repair else None,
         )
     except DraftGenerationRejected as exc:
         raise HTTPException(
@@ -661,10 +678,10 @@ async def generate_lab_draft(
         )
 
     has_failures = any(
-        r.status == ValidatorStatus.FAILED for r in validator_results
+        r.status == ValidatorStatus.FAILED for r in outcome.validator_results
     )
     return GenerateLabDraftResponse(
-        draft_id=draft.lab_id,
+        draft_id=outcome.draft.lab_id if outcome.draft else None,
         validation_status="validation_failed" if has_failures else "passed",
         validation_errors=[
             {
@@ -673,10 +690,25 @@ async def generate_lab_draft(
                 "field_path": r.field_path,
                 "message": r.message,
             }
-            for r in validator_results
+            for r in outcome.validator_results
             if r.status == ValidatorStatus.FAILED
         ],
-        warnings=warnings,
-        selected_template_id=template_id,
-        candidate_summary=build_candidate_summary(draft, template_id=template_id),
+        warnings=outcome.warnings,
+        selected_template_id=outcome.template_id,
+        candidate_summary=(
+            build_candidate_summary(outcome.draft, template_id=outcome.template_id)
+            if outcome.draft else None
+        ),
+        review_result=outcome.review_result,
+        repair_result=(
+            DraftRepairResultView(
+                repaired_validation_status=outcome.repair_result.repaired_validation_status,
+                repair_applied=outcome.repair_result.repair_applied,
+                repair_warnings=outcome.repair_result.repair_warnings,
+                rejected_reason=outcome.repair_result.rejected_reason,
+            )
+            if outcome.repair_result is not None else None
+        ),
+        repair_attempted=outcome.repair_attempted,
+        repair_applied=outcome.repair_applied,
     )
