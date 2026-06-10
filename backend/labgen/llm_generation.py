@@ -62,8 +62,8 @@ _REDACT_PATTERNS = [
     re.compile(r"eyJ[A-Za-z0-9._\-]+\.[A-Za-z0-9._\-]+\.[A-Za-z0-9._\-]+"),
     # Long Base64 blocks (certs, kubeconfig data, raw tokens without key=value prefix)
     re.compile(r"[A-Za-z0-9+/]{60,}={0,2}"),
-    # Python tracebacks
-    re.compile(r"(?si)(Traceback \(most recent call last\):.*?(?:\n[^\n]+)+)"),
+    # Python tracebacks — matches both multi-line (with newlines) and single-line variants
+    re.compile(r"Traceback \(most recent call last\)[^\n]*(?:\n[^\n]+)*"),
     # Stack trace / raw exception label lines
     re.compile(r"(?i)(stack\s+trace|raw\s+exception)\s*[=:\-]?\s*\S.*"),
 ]

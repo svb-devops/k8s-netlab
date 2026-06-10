@@ -72,6 +72,13 @@ from backend.labgen.learner_catalog import (
     LearnerLabDetail,
     LearnerLabEligibility,
 )
+from backend.labgen.learner_session_snapshot import (
+    LearnerSessionListItem,
+    LearnerSessionSnapshot,
+    LearnerSessionSnapshotService,
+    SnapshotAccessDenied,
+    SnapshotNotFound,
+)
 
 router = APIRouter(prefix="/api/labgen", tags=["labgen"])
 
@@ -221,6 +228,16 @@ def get_decision_service(
     """Per-request factory so that test repo overrides propagate correctly."""
     return PublishDecisionService(
         preview_svc=DraftPreviewService(repo=repo, validator=StaticValidator())
+    )
+
+
+def get_snapshot_service(
+    repo: LabDraftRepository = Depends(get_repository),
+) -> LearnerSessionSnapshotService:
+    """Per-request factory — test repo overrides propagate via Depends(get_repository)."""
+    return LearnerSessionSnapshotService(
+        session_repo=LabSessionRepository(),
+        draft_repo=repo,
     )
 
 
@@ -676,6 +693,53 @@ async def get_audit_events(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
     return audit_repo.list_by_session(session_id)
+
+
+# ===========================================================================
+# Learner session list — GET /api/lab-sessions
+# ===========================================================================
+
+
+@lab_session_router.get("", response_model=list[LearnerSessionListItem])
+async def list_lab_sessions(
+    status: Optional[str] = None,
+    lab_id: Optional[str] = None,
+    username: str = Depends(get_current_user),
+    svc: LearnerSessionSnapshotService = Depends(get_snapshot_service),
+) -> list[LearnerSessionListItem]:
+    """Return a learner-safe summary list of the current user's lab sessions."""
+    return svc.list_my_sessions(
+        actor_user=username,
+        status_filter=status,
+        lab_id_filter=lab_id,
+    )
+
+
+# ===========================================================================
+# Learner session snapshot — GET /api/lab-sessions/{session_id}/snapshot
+# ===========================================================================
+
+
+@lab_session_router.get("/{session_id}/snapshot", response_model=LearnerSessionSnapshot)
+async def get_session_snapshot(
+    session_id: str,
+    username: str = Depends(get_current_user),
+    svc: LearnerSessionSnapshotService = Depends(get_snapshot_service),
+) -> LearnerSessionSnapshot:
+    """Return a learner-safe read-only snapshot of the session runtime state.
+
+    READ-ONLY: does not start, check steps, complete, abort, cleanup, or create audit events.
+    """
+    try:
+        return svc.build_snapshot(
+            session_id=session_id,
+            actor_user=username,
+            is_admin=auth_manager.is_admin(username),
+        )
+    except SnapshotNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    except SnapshotAccessDenied:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
 
 # ===========================================================================
