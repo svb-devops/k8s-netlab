@@ -49,6 +49,13 @@ class LabDraftRepository:
         safe_update_json(self._path, _upd)
         return draft
 
+    def delete(self, lab_id: str) -> None:
+        def _remove(data: dict) -> dict:
+            data.pop(lab_id, None)
+            return data
+
+        safe_update_json(self._path, _remove)
+
     def list_all(self) -> list[LabDraft]:
         data = safe_read_json(self._path)
         result = []

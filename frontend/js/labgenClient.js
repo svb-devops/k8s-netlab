@@ -10,6 +10,7 @@
 
 // Contract-sourced path templates — keep in sync with api_contract.py
 const PATHS = {
+    demoSeed:        '/api/labgen/demo/seed',
     contractPack:    '/api/labgen/contract-pack',
     generateDraft:   '/api/lab-drafts/generate',
     draftPreview:    '/api/labgen/drafts/:lab_id/preview',
@@ -178,6 +179,20 @@ export class LabGenClient {
     /** GET /api/lab-sessions/:session_id/audit-events */
     async getAuditEvents(sessionId) {
         return this._request('GET', _fill(PATHS.auditEvents, { session_id: sessionId }));
+    }
+
+    // ── Demo seed (admin-only, dev/demo use only) ─────────────────────────────
+    /**
+     * POST /api/labgen/demo/seed
+     * @param {object} opts
+     * @param {string[]} [opts.scenarios] - scenario IDs to seed (default: all)
+     * @param {boolean}  [opts.reset=false]
+     * @param {boolean}  [opts.include_runtime_sessions=true]
+     */
+    async seedDemoData({ scenarios, reset = false, include_runtime_sessions = true } = {}) {
+        const body = { reset, include_runtime_sessions };
+        if (scenarios !== undefined) body.scenarios = scenarios;
+        return this._request('POST', PATHS.demoSeed, body);
     }
 }
 

@@ -2,8 +2,8 @@
 <!--
   DEV-ONLY page — not linked from production navigation.
   Purpose: verify contract pack is reachable, inspect endpoint inventory,
-           and show current auth context.
-  Does not auto-generate anything or modify backend state.
+           show current auth context, and seed demo data for development/demo.
+  Does not call real LLM, real K8s, or real VMs.
 -->
 <html lang="en">
 <head>
@@ -36,6 +36,36 @@
             <a href="/labgen-catalog.html" class="text-xs text-blue-600 hover:underline">Learner Catalog</a>
             <a href="/labgen-admin.html" class="text-xs text-blue-600 hover:underline">Admin Draft Review</a>
         </div>
+    </section>
+
+    <!-- Seed Demo Data -->
+    <section class="bg-white rounded-lg border border-yellow-300 p-5">
+        <div class="flex items-center gap-2 mb-1">
+            <h2 class="font-semibold text-gray-700">Seed Demo Data</h2>
+            <span class="text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-800 font-medium">DEMO-ONLY</span>
+        </div>
+        <p class="text-xs text-gray-400 mb-4">
+            Seeds deterministic demo scenarios (no real LLM, no real K8s, no real VMs).
+            Admin access required. Idempotent — safe to run multiple times.
+        </p>
+
+        <div class="flex flex-wrap gap-4 mb-4">
+            <label class="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" id="seed-reset" class="rounded border-gray-300">
+                Reset (delete then rebuild demo records)
+            </label>
+            <label class="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" id="seed-include-sessions" checked class="rounded border-gray-300">
+                Include runtime sessions
+            </label>
+        </div>
+
+        <button id="btn-seed-demo"
+            class="px-4 py-2 text-sm bg-yellow-500 text-white rounded hover:bg-yellow-600 font-medium disabled:opacity-50 disabled:cursor-not-allowed">
+            Seed Demo Data
+        </button>
+
+        <div id="seed-result" class="mt-4"></div>
     </section>
 
     <!-- Contract Pack -->
@@ -94,28 +124,61 @@
 
 <script type="module">
 import { LabGenClient, LabGenApiError } from '/js/labgenClient.js';
-import { renderContractPackSummary, renderErrorState } from '/js/labgenViews.js';
+import { renderContractPackSummary, renderDemoSeedResult, renderErrorState } from '/js/labgenViews.js';
 
 const client = new LabGenClient();
 
 // Auth context
+let currentUser = null;
+
 async function loadAuth() {
     const authStatus = document.getElementById('auth-status');
     const authDetails = document.getElementById('auth-details');
-    const me = await client.getMe();
-    if (!me) {
+    currentUser = await client.getMe();
+    if (!currentUser) {
         authStatus.textContent = 'Not authenticated';
         authDetails.innerHTML = '<span class="text-red-500">Not logged in.</span> <a href="/login.html" class="text-blue-600 underline">Login →</a>';
         return;
     }
-    authStatus.textContent = me.username + (me.is_admin ? ' (admin)' : ' (learner)');
+    authStatus.textContent = currentUser.username + (currentUser.is_admin ? ' (admin)' : ' (learner)');
     authDetails.innerHTML = `
-        <span class="font-mono">${me.username}</span>
-        <span class="ml-2 px-2 py-0.5 rounded text-xs ${me.is_admin ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}">
-            ${me.is_admin ? 'admin' : 'learner'}
+        <span class="font-mono">${currentUser.username}</span>
+        <span class="ml-2 px-2 py-0.5 rounded text-xs ${currentUser.is_admin ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}">
+            ${currentUser.is_admin ? 'admin' : 'learner'}
         </span>
     `;
 }
+
+// Seed demo data
+document.getElementById('btn-seed-demo').addEventListener('click', async () => {
+    const resultEl = document.getElementById('seed-result');
+    const btn = document.getElementById('btn-seed-demo');
+
+    if (!currentUser || !currentUser.is_admin) {
+        resultEl.innerHTML = '<p class="text-xs text-red-600 font-medium">Admin access required to seed demo data.</p>';
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Seeding…';
+    resultEl.innerHTML = '<p class="text-xs text-gray-400">Seeding…</p>';
+
+    const reset = document.getElementById('seed-reset').checked;
+    const includeSessions = document.getElementById('seed-include-sessions').checked;
+
+    try {
+        const result = await client.seedDemoData({ reset, include_runtime_sessions: includeSessions });
+        resultEl.innerHTML = renderDemoSeedResult(result);
+    } catch (e) {
+        const msg = e instanceof LabGenApiError
+            ? `${e.status}: ${e.message}`
+            : 'Failed to seed demo data.';
+        resultEl.innerHTML = '<p class="text-xs text-red-600 font-medium">' + msg + '</p>';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Seed Demo Data';
+    }
+});
 
 // Contract pack
 document.getElementById('btn-fetch-contract').addEventListener('click', async () => {

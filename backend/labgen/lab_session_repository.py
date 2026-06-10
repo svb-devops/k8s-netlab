@@ -49,6 +49,13 @@ class LabSessionRepository:
         safe_update_json(self._path, _upd)
         return session
 
+    def delete(self, session_id: str) -> None:
+        def _remove(data: dict) -> dict:
+            data.pop(session_id, None)
+            return data
+
+        safe_update_json(self._path, _remove)
+
     def list_by_student(self, student_username: str) -> list[LabSessionState]:
         data = safe_read_json(self._path)
         result = []

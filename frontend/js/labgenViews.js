@@ -386,3 +386,88 @@ export function renderContractPackSummary(pack) {
         </table>
     </div>`;
 }
+
+// ─── Demo Seed Result (DEV-ONLY) ──────────────────────────────────────────────
+
+/**
+ * Render a DemoSeedResult summary.
+ * Never renders raw IDs directly as data — only as safe display text and safe href paths.
+ * next_steps paths are rendered as anchor hrefs (no inline handlers).
+ *
+ * @param {object} result - DemoSeedResult from POST /api/labgen/demo/seed
+ * @returns {string} HTML string (safe to set as innerHTML)
+ */
+export function renderDemoSeedResult(result) {
+    if (!result) return renderErrorState('No seed result received');
+
+    const scenarios = Array.isArray(result.seeded_scenarios)
+        ? result.seeded_scenarios.map(s => `<li class="font-mono text-xs">${_safe(s)}</li>`).join('')
+        : '<li class="text-gray-400">none</li>';
+
+    const draftIds = Array.isArray(result.created_or_updated_draft_ids)
+        ? result.created_or_updated_draft_ids.map(id =>
+            `<li><a href="${_safe('/labgen-admin.html?draftId=' + encodeURIComponent(id))}"
+                class="font-mono text-xs text-blue-600 hover:underline">${_safe(id)}</a></li>`
+          ).join('')
+        : '';
+
+    const labIds = Array.isArray(result.created_or_updated_lab_ids)
+        ? result.created_or_updated_lab_ids.map(id =>
+            `<li><a href="${_safe('/labgen-lab.html?labId=' + encodeURIComponent(id))}"
+                class="font-mono text-xs text-blue-600 hover:underline">${_safe(id)}</a></li>`
+          ).join('')
+        : '';
+
+    const sessionIds = Array.isArray(result.created_or_updated_session_ids)
+        ? result.created_or_updated_session_ids.map(id =>
+            `<li><a href="${_safe('/labgen-session.html?sessionId=' + encodeURIComponent(id))}"
+                class="font-mono text-xs text-blue-600 hover:underline">${_safe(id)}</a></li>`
+          ).join('')
+        : '';
+
+    const warnings = Array.isArray(result.warnings) && result.warnings.length > 0
+        ? `<div class="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded">
+            <p class="text-xs font-medium text-yellow-800 mb-1">Warnings</p>
+            <ul class="list-disc pl-4 space-y-0.5">
+                ${result.warnings.map(w => `<li class="text-xs text-yellow-700">${_safe(w)}</li>`).join('')}
+            </ul>
+          </div>`
+        : '';
+
+    const nextSteps = Array.isArray(result.next_steps) && result.next_steps.length > 0
+        ? `<div class="mt-4 border-t pt-4">
+            <p class="text-xs font-medium text-gray-600 mb-2">Next steps</p>
+            <ul class="space-y-1">
+                ${result.next_steps.map(step => {
+                    // Guard: only accept root-relative paths — blocks javascript: and data: URIs
+                    const safePath = /^\//.test(step.path) ? _safe(step.path) : '#';
+                    return `<li><a href="${safePath}" target="_blank"
+                        class="text-xs text-blue-600 hover:underline">${_safe(step.label)}</a></li>`;
+                }).join('')}
+            </ul>
+          </div>`
+        : '';
+
+    return `
+    <div class="space-y-4">
+        <div class="grid grid-cols-3 gap-4 text-sm">
+            <div>
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Seeded Scenarios</p>
+                <ul class="space-y-0.5 list-disc pl-4">${scenarios}</ul>
+            </div>
+            <div>
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Draft IDs</p>
+                <ul class="space-y-0.5 list-disc pl-4">${draftIds || '<li class="text-gray-400 text-xs">none</li>'}</ul>
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mt-2 mb-1">Published Lab IDs</p>
+                <ul class="space-y-0.5 list-disc pl-4">${labIds || '<li class="text-gray-400 text-xs">none</li>'}</ul>
+            </div>
+            <div>
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Session IDs</p>
+                <ul class="space-y-0.5 list-disc pl-4">${sessionIds || '<li class="text-gray-400 text-xs">none</li>'}</ul>
+            </div>
+        </div>
+        ${warnings}
+        ${nextSteps}
+    </div>`;
+}
+

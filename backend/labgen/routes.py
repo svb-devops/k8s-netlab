@@ -940,3 +940,50 @@ async def get_start_eligibility(
     if eligibility is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lab not found")
     return eligibility
+
+
+# ===========================================================================
+# Demo Seed API — POST /api/labgen/demo/seed  (admin-only, dev/demo use only)
+# ===========================================================================
+
+from backend.labgen.demo_seed import (  # noqa: E402
+    DemoSeedRequest,
+    DemoSeedResult,
+    DemoSeedService,
+)
+
+demo_seed_router = APIRouter(
+    prefix="/api/labgen/demo",
+    tags=["labgen-demo"],
+)
+
+
+def get_demo_seed_service(
+    draft_repo: LabDraftRepository = Depends(get_repository),
+    session_repo: LabSessionRepository = Depends(get_session_repository),
+) -> DemoSeedService:
+    return DemoSeedService(draft_repo=draft_repo, session_repo=session_repo)
+
+
+@demo_seed_router.post(
+    "/seed",
+    response_model=DemoSeedResult,
+    status_code=status.HTTP_200_OK,
+    summary="[DEMO-ONLY] Seed demo scenario data",
+    description=(
+        "Seeds deterministic demo scenarios for local development and product demonstrations. "
+        "DEMO-ONLY: not for production use. Admin access required. "
+        "Does not call real LLM, real K8s, or real VMs. "
+        "Repeatable and idempotent. Response never contains credentials or secrets."
+    ),
+)
+async def seed_demo_data(
+    body: DemoSeedRequest,
+    admin: str = Depends(require_admin_user),
+    svc: DemoSeedService = Depends(get_demo_seed_service),
+) -> DemoSeedResult:
+    return svc.seed(
+        scenarios=body.scenarios,
+        reset=body.reset,
+        include_runtime_sessions=body.include_runtime_sessions,
+    )
