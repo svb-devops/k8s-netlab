@@ -86,6 +86,7 @@ from backend.labgen.learner_session_snapshot import (
     SnapshotNotFound,
 )
 from backend.labgen.api_contract import ApiContractPack, build_contract_pack
+from backend.labgen.runtime_precheck import RuntimePrecheckService
 
 router = APIRouter(prefix="/api/labgen", tags=["labgen"])
 
@@ -149,15 +150,22 @@ def get_session_service() -> LabSessionService:
     if _session_svc is None:
         selection = RuntimeAdapterSelectionService.create_from_config()
         ns_adapter = RuntimeAdapterSelectionService.build_adapter(selection)
+        session_repo = get_session_repository()
+        draft_repo = get_repository()
         _session_svc = LabSessionService(
-            session_repo=get_session_repository(),
-            draft_repo=get_repository(),
+            session_repo=session_repo,
+            draft_repo=draft_repo,
             vm_tracker=RealVMTracker(),
             ns_lifecycle=ns_adapter,
             image_resolver=get_image_resolver(),
             audit_svc=RuntimeAuditService(repo=get_audit_repository()),
             adapter_selection=selection,
             credential_reclaimer=VerifierCredentialReclaimer(VerifierCredentialStore()),
+            runtime_precheck=RuntimePrecheckService(
+                ns_lifecycle=ns_adapter,
+                session_repo=session_repo,
+                draft_repo=draft_repo,
+            ),
         )
     return _session_svc
 

@@ -27,6 +27,24 @@ class NamespaceLifecyclePort(ABC):
     @abstractmethod
     def is_namespace_deleted(self, namespace: str) -> bool: ...
 
+    def is_namespace_stuck_terminating(self, namespace: str, threshold_seconds: int = 300) -> bool:
+        """Return True if the namespace is in K8s Terminating phase and has been so for
+        longer than *threshold_seconds*.
+
+        A namespace enters Terminating when ``delete_namespace`` is called and a finalizer
+        blocks garbage collection.  The implementation checks the namespace's
+        ``metadata.deletionTimestamp`` and compares elapsed time to *threshold_seconds*.
+
+        Returns False when:
+        - The namespace does not exist (already deleted).
+        - The namespace exists but is NOT in Terminating phase.
+        - The namespace entered Terminating less than *threshold_seconds* ago.
+
+        Default implementation returns False (safe for test doubles that do not model
+        namespace lifecycle timing).  Production adapters should override this method.
+        """
+        return False
+
     @abstractmethod
     def ensure_verifier_rolebinding(self, namespace: str) -> bool:
         """Create (idempotent) a RoleBinding in namespace granting lab-verifier read access.
@@ -56,6 +74,7 @@ class StubNamespaceLifecycleAdapter(NamespaceLifecyclePort):
         deleted_after_delete: bool = True,
         rolebinding_succeeds: bool = True,
         rolebinding_exists_after_create: bool = True,
+        stuck_terminating_namespaces: "set[str] | None" = None,
     ) -> None:
         self.create_succeeds = create_succeeds
         self.exists_after_create = exists_after_create
@@ -63,6 +82,7 @@ class StubNamespaceLifecycleAdapter(NamespaceLifecyclePort):
         self.deleted_after_delete = deleted_after_delete
         self.rolebinding_succeeds = rolebinding_succeeds
         self.rolebinding_exists_after_create = rolebinding_exists_after_create
+        self.stuck_terminating_namespaces: set[str] = stuck_terminating_namespaces or set()
         self.created: list[str] = []
         self.deleted: list[str] = []
         self.rolebindings_created: list[str] = []
@@ -82,6 +102,9 @@ class StubNamespaceLifecycleAdapter(NamespaceLifecyclePort):
 
     def is_namespace_deleted(self, namespace: str) -> bool:
         return self.deleted_after_delete
+
+    def is_namespace_stuck_terminating(self, namespace: str, threshold_seconds: int = 300) -> bool:
+        return namespace in self.stuck_terminating_namespaces
 
     def ensure_verifier_rolebinding(self, namespace: str) -> bool:
         if self.rolebinding_succeeds:
@@ -109,6 +132,9 @@ class K3sNamespaceLifecycleAdapter(NamespaceLifecyclePort):
         raise NotImplementedError("K3s namespace lifecycle adapter not yet implemented")
 
     def is_namespace_deleted(self, namespace: str) -> bool:
+        raise NotImplementedError("K3s namespace lifecycle adapter not yet implemented")
+
+    def is_namespace_stuck_terminating(self, namespace: str, threshold_seconds: int = 300) -> bool:
         raise NotImplementedError("K3s namespace lifecycle adapter not yet implemented")
 
     def ensure_verifier_rolebinding(self, namespace: str) -> bool:

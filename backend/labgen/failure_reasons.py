@@ -50,3 +50,8 @@ class FailureReason(str, Enum):
 
     # -- Adapter selection (runtime) -----------------------------------------
     ADAPTER_UNSAFE_IN_PRODUCTION = "adapter_unsafe_in_production"
+
+    # -- Runtime precheck (Contract §11 conditions 4 and 6) ------------------
+    RUNTIME_PRECHECK_FAILED = "runtime_precheck.failed"
+    RUNTIME_PRECHECK_CONDITION_4_FAILED = "runtime_precheck.condition_4_failed"
+    RUNTIME_PRECHECK_CONDITION_6_FAILED = "runtime_precheck.condition_6_failed"

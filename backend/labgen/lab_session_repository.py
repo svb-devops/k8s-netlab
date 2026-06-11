@@ -67,3 +67,15 @@ class LabSessionRepository:
             except Exception as exc:
                 logger.error("LabSessionRepository.list_by_student failed: %s", exc)
         return result
+
+    def list_by_vm_id(self, vm_id: str) -> list[LabSessionState]:
+        data = safe_read_json(self._path)
+        result = []
+        for raw in data.values():
+            try:
+                s = LabSessionState.model_validate(raw)
+                if s.vm_id == vm_id:
+                    result.append(s)
+            except Exception as exc:
+                logger.error("LabSessionRepository.list_by_vm_id failed: %s", exc)
+        return result

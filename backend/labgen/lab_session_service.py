@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from backend.labgen.models import LabDraft
     from backend.labgen.repository import LabDraftRepository
     from backend.labgen.runtime_adapter_selection import RuntimeAdapterSelectionResult
+    from backend.labgen.runtime_precheck import RuntimePrecheckService
     from backend.labgen.verifier_credentials import VerifierCredentialReclaimer
 
 
@@ -201,6 +202,7 @@ class LabSessionService:
         audit_svc: Optional[RuntimeAuditService] = None,
         adapter_selection: Optional["RuntimeAdapterSelectionResult"] = None,
         credential_reclaimer: Optional["VerifierCredentialReclaimer"] = None,
+        runtime_precheck: Optional["RuntimePrecheckService"] = None,
     ) -> None:
         self._session_repo = session_repo
         self._draft_repo = draft_repo
@@ -210,6 +212,7 @@ class LabSessionService:
         self._audit_svc = audit_svc
         self._adapter_selection = adapter_selection
         self._credential_reclaimer = credential_reclaimer
+        self._runtime_precheck = runtime_precheck
 
     def _audit(
         self,
@@ -293,6 +296,40 @@ class LabSessionService:
         result = self.run_precheck(lab_id, vm_id, student_username)
         if not result.passed:
             raise PrecheckFailed(result.failures)
+
+        # Contract §11 conditions 4 and 6 — runtime state checks that require
+        # namespace lifecycle and session history.  Must run before any K8s
+        # resource creation.  Failure creates a LAB_START_FAILED session and
+        # emits a safe audit event (no kubeconfig / credential / stack trace).
+        if self._runtime_precheck is not None:
+            rp_result = self._runtime_precheck.check(vm_id, student_username)
+            if not rp_result.passed:
+                from backend.labgen.failure_reasons import FailureReason as _FR
+                top_reason = (
+                    rp_result.issues[0].code
+                    if len(rp_result.issues) == 1
+                    else _FR.RUNTIME_PRECHECK_FAILED.value
+                )
+                session = LabSessionState(
+                    lab_id=lab_id,
+                    vm_id=vm_id,
+                    student_username=student_username,
+                    lab_session_status=LabSessionStatus.LAB_START_FAILED,
+                    failure_reason=top_reason,
+                )
+                session = self._session_repo.create(session)
+                self._audit(
+                    session.session_id,
+                    RuntimeAuditEventType.LAB_START_FAILED,
+                    failure_reason=top_reason,
+                    metadata={
+                        "blocked_conditions": [
+                            c.value for c in rp_result.blocked_conditions
+                        ],
+                        "issue_codes": [i.code for i in rp_result.issues],
+                    },
+                )
+                return session
 
         # Safe: precheck already verified draft exists
         draft = self._draft_repo.get(lab_id)
