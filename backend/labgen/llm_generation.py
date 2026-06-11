@@ -619,15 +619,30 @@ class LabDraftGenerationService:
         self, request: LabDraftGenerationRequest
     ) -> "LabDraftGenerationResult":
         """
-        Dispatch generation to either provider_boundary (when dry_run_available)
-        or the configured port (default: FakeDraftGenerationAdapter).
+        Dispatch generation to:
+          1. provider_boundary (when dry_run_available or live_enabled), or
+          2. the configured port (default: FakeDraftGenerationAdapter).
 
         When provider_boundary is active:
           - DryRunTimeoutSimulated is caught and converted to DraftGenerationRejected
           - LLMProviderResponse.candidate_json is wrapped in LabDraftGenerationResult
           - Redaction of warnings is already applied by the boundary service
+          - provider failure never creates a draft or runtime audit event
         """
-        if self._provider_boundary is not None and self._provider_boundary.dry_run_available:
+        boundary_active = (
+            self._provider_boundary is not None
+            and (
+                self._provider_boundary.dry_run_available
+                or self._provider_boundary.live_enabled
+                # When mode=LIVE_ENABLED but adapter has config errors,
+                # still dispatch to boundary so it returns a structured config_error
+                # instead of silently falling back to fake generation.
+                or (
+                    self._provider_boundary.config.mode.value == "live_enabled"
+                )
+            )
+        )
+        if boundary_active:
             from backend.labgen.llm_provider_boundary import (
                 DryRunTimeoutSimulated,
                 LLMProviderRequest,

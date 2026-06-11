@@ -442,20 +442,57 @@ export function renderLLMProviderStatus(status) {
         ? _badge('FAKE_ONLY', 'bg-blue-100 text-blue-800')
         : status.mode === 'dry_run'
             ? _badge('DRY_RUN', 'bg-yellow-100 text-yellow-800')
-            : status.mode === 'disabled'
-                ? _badge('DISABLED', 'bg-gray-100 text-gray-500')
-                : _badge(_safe(status.mode ?? 'UNKNOWN'), 'bg-gray-100 text-gray-600');
+            : status.mode === 'live_enabled'
+                ? _badge('LIVE_ENABLED', 'bg-green-100 text-green-800')
+                : status.mode === 'disabled'
+                    ? _badge('DISABLED', 'bg-gray-100 text-gray-500')
+                    : _badge(_safe(status.mode ?? 'UNKNOWN'), 'bg-gray-100 text-gray-600');
+
+    const liveEnabledBadge = status.live_enabled === true
+        ? _badge('ENABLED', 'bg-green-100 text-green-800')
+        : _badge('DISABLED (default)', 'bg-gray-100 text-gray-500');
 
     const dryRunBadge = status.dry_run_available
         ? _badge('available', 'bg-green-100 text-green-700')
         : _badge('not available', 'bg-gray-100 text-gray-500');
 
+    const genBadge = status.generation_supported
+        ? _badge('yes', 'bg-green-100 text-green-700')
+        : _badge('no', 'bg-gray-100 text-gray-500');
+
+    const repairBadge = status.repair_supported
+        ? _badge('yes', 'bg-green-100 text-green-700')
+        : _badge('OUT_OF_SCOPE v0.1', 'bg-gray-100 text-gray-500');
+
+    const configIssues = Array.isArray(status.config_issues) && status.config_issues.length > 0
+        ? `<div class="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
+            <p class="font-medium mb-1">Config Issues</p>
+            <ul class="space-y-0.5">
+                ${status.config_issues.map(i => `<li>${_safe(i)}</li>`).join('')}
+            </ul>
+          </div>`
+        : '';
+
     const warnings = Array.isArray(status.warnings) && status.warnings.length > 0
-        ? `<div class="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
+        ? `<div class="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
             <ul class="space-y-0.5">
                 ${status.warnings.map(w => `<li>${_safe(w)}</li>`).join('')}
             </ul>
           </div>`
+        : '';
+
+    const modelRow = status.configured_model
+        ? `<div>
+                <p class="font-medium text-gray-500 uppercase tracking-wide mb-1">Model</p>
+                <p class="font-mono text-gray-800">${_safe(status.configured_model)}</p>
+           </div>`
+        : '';
+
+    const baseUrlRow = status.base_url_origin
+        ? `<div>
+                <p class="font-medium text-gray-500 uppercase tracking-wide mb-1">Endpoint (origin)</p>
+                <p class="font-mono text-gray-800">${_safe(status.base_url_origin)}</p>
+           </div>`
         : '';
 
     return `<div class="space-y-3">
@@ -470,11 +507,19 @@ export function renderLLMProviderStatus(status) {
             </div>
             <div>
                 <p class="font-medium text-gray-500 uppercase tracking-wide mb-1">Live Enabled</p>
-                <p class="font-mono text-gray-800">${_safe(String(status.live_enabled ?? false))}</p>
+                <p>${liveEnabledBadge}</p>
             </div>
             <div>
                 <p class="font-medium text-gray-500 uppercase tracking-wide mb-1">Dry-Run</p>
                 <p>${dryRunBadge}</p>
+            </div>
+            <div>
+                <p class="font-medium text-gray-500 uppercase tracking-wide mb-1">Generation</p>
+                <p>${genBadge}</p>
+            </div>
+            <div>
+                <p class="font-medium text-gray-500 uppercase tracking-wide mb-1">Repair</p>
+                <p>${repairBadge}</p>
             </div>
             <div>
                 <p class="font-medium text-gray-500 uppercase tracking-wide mb-1">Timeout (ms)</p>
@@ -484,7 +529,10 @@ export function renderLLMProviderStatus(status) {
                 <p class="font-medium text-gray-500 uppercase tracking-wide mb-1">Max Output</p>
                 <p class="font-mono text-gray-800">${_safe(String(status.max_output_tokens ?? 0))}</p>
             </div>
+            ${modelRow}
+            ${baseUrlRow}
         </div>
+        ${configIssues}
         <div class="text-xs text-gray-500 border-t pt-2">
             <span class="font-medium">Safety:</span> ${_safe(status.safety_policy_summary ?? '')}
         </div>

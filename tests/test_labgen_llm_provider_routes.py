@@ -151,6 +151,7 @@ class TestProviderStatusEndpoint:
         required_fields = {
             "provider_name", "mode", "live_enabled", "dry_run_available",
             "timeout_ms", "max_output_tokens", "safety_policy_summary", "warnings",
+            "generation_supported", "repair_supported", "config_issues",
         }
         assert required_fields.issubset(body.keys())
 
@@ -397,8 +398,8 @@ class TestRegressionExistingAPI:
         assert body["draft_id"] is not None
 
     def test_contract_pack_still_has_correct_example_count(self):
-        """Contract pack must have at least 15 examples (13 original + 2 new)."""
+        """Contract pack must have at least 18 examples (13 original + 2 boundary hardening + 3 live provider)."""
         with _make_app_with_overrides(as_admin=True) as client:
             r = client.get("/api/labgen/contract-pack")
         body = r.json()
-        assert len(body["example_responses"]) >= 15
+        assert len(body["example_responses"]) >= 18

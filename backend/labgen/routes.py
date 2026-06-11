@@ -542,6 +542,7 @@ from backend.labgen.llm_provider_boundary import (  # noqa: E402
     LLMProviderRequest,
     _ALLOWED_INJECT_MODES,
 )
+from backend.labgen.llm_openai_compatible import validate_openai_compatible_config  # noqa: E402
 
 _llm_provider_svc: Optional[LLMProviderBoundaryService] = None
 
@@ -558,9 +559,14 @@ class LLMProviderStatusResponse(BaseModel):
     mode: str
     live_enabled: bool
     dry_run_available: bool
+    configured_model: Optional[str]
+    base_url_origin: Optional[str]
     timeout_ms: int
     max_output_tokens: int
+    generation_supported: bool
+    repair_supported: bool
     safety_policy_summary: str
+    config_issues: list[str]
     warnings: list[str]
 
 
@@ -593,6 +599,11 @@ _SAFETY_POLICY_SUMMARY = (
 )
 
 
+class ValidateConfigResponse(BaseModel):
+    valid: bool
+    config_issues: list[str]
+
+
 @router.get(
     "/llm-provider/status",
     response_model=LLMProviderStatusResponse,
@@ -613,15 +624,63 @@ async def get_llm_provider_status(
         warnings.append(
             f"LLM provider mode is {cfg.mode.value} — generation uses fake/template path."
         )
+
+    config_issues = svc.live_adapter_config_issues
+
+    live_enabled = svc.live_enabled
+    generation_supported = live_enabled or cfg.mode in (
+        LLMProviderMode.FAKE_ONLY, LLMProviderMode.DRY_RUN
+    )
+
+    # Repair live adapter: OUT_OF_SCOPE for v0.1
+    repair_supported = False
+
+    configured_model: Optional[str] = None
+    base_url_origin: Optional[str] = None
+    if cfg.mode == LLMProviderMode.LIVE_ENABLED and svc._live_adapter is not None:
+        configured_model = svc._live_adapter.config.model
+        base_url_origin = svc._live_adapter.config.base_url_origin
+
     return LLMProviderStatusResponse(
         provider_name=cfg.provider_name.value,
         mode=cfg.mode.value,
-        live_enabled=False,
+        live_enabled=live_enabled,
         dry_run_available=svc.dry_run_available,
+        configured_model=configured_model,
+        base_url_origin=base_url_origin,
         timeout_ms=cfg.timeout_ms,
         max_output_tokens=cfg.max_output_tokens,
+        generation_supported=generation_supported,
+        repair_supported=repair_supported,
         safety_policy_summary=_SAFETY_POLICY_SUMMARY,
+        config_issues=config_issues,
         warnings=warnings,
+    )
+
+
+@router.post(
+    "/llm-provider/validate-config",
+    response_model=ValidateConfigResponse,
+    summary="Validate live provider config locally — no network calls (admin-only)",
+    tags=["labgen"],
+)
+async def validate_llm_provider_config(
+    admin: str = Depends(require_admin_user),
+) -> ValidateConfigResponse:
+    """
+    Admin-only local config validation.
+    Does NOT make any network requests.
+    Does NOT verify whether the API key actually works.
+    Returns sanitized config issues — never returns the API key value.
+    """
+    issues = validate_openai_compatible_config(
+        base_url=config.LABGEN_LLM_OPENAI_BASE_URL,
+        model=config.LABGEN_LLM_OPENAI_MODEL,
+        api_key=config.LABGEN_LLM_OPENAI_API_KEY,
+    )
+    return ValidateConfigResponse(
+        valid=len(issues) == 0,
+        config_issues=[i.message for i in issues],
     )
 
 

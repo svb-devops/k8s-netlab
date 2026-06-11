@@ -223,6 +223,12 @@ LABGEN_LLM_PROVIDER_NAME: str = os.getenv("LABGEN_LLM_PROVIDER_NAME", "fake")
 LABGEN_LLM_TIMEOUT_MS: int = min(_get_env_int("LABGEN_LLM_TIMEOUT_MS", 30000), 60000)
 LABGEN_LLM_MAX_OUTPUT_TOKENS: int = min(_get_env_int("LABGEN_LLM_MAX_OUTPUT_TOKENS", 4096), 8192)
 
+# OpenAI-compatible provider — only used when LABGEN_LLM_PROVIDER_MODE=live_enabled
+# API key is intentionally a plain string here; never logged, never returned via API.
+LABGEN_LLM_OPENAI_BASE_URL: str = os.getenv("LABGEN_LLM_OPENAI_BASE_URL", "")
+LABGEN_LLM_OPENAI_MODEL: str = os.getenv("LABGEN_LLM_OPENAI_MODEL", "")
+LABGEN_LLM_OPENAI_API_KEY: str = os.getenv("LABGEN_LLM_OPENAI_API_KEY", "")
+
 
 def _warn_insecure_defaults() -> None:
     """Log warnings for insecure default configuration values."""

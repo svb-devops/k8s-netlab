@@ -12,8 +12,9 @@
 const PATHS = {
     demoSeed:           '/api/labgen/demo/seed',
     contractPack:       '/api/labgen/contract-pack',
-    llmProviderStatus:  '/api/labgen/llm-provider/status',
-    llmProviderDryRun:  '/api/labgen/llm-provider/dry-run',
+    llmProviderStatus:        '/api/labgen/llm-provider/status',
+    llmProviderDryRun:        '/api/labgen/llm-provider/dry-run',
+    llmProviderValidateConfig: '/api/labgen/llm-provider/validate-config',
     generateDraft:   '/api/lab-drafts/generate',
     draftPreview:    '/api/labgen/drafts/:lab_id/preview',
     publishDecision: '/api/labgen/drafts/:lab_id/publish-decision',
@@ -187,6 +188,11 @@ export class LabGenClient {
     /** GET /api/labgen/llm-provider/status */
     async getLLMProviderStatus() {
         return this._request('GET', PATHS.llmProviderStatus);
+    }
+
+    /** POST /api/labgen/llm-provider/validate-config — local config validation, no network */
+    async validateProviderConfig() {
+        return this._request('POST', PATHS.llmProviderValidateConfig);
     }
 
     /**

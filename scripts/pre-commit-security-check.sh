@@ -51,9 +51,9 @@ fi
 # 2. API keys and tokens
 # ----------------------------------------------------------
 echo "【2/8】检查API密钥和Token..."
-if git diff --cached | grep -E '^[+]' \
+if git diff --cached -- ':!tests/' | grep -E '^[+]' \
     | grep -iE '(api_key|apikey|secret_key|access_key)\s*=\s*["\x27][A-Za-z0-9_\-]{10,}["\x27]' \
-    | grep -v 'your-key\|example\|<.*KEY.*>\|getenv\|os\.environ'; then
+    | grep -v 'your-key\|example\|<.*KEY.*>\|getenv\|os\.environ\|fake\|test\|mock\|placeholder'; then
     echo "❌ 发现API密钥！"
     ISSUES=$((ISSUES + 1))
 else

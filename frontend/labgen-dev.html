@@ -109,6 +109,19 @@
             </div>
             <div id="dry-run-result" class="mt-3"></div>
         </div>
+
+        <div class="mt-4 border-t pt-3">
+            <p class="text-xs font-medium text-gray-600 mb-2">Validate Live Provider Config (admin-only)</p>
+            <p class="text-xs text-gray-400 mb-2">
+                Local config validation only. No network calls. Does not verify if the API key actually works.
+                Never shows the API key value.
+            </p>
+            <button id="btn-validate-config"
+                class="px-3 py-1 text-xs bg-purple-600 text-white rounded hover:bg-purple-700 font-medium">
+                Validate Config
+            </button>
+            <div id="validate-config-result" class="mt-3"></div>
+        </div>
     </section>
 
     <!-- Contract Pack -->
@@ -299,6 +312,25 @@ document.getElementById('btn-run-dry-run').addEventListener('click', async () =>
     } catch (e) {
         const msg = e instanceof LabGenApiError ? `${e.status}: ${e.message}` : 'Dry-run failed.';
         resultEl.innerHTML = renderErrorState(msg);
+    }
+});
+
+// Validate live provider config
+document.getElementById('btn-validate-config').addEventListener('click', async () => {
+    const resultEl = document.getElementById('validate-config-result');
+    resultEl.textContent = 'Validating…';
+    try {
+        const resp = await client.validateProviderConfig();
+        const statusText = resp.valid ? 'VALID' : 'INVALID';
+        const statusColor = resp.valid ? 'text-green-700' : 'text-red-700';
+        const issues = Array.isArray(resp.config_issues) && resp.config_issues.length > 0
+            ? resp.config_issues.map(i => `<li class="text-red-600">${i}</li>`).join('')
+            : '<li class="text-gray-500">No issues found.</li>';
+        resultEl.innerHTML = `<p class="text-xs font-medium ${statusColor} mb-1">Config: ${statusText}</p>
+            <ul class="text-xs space-y-0.5 list-disc list-inside">${issues}</ul>`;
+    } catch (e) {
+        const msg = e instanceof LabGenApiError ? `${e.status}: ${e.message}` : 'Validation failed.';
+        resultEl.innerHTML = '<p class="text-xs text-red-600">' + msg + '</p>';
     }
 });
 

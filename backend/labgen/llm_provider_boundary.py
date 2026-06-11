@@ -33,6 +33,7 @@ class LLMProviderName(str, Enum):
     ANTHROPIC = "anthropic"
     GEMINI = "gemini"
     CUSTOM = "custom"
+    OPENAI_COMPATIBLE = "openai_compatible"
 
 
 class LLMProviderMode(str, Enum):
@@ -40,6 +41,7 @@ class LLMProviderMode(str, Enum):
     FAKE_ONLY = "fake_only"
     DRY_RUN = "dry_run"
     LIVE_DISABLED = "live_disabled"
+    LIVE_ENABLED = "live_enabled"
 
 
 # ---------------------------------------------------------------------------
@@ -55,6 +57,7 @@ _LIVE_PROVIDER_NAMES: frozenset[LLMProviderName] = frozenset({
     LLMProviderName.OPENAI,
     LLMProviderName.ANTHROPIC,
     LLMProviderName.GEMINI,
+    LLMProviderName.OPENAI_COMPATIBLE,
 })
 
 _VALID_MODES: frozenset[str] = frozenset(m.value for m in LLMProviderMode)
@@ -316,7 +319,8 @@ class LLMProviderBoundaryService:
 
     Default mode (FAKE_ONLY): deterministic template-based candidates, no network.
     DRY_RUN mode: DryRunLLMProviderAdapter, no network.
-    Live providers (OPENAI/ANTHROPIC/GEMINI): always return a disabled error.
+    LIVE_ENABLED + openai_compatible: calls OpenAICompatibleLLMProviderAdapter.
+    Other live providers (OPENAI/ANTHROPIC/GEMINI enum values): always return a disabled error.
 
     Redaction is applied to all warning strings before returning.
     API keys are never read, stored, or returned by this service.
@@ -326,15 +330,21 @@ class LLMProviderBoundaryService:
         self,
         config: LLMProviderConfig,
         dry_run_adapter: Optional[DryRunLLMProviderAdapter] = None,
+        live_adapter=None,  # Optional[OpenAICompatibleLLMProviderAdapter]
     ) -> None:
         self._config = config
         self._dry_run_adapter = dry_run_adapter or DryRunLLMProviderAdapter()
+        self._live_adapter = live_adapter  # None = live calls will fail with config error
 
     @classmethod
     def create_from_env(cls) -> "LLMProviderBoundaryService":
         """
         Build from environment variables via backend.config.
         Falls back to FAKE_ONLY + FAKE on invalid/unknown values.
+
+        When mode=live_enabled and provider=openai_compatible, attempts to build
+        OpenAICompatibleLLMProviderAdapter. If config is invalid, live_adapter is None
+        and live calls return a structured config_error response.
         """
         from backend import config as cfg
 
@@ -358,7 +368,15 @@ class LLMProviderBoundaryService:
             timeout_ms=min(cfg.LABGEN_LLM_TIMEOUT_MS, _MAX_TIMEOUT_MS),
             max_output_tokens=min(cfg.LABGEN_LLM_MAX_OUTPUT_TOKENS, _MAX_OUTPUT_TOKENS),
         )
-        return cls(config=provider_config)
+
+        live_adapter = None
+        if mode == LLMProviderMode.LIVE_ENABLED and name == LLMProviderName.OPENAI_COMPATIBLE:
+            from backend.labgen.llm_openai_compatible import (
+                build_openai_compatible_adapter_from_env,
+            )
+            live_adapter = build_openai_compatible_adapter_from_env()
+
+        return cls(config=provider_config, live_adapter=live_adapter)
 
     @property
     def config(self) -> LLMProviderConfig:
@@ -367,6 +385,29 @@ class LLMProviderBoundaryService:
     @property
     def dry_run_available(self) -> bool:
         return self._config.mode == LLMProviderMode.DRY_RUN
+
+    @property
+    def live_enabled(self) -> bool:
+        return (
+            self._config.mode == LLMProviderMode.LIVE_ENABLED
+            and self._live_adapter is not None
+        )
+
+    @property
+    def live_adapter_config_issues(self) -> list[str]:
+        """Return config issue descriptions when live mode is requested but adapter unavailable."""
+        if self._config.mode != LLMProviderMode.LIVE_ENABLED:
+            return []
+        if self._live_adapter is not None:
+            return []
+        from backend import config as cfg
+        from backend.labgen.llm_openai_compatible import validate_openai_compatible_config
+        issues = validate_openai_compatible_config(
+            base_url=cfg.LABGEN_LLM_OPENAI_BASE_URL,
+            model=cfg.LABGEN_LLM_OPENAI_MODEL,
+            api_key=cfg.LABGEN_LLM_OPENAI_API_KEY,
+        )
+        return [i.message for i in issues]
 
     @property
     def safety_policy(self) -> LLMProviderSafetyPolicy:
@@ -378,9 +419,10 @@ class LLMProviderBoundaryService:
                 "provider_metadata",
                 "api_key",
                 "provider_trace_id",
+                "authorization",
             ],
             sanitizer_applied=True,
-            live_providers_enabled=False,
+            live_providers_enabled=self.live_enabled,
         )
 
     def call(self, request: LLMProviderRequest) -> LLMProviderResponse:
@@ -389,6 +431,7 @@ class LLMProviderBoundaryService:
 
         Never raises for provider failures — those are returned as rejected_reason.
         DryRunTimeoutSimulated may propagate; callers must catch and convert it.
+        OpenAICompatibleProviderError is caught and returned as rejected_reason.
         """
         mode = self._config.mode
         name = self._config.provider_name
@@ -417,6 +460,9 @@ class LLMProviderBoundaryService:
                 update={"warnings": _redact_warnings(raw.warnings)}
             )
 
+        if mode == LLMProviderMode.LIVE_ENABLED:
+            return self._live_response(request)
+
         # Unknown mode — safe fallback, never 500
         return LLMProviderResponse(
             provider_name=name,
@@ -439,4 +485,54 @@ class LLMProviderBoundaryService:
             candidate_json=candidate,
             warnings=["fake provider: deterministic template-based output"],
             usage_summary="fake (no provider calls)",
+        )
+
+    def _live_response(self, request: LLMProviderRequest) -> LLMProviderResponse:
+        """Dispatch to OpenAICompatibleLLMProviderAdapter. Never 500."""
+        from backend.labgen.llm_openai_compatible import OpenAICompatibleProviderError
+        from backend.labgen.llm_prompt_builder import build_generation_messages
+
+        name = self._config.provider_name
+
+        if self._live_adapter is None:
+            issues = self.live_adapter_config_issues
+            return LLMProviderResponse(
+                provider_name=name,
+                mode=self._config.mode,
+                rejected_reason="live_provider_config_error",
+                warnings=[f"config issue: {i}" for i in issues] or [
+                    "live provider config is invalid"
+                ],
+            )
+
+        system_msg, user_msg = build_generation_messages(
+            sanitized_user_prompt=request.sanitized_user_prompt,
+            selected_template_id=request.selected_template_id,
+            constraints_summary=request.constraints_summary,
+            purpose=request.purpose,
+        )
+
+        try:
+            candidate = self._live_adapter.call_generate(system_msg, user_msg)
+        except OpenAICompatibleProviderError as exc:
+            return LLMProviderResponse(
+                provider_name=name,
+                mode=self._config.mode,
+                rejected_reason=exc.code,
+                warnings=[_redact(exc.message)],
+            )
+        except Exception:
+            return LLMProviderResponse(
+                provider_name=name,
+                mode=self._config.mode,
+                rejected_reason="provider_error",
+                warnings=["an unexpected error occurred calling the live provider"],
+            )
+
+        return LLMProviderResponse(
+            provider_name=name,
+            mode=self._config.mode,
+            candidate_json=candidate,
+            warnings=[],
+            usage_summary="live: openai-compatible provider",
         )

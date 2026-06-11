@@ -231,7 +231,7 @@ _ENDPOINTS: list[ApiContractEndpoint] = [
     ApiContractEndpoint(
         path="/api/labgen/llm-provider/status",
         method="GET",
-        summary="LLM provider boundary status — mode, dry_run_available, safety policy (admin-only)",
+        summary="LLM provider boundary status — mode, live_enabled, config issues (admin-only)",
         category=ApiContractCategory.ADMIN_REVIEW,
         auth="admin",
         response_model="LLMProviderStatusResponse",
@@ -245,6 +245,16 @@ _ENDPOINTS: list[ApiContractEndpoint] = [
         category=ApiContractCategory.ADMIN_REVIEW,
         auth="admin",
         response_model="DryRunResponse",
+        is_read_only=False,
+        tags=["labgen"],
+    ),
+    ApiContractEndpoint(
+        path="/api/labgen/llm-provider/validate-config",
+        method="POST",
+        summary="Validate live provider config locally — no network calls (admin-only)",
+        category=ApiContractCategory.ADMIN_REVIEW,
+        auth="admin",
+        response_model="ValidateConfigResponse",
         is_read_only=False,
         tags=["labgen"],
     ),
@@ -284,6 +294,13 @@ _SENSITIVE_FIELD_POLICY = SensitiveFieldPolicy(
         "api_key",
         "provider_trace_id",
         "chain_of_thought",
+        # Live provider specific
+        "authorization",
+        "authorization_header",
+        "provider_raw_response",
+        "prompt_text",
+        "hidden_prompt",
+        "provider_trace_id",
     ],
     prohibited_patterns=[
         "eyJ[A-Za-z0-9._-]+\\.[A-Za-z0-9._-]+\\.[A-Za-z0-9._-]+",
@@ -753,7 +770,8 @@ _EXAMPLES: list[ApiContractExample] = [
         category=ApiContractCategory.ADMIN_REVIEW,
         description=(
             "GET /api/labgen/llm-provider/status — admin-only provider boundary diagnostics. "
-            "live_enabled is always false. No API keys or raw output in response."
+            "live_enabled=false by default. No API keys or raw output in response. "
+            "repair_supported=false (OUT_OF_SCOPE for v0.1)."
         ),
         endpoint_path="/api/labgen/llm-provider/status",
         response={
@@ -761,13 +779,78 @@ _EXAMPLES: list[ApiContractExample] = [
             "mode": "fake_only",
             "live_enabled": False,
             "dry_run_available": False,
+            "configured_model": None,
+            "base_url_origin": None,
             "timeout_ms": 30000,
             "max_output_tokens": 4096,
+            "generation_supported": True,
+            "repair_supported": False,
             "safety_policy_summary": (
                 "Prohibited: raw output, chain of thought, hidden prompts, "
-                "provider data, API keys. sanitize_text() applied to all dynamic content."
+                "provider data, API keys, Authorization headers. "
+                "sanitize_text() applied to all dynamic content."
             ),
+            "config_issues": [],
             "warnings": [],
+        },
+    ),
+    ApiContractExample(
+        name="llm_provider_status_live_enabled",
+        category=ApiContractCategory.ADMIN_REVIEW,
+        description=(
+            "GET /api/labgen/llm-provider/status — live_enabled=true example. "
+            "Only base_url_origin (scheme+host) is shown, never the API key. "
+            "repair_supported=false (OUT_OF_SCOPE for v0.1)."
+        ),
+        endpoint_path="/api/labgen/llm-provider/status",
+        response={
+            "provider_name": "openai_compatible",
+            "mode": "live_enabled",
+            "live_enabled": True,
+            "dry_run_available": False,
+            "configured_model": "deepseek-chat",
+            "base_url_origin": "https://api.deepseek.com",
+            "timeout_ms": 30000,
+            "max_output_tokens": 4096,
+            "generation_supported": True,
+            "repair_supported": False,
+            "safety_policy_summary": (
+                "Prohibited: raw output, chain of thought, hidden prompts, "
+                "provider data, API keys, Authorization headers. "
+                "sanitize_text() applied to all dynamic content."
+            ),
+            "config_issues": [],
+            "warnings": [],
+        },
+    ),
+    ApiContractExample(
+        name="llm_provider_validate_config_invalid",
+        category=ApiContractCategory.ADMIN_REVIEW,
+        description=(
+            "POST /api/labgen/llm-provider/validate-config — local config validation only. "
+            "No network calls. Returns config issues without revealing values."
+        ),
+        endpoint_path="/api/labgen/llm-provider/validate-config",
+        response={
+            "valid": False,
+            "config_issues": [
+                "LABGEN_LLM_OPENAI_BASE_URL is not set",
+                "LABGEN_LLM_OPENAI_MODEL is not set",
+                "LABGEN_LLM_OPENAI_API_KEY is not set",
+            ],
+        },
+    ),
+    ApiContractExample(
+        name="llm_provider_validate_config_valid",
+        category=ApiContractCategory.ADMIN_REVIEW,
+        description=(
+            "POST /api/labgen/llm-provider/validate-config — all required env vars present, "
+            "base_url is https, model is non-empty. No network calls made."
+        ),
+        endpoint_path="/api/labgen/llm-provider/validate-config",
+        response={
+            "valid": True,
+            "config_issues": [],
         },
     ),
     ApiContractExample(
@@ -806,8 +889,11 @@ _NOTES = [
     "LabSessionState (start/complete/abort responses) includes internal fields not safe for direct UI display; "
     "use LearnerSessionSnapshot for learner-facing runtime state",
     "GET /api/labgen/contract-pack itself is admin-only and does not appear in the learner-facing categories",
-    "LLM provider boundary (GET /api/labgen/llm-provider/status): live_enabled is always false — "
-    "live providers exist as config enum values only and cannot be activated without code change",
+    "LLM provider boundary: live_enabled=false by default (mode=fake_only). "
+    "Set LABGEN_LLM_PROVIDER_MODE=live_enabled and LABGEN_LLM_PROVIDER_NAME=openai_compatible "
+    "with valid LABGEN_LLM_OPENAI_* vars to activate. Repair live adapter is OUT_OF_SCOPE for v0.1.",
+    "provider status fields: configured_model and base_url_origin show sanitized info only — "
+    "API key and Authorization header are never returned.",
 ]
 
 
