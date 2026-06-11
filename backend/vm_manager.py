@@ -349,7 +349,8 @@ def initialize_verifier_for_vm(
     _validate_vm_id(vm_id)
 
     if store is None:
-        store = VerifierCredentialStore()
+        from backend import config as _cfg
+        store = VerifierCredentialStore(_cfg.LABGEN_VERIFIER_CREDENTIAL_ROOT)
     if executor is None:
         executor = AgentVMCommandExecutor()
 

@@ -229,6 +229,23 @@ LABGEN_RUNTIME_MODE: str = os.getenv("LABGEN_RUNTIME_MODE", "dev")
 LABGEN_NAMESPACE_ADAPTER: str = os.getenv("LABGEN_NAMESPACE_ADAPTER", "stub")
 LABGEN_K8S_PLATFORM_KUBECONFIG_PATH: str = os.getenv("LABGEN_K8S_PLATFORM_KUBECONFIG_PATH", "")
 
+# Root directory for per-VM verifier credential files.
+# In production this must be an absolute path outside the application directory
+# (e.g. /var/lib/labgen/verifier-credentials).
+# Default "creds/vm_creds" is relative to CWD — only acceptable for dev/test.
+LABGEN_VERIFIER_CREDENTIAL_ROOT: str = (
+    os.getenv("LABGEN_VERIFIER_CREDENTIAL_ROOT") or "creds/vm_creds"
+)
+
+# Lab session TTL in minutes.  Sessions active beyond this threshold are eligible
+# for expiry by VMExpiryService (admin-triggered or cron).
+# Default 30 minutes; must be a positive integer in production.
+LABGEN_LAB_SESSION_TTL_MINUTES: int = _get_env_int("LABGEN_LAB_SESSION_TTL_MINUTES", 30)
+if LABGEN_LAB_SESSION_TTL_MINUTES < 1:
+    raise RuntimeError(
+        f"LABGEN_LAB_SESSION_TTL_MINUTES must be ≥ 1, got {LABGEN_LAB_SESSION_TTL_MINUTES}"
+    )
+
 # --- LabGen LLM Provider Configuration ---
 # Controls the provider boundary for LabGen draft generation.
 # Default: fake_only — no real LLM, no API keys, no network calls.

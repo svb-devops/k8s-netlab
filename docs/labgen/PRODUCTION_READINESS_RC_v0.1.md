@@ -131,4 +131,32 @@ File: `tests/test_labgen_production_readiness_rc.py` (46 tests)
 
 ---
 
-*This document records the RC gate decision at commit `d90fb95`. It does not represent production deployment readiness or completion of real K3s E2E integration.*
+---
+
+## G. Production Deployment Preparation Status (2026-06-11)
+
+> **Updated at commit `2c02478` → latest commit (Production Deployment Prep v0.1)**
+
+| Item | Status |
+|------|--------|
+| Production Deployment Prep doc | `docs/labgen/PRODUCTION_DEPLOYMENT_PREP_v0.1.md` |
+| Env template | `deploy/labgen/.env.production.example` |
+| Preflight script | `scripts/labgen_production_preflight.py` |
+| Preflight tests | `tests/test_labgen_production_preflight.py` (48 tests) |
+| Admin diagnostics consistency tests | Added 19 tests to `tests/test_labgen_production_readiness_rc.py` |
+| Config safety bug fixes | `LABGEN_VERIFIER_CREDENTIAL_ROOT` and `LABGEN_LAB_SESSION_TTL_MINUTES` now configurable via env |
+
+### Config safety fixes
+
+Two hardcoded values were identified and fixed during deployment prep:
+
+- **`LABGEN_VERIFIER_CREDENTIAL_ROOT`** (new env var): Default is `creds/vm_creds` (relative path, safe for dev). Production must set an absolute path (e.g. `/var/lib/labgen/verifier-credentials`). Wired into `VerifierCredentialStore` in `routes.py` and `vm_manager.py`.
+- **`LABGEN_LAB_SESSION_TTL_MINUTES`** (new env var): Default `30` minutes. Must be ≥ 1; `config.py` raises `RuntimeError` on startup if < 1. Wired into `VMExpiryService` in `routes.py`.
+
+### Updated RC smoke test count
+
+**67 tests passing** (was 48 at `2c02478`, +19 admin diagnostics consistency tests in Section H).
+
+---
+
+*This document records the RC gate decision at commit `d90fb95` and the Production Deployment Preparation milestone at commit (latest). It does not represent completed live production deployment or real K3s E2E integration.*

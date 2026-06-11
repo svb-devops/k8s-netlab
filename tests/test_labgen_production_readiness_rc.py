@@ -974,3 +974,216 @@ class TestLLMOutputSafetyRC:
                 body = r.json()
                 assert "raw_model_output" not in body
                 assert "hidden_prompt" not in body
+
+
+# ===========================================================================
+# H. Admin Diagnostics Consistency (Production Deployment Prep)
+#    Verifies that all diagnostic endpoints referenced in
+#    PRODUCTION_DEPLOYMENT_PREP_v0.1.md Section E/F are:
+#      1. Admin-only (learner → 403)
+#      2. Return 200 for admin
+#      3. Carry no raw secrets / sensitive fields in the response body
+#      4. Present in the contract pack endpoint list
+# ===========================================================================
+
+
+class TestAdminDiagnosticsConsistency:
+    """Section H — deployment prep admin diagnostics contract verification."""
+
+    # ----- runtime/adapter-status -----
+
+    def test_adapter_status_admin_only(self):
+        with _rc_ctx() as ctx:
+            ctx["as_learner"]()
+            r = ctx["client"].get("/api/labgen/runtime/adapter-status")
+            assert r.status_code == 403
+
+    def test_adapter_status_admin_200(self):
+        with _rc_ctx() as ctx:
+            ctx["as_admin"]()
+            r = ctx["client"].get("/api/labgen/runtime/adapter-status")
+            assert r.status_code == 200
+
+    def test_adapter_status_no_secrets(self):
+        with _rc_ctx() as ctx:
+            ctx["as_admin"]()
+            r = ctx["client"].get("/api/labgen/runtime/adapter-status")
+            assert r.status_code == 200
+            body = r.json()
+            _assert_no_sensitive(body, "adapter-status")
+            # Must never return raw kubeconfig, token, or credential values
+            body_str = str(body)
+            assert "apiVersion" not in body_str
+            assert "client-certificate" not in body_str
+
+    def test_adapter_status_required_fields(self):
+        with _rc_ctx() as ctx:
+            ctx["as_admin"]()
+            r = ctx["client"].get("/api/labgen/runtime/adapter-status")
+            body = r.json()
+            assert "runtime_mode" in body
+            assert "namespace_adapter_kind" in body
+            assert "production_safe" in body
+            assert isinstance(body["production_safe"], bool)
+            assert "checked_at" in body
+
+    def test_adapter_status_production_safe_false_in_test_mode(self):
+        # In test mode (default for RC tests), production_safe must be False.
+        with _rc_ctx() as ctx:
+            ctx["as_admin"]()
+            r = ctx["client"].get("/api/labgen/runtime/adapter-status")
+            body = r.json()
+            # RC tests run in dev/test mode — production_safe should be False
+            assert body["production_safe"] is False
+
+    # ----- llm-provider/status -----
+
+    def test_llm_status_admin_only(self):
+        with _rc_ctx() as ctx:
+            ctx["as_learner"]()
+            r = ctx["client"].get("/api/labgen/llm-provider/status")
+            assert r.status_code == 403
+
+    def test_llm_status_admin_200(self):
+        with _rc_ctx() as ctx:
+            ctx["as_admin"]()
+            r = ctx["client"].get("/api/labgen/llm-provider/status")
+            assert r.status_code == 200
+
+    def test_llm_status_no_secrets(self):
+        with _rc_ctx() as ctx:
+            ctx["as_admin"]()
+            r = ctx["client"].get("/api/labgen/llm-provider/status")
+            assert r.status_code == 200
+            body = r.json()
+            _assert_no_sensitive(body, "llm-provider-status")
+            body_str = str(body)
+            assert "api_key" not in body_str.lower()
+            assert "sk-" not in body_str
+
+    def test_llm_status_live_enabled_false_by_default(self):
+        with _rc_ctx() as ctx:
+            ctx["as_admin"]()
+            r = ctx["client"].get("/api/labgen/llm-provider/status")
+            body = r.json()
+            # Default LABGEN_LLM_PROVIDER_MODE=fake_only → live_enabled must be False
+            assert body["live_enabled"] is False
+
+    def test_llm_status_required_fields(self):
+        with _rc_ctx() as ctx:
+            ctx["as_admin"]()
+            r = ctx["client"].get("/api/labgen/llm-provider/status")
+            body = r.json()
+            for field in ("provider_name", "mode", "live_enabled", "dry_run_available",
+                          "generation_supported", "safety_policy_summary"):
+                assert field in body, f"Missing field: {field}"
+
+    # ----- contract-pack -----
+
+    def test_contract_pack_admin_only(self):
+        with _rc_ctx() as ctx:
+            ctx["as_learner"]()
+            r = ctx["client"].get("/api/labgen/contract-pack")
+            assert r.status_code == 403
+
+    def test_contract_pack_admin_200(self):
+        with _rc_ctx() as ctx:
+            ctx["as_admin"]()
+            r = ctx["client"].get("/api/labgen/contract-pack")
+            assert r.status_code == 200
+
+    def test_contract_pack_no_secrets(self):
+        with _rc_ctx() as ctx:
+            ctx["as_admin"]()
+            r = ctx["client"].get("/api/labgen/contract-pack")
+            assert r.status_code == 200
+            body_str = str(r.json())
+            # Description words like "kubeconfig", "password", "traceback" are fine in
+            # the contract metadata. What must never appear is actual credential content.
+            assert "apiVersion: v1" not in body_str
+            assert "kind: Config" not in body_str
+            assert "client-certificate-data" not in body_str
+            assert "sk-ant-" not in body_str   # Anthropic API key prefix
+            assert "sk-proj-" not in body_str  # OpenAI project key prefix
+
+    def test_contract_pack_schema_version(self):
+        with _rc_ctx() as ctx:
+            ctx["as_admin"]()
+            r = ctx["client"].get("/api/labgen/contract-pack")
+            body = r.json()
+            # Contract pack uses "version" field (not "schema_version")
+            assert body.get("version") == "v0.1"
+            assert "built_at" in body
+
+    def test_contract_pack_adapter_status_endpoint_present(self):
+        with _rc_ctx() as ctx:
+            ctx["as_admin"]()
+            r = ctx["client"].get("/api/labgen/contract-pack")
+            body = r.json()
+            endpoints = body.get("endpoints", [])
+            paths = [e.get("path", "") for e in endpoints]
+            assert any("adapter-status" in p for p in paths), (
+                f"adapter-status endpoint not in contract pack. Paths: {paths}"
+            )
+
+    def test_contract_pack_llm_status_endpoint_present(self):
+        with _rc_ctx() as ctx:
+            ctx["as_admin"]()
+            r = ctx["client"].get("/api/labgen/contract-pack")
+            body = r.json()
+            endpoints = body.get("endpoints", [])
+            paths = [e.get("path", "") for e in endpoints]
+            assert any("llm-provider" in p for p in paths), (
+                f"llm-provider endpoint not in contract pack. Paths: {paths}"
+            )
+
+    # ----- runtime/expire-sessions -----
+
+    def test_expiry_endpoint_admin_only(self):
+        with _rc_ctx() as ctx:
+            ctx["as_learner"]()
+            r = ctx["client"].post(
+                "/api/labgen/runtime/expire-sessions",
+                json={"dry_run": True},
+            )
+            assert r.status_code == 403
+
+    def test_expiry_endpoint_dry_run_no_mutation(self):
+        with _rc_ctx() as ctx:
+            ctx["as_admin"]()
+            # Seed an active session so the expiry scan has something to check
+            from datetime import timedelta
+            draft = _minimal_published_draft("diag-lab-1", ctx["draft_repo"])
+            session = LabSessionState(
+                session_id="diag-sess-1",
+                student_username="student1",
+                lab_id=draft.lab_id,
+                vm_id="555",
+                namespace="lab-diag-sess-1",
+                started_at=datetime.now(tz=timezone.utc) - timedelta(hours=2),
+                lab_session_status=LabSessionStatus.LAB_ACTIVE,
+            )
+            ctx["session_repo"].create(session)
+
+            r = ctx["client"].post(
+                "/api/labgen/runtime/expire-sessions",
+                json={"dry_run": True},
+            )
+            assert r.status_code == 200
+            body = r.json()
+            # dry_run must not mutate session state
+            still_active = ctx["session_repo"].get("diag-sess-1")
+            assert still_active is not None
+            assert still_active.lab_session_status == LabSessionStatus.LAB_ACTIVE
+            # dry_run should still identify the expired session
+            assert "diag-sess-1" in body.get("expired_session_ids", [])
+
+    def test_expiry_endpoint_no_secrets(self):
+        with _rc_ctx() as ctx:
+            ctx["as_admin"]()
+            r = ctx["client"].post(
+                "/api/labgen/runtime/expire-sessions",
+                json={"dry_run": True},
+            )
+            assert r.status_code == 200
+            _assert_no_sensitive(r.json(), "expire-sessions")

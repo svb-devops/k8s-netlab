@@ -161,7 +161,9 @@ def get_session_service() -> LabSessionService:
             image_resolver=get_image_resolver(),
             audit_svc=RuntimeAuditService(repo=get_audit_repository()),
             adapter_selection=selection,
-            credential_reclaimer=VerifierCredentialReclaimer(VerifierCredentialStore()),
+            credential_reclaimer=VerifierCredentialReclaimer(
+                VerifierCredentialStore(config.LABGEN_VERIFIER_CREDENTIAL_ROOT)
+            ),
             runtime_precheck=RuntimePrecheckService(
                 ns_lifecycle=ns_adapter,
                 session_repo=session_repo,
@@ -180,6 +182,7 @@ def get_expiry_service() -> VMExpiryService:
         _expiry_svc = VMExpiryService(
             session_repo=get_session_repository(),
             session_service=get_session_service(),
+            session_ttl_minutes=config.LABGEN_LAB_SESSION_TTL_MINUTES,
         )
     return _expiry_svc
 
@@ -208,7 +211,7 @@ def get_verifier_service() -> VerifierService:
 
         _verifier_svc = VerifierService(
             session_repo=get_session_repository(),
-            credential_store=VerifierCredentialStore(),
+            credential_store=VerifierCredentialStore(config.LABGEN_VERIFIER_CREDENTIAL_ROOT),
             k8s_client_factory=K8sVerifierClientFactory,
         )
     return _verifier_svc

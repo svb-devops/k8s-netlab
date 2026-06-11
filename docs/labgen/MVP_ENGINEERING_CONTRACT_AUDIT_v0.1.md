@@ -5,7 +5,9 @@
 > **Source of truth**: `docs/labgen/MVP_ENGINEERING_CONTRACT_v0.1.md`  
 > **Scope**: Full gap audit across all backend modules, test files, and frontend integration.
 
-> **Update 2026-06-11**: Production-blocking Gaps 1–4 are all closed as of commit `d90fb95`. See [PRODUCTION_READINESS_RC_v0.1.md](PRODUCTION_READINESS_RC_v0.1.md) for RC gate decision. **RC verdict: RC_READY_WITH_NOTES.**
+> **Update 2026-06-11 (RC Gate)**: Production-blocking Gaps 1–4 are all closed as of commit `d90fb95`. See [PRODUCTION_READINESS_RC_v0.1.md](PRODUCTION_READINESS_RC_v0.1.md) for RC gate decision. **RC verdict: RC_READY_WITH_NOTES.**
+
+> **Update 2026-06-11 (Deployment Prep)**: Production Deployment Preparation v0.1 complete. See [PRODUCTION_DEPLOYMENT_PREP_v0.1.md](PRODUCTION_DEPLOYMENT_PREP_v0.1.md) for deployment checklist, env template, preflight script, and operational runbook. Config safety bugs (hardcoded credential root and session TTL) fixed. RC verdict unchanged: **RC_READY_WITH_NOTES**.
 
 ---
 
