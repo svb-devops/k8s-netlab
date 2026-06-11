@@ -43,5 +43,10 @@ class FailureReason(str, Enum):
     # -- Session lifecycle ----------------------------------------------------
     LAB_NOT_READY_TO_COMPLETE = "lab_not_ready_to_complete"
 
+    # -- Verifier credential reclaim -----------------------------------------
+    VERIFIER_CREDENTIAL_RECLAIM_FAILED = "verifier_credential_reclaim_failed"
+    VERIFIER_CREDENTIAL_PATH_UNSAFE = "verifier_credential_path_unsafe"
+    VERIFIER_CREDENTIAL_DELETE_FAILED = "verifier_credential_delete_failed"
+
     # -- Adapter selection (runtime) -----------------------------------------
     ADAPTER_UNSAFE_IN_PRODUCTION = "adapter_unsafe_in_production"

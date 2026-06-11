@@ -68,7 +68,7 @@ from backend.labgen.failure_reasons import FailureReason
 from backend.labgen.models import RuntimeAuditEvent
 from backend.labgen.runtime_audit import RuntimeAuditRepository, RuntimeAuditService
 from backend.labgen.verifier import VerifierService
-from backend.labgen.verifier_credentials import VerifierCredentialStore
+from backend.labgen.verifier_credentials import VerifierCredentialReclaimer, VerifierCredentialStore
 from backend.labgen.draft_preview import DraftPreviewService, DraftPreviewSnapshot
 from backend.labgen.image_readiness import ImageReadinessService
 from backend.labgen.publish_decision import PublishDecision, PublishDecisionService, PublishDecisionStatus
@@ -157,6 +157,7 @@ def get_session_service() -> LabSessionService:
             image_resolver=get_image_resolver(),
             audit_svc=RuntimeAuditService(repo=get_audit_repository()),
             adapter_selection=selection,
+            credential_reclaimer=VerifierCredentialReclaimer(VerifierCredentialStore()),
         )
     return _session_svc
 

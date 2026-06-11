@@ -20,9 +20,10 @@ import re
 import shutil
 import tempfile
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Optional
 
 from pydantic import Field
 
@@ -377,6 +378,10 @@ class VerifierIdentityManager:
         kubeconfig, _ = self._store.load(vm_id)
         return kubeconfig
 
+    def delete_credentials(self, vm_id: str) -> None:
+        """Remove credential files for vm_id.  Delegates to VerifierCredentialStore.delete()."""
+        self._store.delete(vm_id)
+
     def run_smoke_test(self, vm_id: str) -> VerifierSmokeTestResult:
         """Structural smoke checks — no real K3s API calls."""
         checks: list[SmokeCheckResult] = []
@@ -407,3 +412,86 @@ class VerifierIdentityManager:
 
         all_passed = all(c.passed for c in checks)
         return VerifierSmokeTestResult(vm_id=vm_id, passed=all_passed, checks=checks)
+
+
+# ---------------------------------------------------------------------------
+# VerifierCredentialReclaimer
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class CredentialReclaimResult:
+    success: bool
+    failure_reason: Optional[str] = field(default=None)
+
+
+class VerifierCredentialReclaimer:
+    """Safe, idempotent deletion of per-VM verifier credential files.
+
+    Security invariants:
+    - vm_id must be numeric (path traversal impossible; double-checked here).
+    - Resolved credential path must remain under the store's base directory.
+    - Symlinks at the vm_id directory level are rejected without following.
+    - Missing directory → idempotent success (already cleaned).
+    - OSError on deletion → structured CredentialReclaimResult, no raw path or
+      exception content in the result.
+    - Return value NEVER contains credential path, content, or kubeconfig.
+    """
+
+    def __init__(self, store: VerifierCredentialStore) -> None:
+        self._store = store
+
+    def reclaim_for_vm(self, vm_id: str) -> CredentialReclaimResult:
+        """Delete the credential directory for vm_id.  Safe and idempotent."""
+        # Step 1: vm_id must be numeric — defense in depth, even though _validate_vm_id
+        # is also called inside the store.
+        try:
+            _validate_vm_id(vm_id)
+        except ValueError:
+            return CredentialReclaimResult(
+                success=False,
+                failure_reason=_CRED_PATH_UNSAFE,
+            )
+
+        raw_path = self._store._base / vm_id
+
+        # Step 2: Reject symlinks before any resolution — never follow a symlink at
+        # the vm_id directory level (defense against race-condition link swaps).
+        if raw_path.is_symlink():
+            return CredentialReclaimResult(
+                success=False,
+                failure_reason=_CRED_PATH_UNSAFE,
+            )
+
+        # Step 3: If the directory doesn't exist at all → already clean.
+        if not raw_path.exists():
+            return CredentialReclaimResult(success=True)
+
+        # Step 4: Boundary check — resolve both base and candidate, then confirm
+        # candidate is inside base (guards against symlinks in ancestor dirs or
+        # unexpected mount-point tricks).
+        try:
+            resolved_base = self._store._base.resolve()
+            resolved_path = raw_path.resolve()
+            resolved_path.relative_to(resolved_base)
+        except (OSError, ValueError):
+            return CredentialReclaimResult(
+                success=False,
+                failure_reason=_CRED_PATH_UNSAFE,
+            )
+
+        # Step 5: Delete.  Use resolved_path so we always delete what resolve() pointed to.
+        try:
+            shutil.rmtree(resolved_path)
+        except OSError:
+            return CredentialReclaimResult(
+                success=False,
+                failure_reason=_CRED_DELETE_FAILED,
+            )
+
+        return CredentialReclaimResult(success=True)
+
+
+# Stable machine codes — must match FailureReason enum values exactly.
+_CRED_PATH_UNSAFE: str = "verifier_credential_path_unsafe"
+_CRED_DELETE_FAILED: str = "verifier_credential_delete_failed"

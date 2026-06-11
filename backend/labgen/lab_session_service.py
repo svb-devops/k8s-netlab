@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from backend.labgen.models import LabDraft
     from backend.labgen.repository import LabDraftRepository
     from backend.labgen.runtime_adapter_selection import RuntimeAdapterSelectionResult
+    from backend.labgen.verifier_credentials import VerifierCredentialReclaimer
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +200,7 @@ class LabSessionService:
         image_resolver: "ImageResolver",
         audit_svc: Optional[RuntimeAuditService] = None,
         adapter_selection: Optional["RuntimeAdapterSelectionResult"] = None,
+        credential_reclaimer: Optional["VerifierCredentialReclaimer"] = None,
     ) -> None:
         self._session_repo = session_repo
         self._draft_repo = draft_repo
@@ -207,6 +209,7 @@ class LabSessionService:
         self._image_resolver = image_resolver
         self._audit_svc = audit_svc
         self._adapter_selection = adapter_selection
+        self._credential_reclaimer = credential_reclaimer
 
     def _audit(
         self,
@@ -446,34 +449,58 @@ class LabSessionService:
         return True, None, updated_images, any_rechecked
 
     def _do_cleanup(self, session: LabSessionState) -> LabSessionState:
-        if session.namespace is None:
-            session.lab_session_status = LabSessionStatus.LAB_CLOSED
-            session.cleanup_verified = True
-            session = self._session_repo.update(session)
-            self._audit(session.session_id, RuntimeAuditEventType.CLEANUP_SUCCESS)
-            return session
-
-        # NAMESPACE_TERMINATING_WAIT: delete namespace, then verify deletion
-        deleted = False
-        try:
-            if self._ns_lifecycle.delete_namespace(session.namespace):
-                deleted = self._ns_lifecycle.is_namespace_deleted(session.namespace)
-        except Exception:
+        # Phase 1: namespace deletion (skipped when session has no namespace)
+        namespace_ok = True
+        namespace_failure_reason: Optional[str] = None
+        if session.namespace is not None:
             deleted = False
+            try:
+                if self._ns_lifecycle.delete_namespace(session.namespace):
+                    deleted = self._ns_lifecycle.is_namespace_deleted(session.namespace)
+            except Exception:
+                deleted = False
+            if not deleted:
+                namespace_ok = False
+                namespace_failure_reason = FailureReason.NAMESPACE_CLEANUP_FAILED.value
 
-        if deleted:
+        # Phase 2: verifier credential reclaim (skipped when no reclaimer injected)
+        cred_ok = True
+        cred_failure_reason: Optional[str] = None
+        if self._credential_reclaimer is not None:
+            cred_result = self._credential_reclaimer.reclaim_for_vm(session.vm_id)
+            cred_ok = cred_result.success
+            cred_failure_reason = cred_result.failure_reason
+
+        if namespace_ok and cred_ok:
             session.lab_session_status = LabSessionStatus.LAB_CLOSED
             session.cleanup_verified = True
             session = self._session_repo.update(session)
             self._audit(session.session_id, RuntimeAuditEventType.CLEANUP_SUCCESS)
             return session
+
+        # Namespace failure takes precedence over credential failure in the failure_reason
+        # recorded on the session; audit metadata carries the specific phase that failed.
+        failure_reason = (
+            namespace_failure_reason
+            or cred_failure_reason
+            or FailureReason.NAMESPACE_CLEANUP_FAILED.value
+        )
+        audit_metadata: Optional[dict] = None
+        if not cred_ok and namespace_ok:
+            # Credential-only failure: include safe cleanup phase for ops visibility.
+            audit_metadata = {"cleanup_phase": "verifier_credential_reclaim"}
 
         session.lab_session_status = LabSessionStatus.LAB_CLEANUP_FAILED
-        session.failure_reason = FailureReason.NAMESPACE_CLEANUP_FAILED.value
+        session.failure_reason = failure_reason
         session.cleanup_verified = False
         self._vm_tracker.mark_vm_tainted(session.vm_id)
         session = self._session_repo.update(session)
-        self._audit(session.session_id, RuntimeAuditEventType.CLEANUP_FAILED, failure_reason=FailureReason.NAMESPACE_CLEANUP_FAILED.value)
+        self._audit(
+            session.session_id,
+            RuntimeAuditEventType.CLEANUP_FAILED,
+            failure_reason=failure_reason,
+            metadata=audit_metadata,
+        )
         self._audit(session.session_id, RuntimeAuditEventType.VM_TAINTED, metadata={"vm_id": session.vm_id})
         return session
 
