@@ -159,4 +159,20 @@ Two hardcoded values were identified and fixed during deployment prep:
 
 ---
 
-*This document records the RC gate decision at commit `d90fb95` and the Production Deployment Preparation milestone at commit (latest). It does not represent completed live production deployment or real K3s E2E integration.*
+## H. Staging Deployment Dry Run Status (2026-06-11)
+
+> **Added at commit `a5996e4` → Staging Deployment Dry Run v0.1**
+
+| Item | Status |
+|------|--------|
+| Staging dry run doc | `docs/labgen/STAGING_DEPLOYMENT_DRY_RUN_v0.1.md` |
+| Staging env template | `deploy/labgen/.env.staging.example` |
+| Dry run helper script | `scripts/labgen_staging_dry_run.py` |
+| Dry run tests | `tests/test_labgen_staging_dry_run.py` (51 tests) |
+| Boundary | NOT a real deployment, NOT K3s E2E, NOT live traffic |
+
+The staging dry run validates that the system can safely enter a staging environment-ready state. Lab sessions are expected to fail (K3sNamespaceLifecycleAdapter is NotImplementedError) — this is the production safety guard working correctly.
+
+---
+
+*This document records the RC gate decision at commit `d90fb95`, Production Deployment Preparation at commit `a5996e4`, and Staging Deployment Dry Run definition. It does not represent completed live production deployment or real K3s E2E integration.*

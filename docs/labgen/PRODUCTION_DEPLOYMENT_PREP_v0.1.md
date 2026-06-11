@@ -509,3 +509,22 @@ In-flight sessions during a code rollback:
 **What to monitor**: Watch for JSON decode errors in the error log (`journalctl -u k8s-netlab -p err`). Each data file has one entry in the audit log at startup (`data_file_loaded`).
 
 **When to address**: Migrate to SQLite or PostgreSQL when student capacity exceeds ~50 concurrent sessions.
+
+---
+
+## I. Staging Dry Run
+
+A staging deployment dry run has been defined for this preparation artifact.
+
+| Item | Value |
+|------|-------|
+| Dry run doc | [STAGING_DEPLOYMENT_DRY_RUN_v0.1.md](STAGING_DEPLOYMENT_DRY_RUN_v0.1.md) |
+| Staging env template | `deploy/labgen/.env.staging.example` |
+| Dry run helper script | `scripts/labgen_staging_dry_run.py` |
+| Dry run tests | `tests/test_labgen_staging_dry_run.py` (51 tests) |
+
+The staging dry run validates preflight, startup, admin diagnostics, contract pack, runtime fail-closed, LLM disabled-by-default, demo seed isolation, and safety response assertions — all without connecting to real K3s, real LLM, or real production traffic.
+
+**Boundary**: The staging dry run is NOT a production deployment, NOT a real K3s E2E validation, and NOT a live-traffic cutover. It validates the system is safe to operate in staging. Lab sessions are expected to fail (K3sNamespaceLifecycleAdapter is NotImplementedError).
+
+**Next step after dry run passes**: Controlled Staging Trial v0.1 — requires a real K3s staging cluster.
