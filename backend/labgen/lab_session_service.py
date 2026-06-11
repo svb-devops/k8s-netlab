@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from backend.labgen.lab_session_repository import LabSessionRepository
     from backend.labgen.models import LabDraft
     from backend.labgen.repository import LabDraftRepository
+    from backend.labgen.runtime_adapter_selection import RuntimeAdapterSelectionResult
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +198,7 @@ class LabSessionService:
         ns_lifecycle: NamespaceLifecyclePort,
         image_resolver: "ImageResolver",
         audit_svc: Optional[RuntimeAuditService] = None,
+        adapter_selection: Optional["RuntimeAdapterSelectionResult"] = None,
     ) -> None:
         self._session_repo = session_repo
         self._draft_repo = draft_repo
@@ -204,6 +206,7 @@ class LabSessionService:
         self._ns_lifecycle = ns_lifecycle
         self._image_resolver = image_resolver
         self._audit_svc = audit_svc
+        self._adapter_selection = adapter_selection
 
     def _audit(
         self,
@@ -262,6 +265,28 @@ class LabSessionService:
         vm_id: str,
         student_username: str,
     ) -> LabSessionState:
+        # Runtime adapter safety guard — must run before precheck or any resource creation.
+        # Fires when ANY blocking adapter-selection issue is present (invalid mode, invalid
+        # adapter kind, or production+stub/k8s-without-kubeconfig).  This covers typos such as
+        # LABGEN_RUNTIME_MODE=prod which produce INVALID_RUNTIME_MODE (blocking) but whose
+        # fallback runtime_mode value is DEV — not caught by a production-only check.
+        if self._adapter_selection is not None:
+            if any(i.severity == "blocking" for i in self._adapter_selection.issues):
+                session = LabSessionState(
+                    lab_id=lab_id,
+                    vm_id=vm_id,
+                    student_username=student_username,
+                    lab_session_status=LabSessionStatus.LAB_START_FAILED,
+                    failure_reason=FailureReason.ADAPTER_UNSAFE_IN_PRODUCTION.value,
+                )
+                session = self._session_repo.create(session)
+                self._audit(
+                    session.session_id,
+                    RuntimeAuditEventType.LAB_START_FAILED,
+                    failure_reason=FailureReason.ADAPTER_UNSAFE_IN_PRODUCTION.value,
+                )
+                return session
+
         result = self.run_precheck(lab_id, vm_id, student_username)
         if not result.passed:
             raise PrecheckFailed(result.failures)

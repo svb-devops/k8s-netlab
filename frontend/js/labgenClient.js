@@ -15,6 +15,7 @@ const PATHS = {
     llmProviderStatus:        '/api/labgen/llm-provider/status',
     llmProviderDryRun:        '/api/labgen/llm-provider/dry-run',
     llmProviderValidateConfig: '/api/labgen/llm-provider/validate-config',
+    runtimeAdapterStatus:     '/api/labgen/runtime/adapter-status',
     generateDraft:   '/api/lab-drafts/generate',
     draftPreview:    '/api/labgen/drafts/:lab_id/preview',
     publishDecision: '/api/labgen/drafts/:lab_id/publish-decision',
@@ -188,6 +189,11 @@ export class LabGenClient {
     /** GET /api/labgen/llm-provider/status */
     async getLLMProviderStatus() {
         return this._request('GET', PATHS.llmProviderStatus);
+    }
+
+    /** GET /api/labgen/runtime/adapter-status — runtime namespace adapter diagnostics (admin-only) */
+    async getAdapterStatus() {
+        return this._request('GET', PATHS.runtimeAdapterStatus);
     }
 
     /** POST /api/labgen/llm-provider/validate-config — local config validation, no network */

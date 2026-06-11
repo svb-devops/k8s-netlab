@@ -258,6 +258,16 @@ _ENDPOINTS: list[ApiContractEndpoint] = [
         is_read_only=False,
         tags=["labgen"],
     ),
+    ApiContractEndpoint(
+        path="/api/labgen/runtime/adapter-status",
+        method="GET",
+        summary="Runtime namespace adapter selection status — mode, production_safe, issues (admin-only)",
+        category=ApiContractCategory.ADMIN_REVIEW,
+        auth="admin",
+        response_model="RuntimeAdapterStatusResponse",
+        is_read_only=True,
+        tags=["labgen"],
+    ),
 ]
 
 
@@ -301,6 +311,13 @@ _SENSITIVE_FIELD_POLICY = SensitiveFieldPolicy(
         "prompt_text",
         "hidden_prompt",
         "provider_trace_id",
+        # Runtime adapter diagnostics
+        "namespace_credential",
+        "runtime_adapter_config",
+        "cluster_endpoint_secret",
+        "service_account_token",
+        "kubeconfig_content",
+        "raw_env_value",
     ],
     prohibited_patterns=[
         "eyJ[A-Za-z0-9._-]+\\.[A-Za-z0-9._-]+\\.[A-Za-z0-9._-]+",
@@ -870,6 +887,38 @@ _EXAMPLES: list[ApiContractExample] = [
             "rejected_reason": "provider_disabled",
         },
     ),
+    ApiContractExample(
+        name="runtime_adapter_status_dev_stub",
+        category=ApiContractCategory.ADMIN_REVIEW,
+        description=(
+            "GET /api/labgen/runtime/adapter-status — dev mode with stub adapter. "
+            "production_safe=false, NON_PRODUCTION_STUB_ALLOWED warning. "
+            "Admin-only diagnostics view, returns no cluster auth material."
+        ),
+        endpoint_path="/api/labgen/runtime/adapter-status",
+        response={
+            "runtime_mode": "dev",
+            "namespace_adapter_kind": "stub",
+            "production_safe": False,
+            "issues": [
+                {
+                    "code": "NON_PRODUCTION_STUB_ALLOWED",
+                    "severity": "warning",
+                    "message": (
+                        "StubNamespaceLifecycleAdapter is active in dev mode. "
+                        "No real K8s operations will occur. "
+                        "This adapter must not be used in production."
+                    ),
+                }
+            ],
+            "warnings": [
+                "StubNamespaceLifecycleAdapter is active in dev mode. "
+                "No real K8s operations will occur. "
+                "This adapter must not be used in production."
+            ],
+            "checked_at": "2026-06-10T00:00:00+00:00",
+        },
+    ),
 ]
 
 
@@ -894,6 +943,9 @@ _NOTES = [
     "with valid LABGEN_LLM_OPENAI_* vars to activate. Repair live adapter is OUT_OF_SCOPE for v0.1.",
     "provider status fields: configured_model and base_url_origin show sanitized info only — "
     "API key and Authorization header are never returned.",
+    "runtime adapter status (GET /api/labgen/runtime/adapter-status) is admin-only and "
+    "not in any learner-facing category. Returns only: mode, adapter kind, production_safe flag, "
+    "issue codes, and human-readable issue messages. No cluster auth material is returned.",
 ]
 
 

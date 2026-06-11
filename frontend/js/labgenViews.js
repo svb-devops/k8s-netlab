@@ -540,6 +540,67 @@ export function renderLLMProviderStatus(status) {
     </div>`;
 }
 
+export function renderAdapterStatus(status) {
+    if (!status || typeof status !== 'object') {
+        return renderErrorState('No adapter status available.');
+    }
+
+    const modeBadge = status.runtime_mode === 'production'
+        ? _badge('PRODUCTION', 'bg-red-100 text-red-800')
+        : status.runtime_mode === 'dev'
+            ? _badge('DEV', 'bg-blue-100 text-blue-700')
+            : status.runtime_mode === 'demo'
+                ? _badge('DEMO', 'bg-yellow-100 text-yellow-800')
+                : _badge(_safe(status.runtime_mode ?? 'UNKNOWN'), 'bg-gray-100 text-gray-600');
+
+    const adapterBadge = status.namespace_adapter_kind === 'stub'
+        ? _badge('stub', 'bg-yellow-100 text-yellow-800')
+        : _badge('k8s', 'bg-green-100 text-green-800');
+
+    const safeBadge = status.production_safe
+        ? _badge('PRODUCTION SAFE', 'bg-green-100 text-green-800')
+        : _badge('NOT PRODUCTION SAFE', 'bg-red-100 text-red-700');
+
+    const productionUnsafeWarning = (status.runtime_mode === 'production' && !status.production_safe)
+        ? `<div class="mt-3 p-3 rounded bg-red-50 border border-red-300">
+            <p class="text-xs font-bold text-red-700">⚠ PRODUCTION MODE — adapter is not production-safe.</p>
+            <p class="text-xs text-red-600 mt-1">Lab starts will be rejected until a k8s adapter with a valid kubeconfig is configured.</p>
+           </div>`
+        : '';
+
+    const nonProdStubNote = (status.runtime_mode !== 'production' && status.namespace_adapter_kind === 'stub')
+        ? `<div class="mt-3 p-3 rounded bg-yellow-50 border border-yellow-300">
+            <p class="text-xs font-medium text-yellow-800">non-production stub active</p>
+            <p class="text-xs text-yellow-700 mt-0.5">No real K8s operations. Stub must not be used in production.</p>
+           </div>`
+        : '';
+
+    const issueRows = Array.isArray(status.issues) && status.issues.length > 0
+        ? status.issues.map(i => {
+            const color = i.severity === 'blocking' ? 'text-red-700' : 'text-yellow-700';
+            const badge = i.severity === 'blocking'
+                ? _badge('BLOCKING', 'bg-red-100 text-red-700')
+                : _badge('warning', 'bg-yellow-100 text-yellow-700');
+            return `<li class="text-xs ${color} mt-1">${badge} <span class="font-mono">${_safe(i.code)}</span>: ${_safe(i.message)}</li>`;
+          }).join('')
+        : '<li class="text-xs text-gray-400">No issues.</li>';
+
+    return `<div class="space-y-2">
+        <div class="flex flex-wrap items-center gap-2 text-xs">
+            <span class="text-gray-500">Mode:</span> ${modeBadge}
+            <span class="text-gray-500 ml-2">Adapter:</span> ${adapterBadge}
+            <span class="text-gray-500 ml-2">Safety:</span> ${safeBadge}
+        </div>
+        ${productionUnsafeWarning}
+        ${nonProdStubNote}
+        <div class="mt-2">
+            <p class="text-xs font-medium text-gray-600 mb-1">Issues</p>
+            <ul class="space-y-0.5">${issueRows}</ul>
+        </div>
+        <p class="text-xs text-gray-400 mt-1">Checked at: ${_safe(status.checked_at ?? '')}</p>
+    </div>`;
+}
+
 export function renderDemoSeedResult(result) {
     if (!result) return renderErrorState('No seed result received');
 

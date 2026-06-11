@@ -28,7 +28,12 @@ from backend.labgen.lab_session_service import (
     SessionNotFound,
     VMTrackerPort,
 )
-from backend.labgen.namespace_lifecycle import StubNamespaceLifecycleAdapter
+from backend.labgen.runtime_adapter_selection import (
+    RuntimeAdapterSelectionService,
+    RuntimeAdapterSelectionResult,
+    NamespaceAdapterKind,
+    RuntimeMode,
+)
 from backend.labgen.models import (
     AdminReviewDiff,
     AdminReviewDiffChange,
@@ -142,13 +147,16 @@ def get_image_resolver() -> ImageResolver:
 def get_session_service() -> LabSessionService:
     global _session_svc
     if _session_svc is None:
+        selection = RuntimeAdapterSelectionService.create_from_config()
+        ns_adapter = RuntimeAdapterSelectionService.build_adapter(selection)
         _session_svc = LabSessionService(
             session_repo=get_session_repository(),
             draft_repo=get_repository(),
             vm_tracker=RealVMTracker(),
-            ns_lifecycle=StubNamespaceLifecycleAdapter(),
+            ns_lifecycle=ns_adapter,
             image_resolver=get_image_resolver(),
             audit_svc=RuntimeAuditService(repo=get_audit_repository()),
+            adapter_selection=selection,
         )
     return _session_svc
 
@@ -505,6 +513,58 @@ async def publish_draft(
         )
 
     return saved
+
+
+# ===========================================================================
+# Runtime Adapter Status — GET /api/labgen/runtime/adapter-status  (admin-only, read-only)
+# ===========================================================================
+
+
+class RuntimeAdapterIssueView(BaseModel):
+    code: str
+    severity: str  # "blocking" | "warning"
+    message: str
+
+
+class RuntimeAdapterStatusResponse(BaseModel):
+    runtime_mode: str
+    namespace_adapter_kind: str
+    production_safe: bool
+    issues: list[RuntimeAdapterIssueView]
+    warnings: list[str]
+    checked_at: str
+
+
+@router.get(
+    "/runtime/adapter-status",
+    response_model=RuntimeAdapterStatusResponse,
+    summary="Runtime namespace adapter selection status (admin-only, read-only)",
+    tags=["labgen"],
+)
+async def get_runtime_adapter_status(
+    admin: str = Depends(require_admin_user),
+) -> RuntimeAdapterStatusResponse:
+    """Return the current runtime adapter selection result.
+
+    READ-ONLY: does not create namespaces, sessions, rolebindings, or audit events.
+    Does NOT return kubeconfig, service account tokens, cluster credentials, or raw env values.
+    """
+    result = RuntimeAdapterSelectionService.create_from_config()
+    return RuntimeAdapterStatusResponse(
+        runtime_mode=result.runtime_mode.value,
+        namespace_adapter_kind=result.namespace_adapter_kind.value,
+        production_safe=result.production_safe,
+        issues=[
+            RuntimeAdapterIssueView(
+                code=i.code,
+                severity=i.severity,
+                message=i.message,
+            )
+            for i in result.issues
+        ],
+        warnings=[i.message for i in result.issues if i.severity == "warning"],
+        checked_at=result.checked_at,
+    )
 
 
 # ===========================================================================

@@ -42,3 +42,6 @@ class FailureReason(str, Enum):
 
     # -- Session lifecycle ----------------------------------------------------
     LAB_NOT_READY_TO_COMPLETE = "lab_not_ready_to_complete"
+
+    # -- Adapter selection (runtime) -----------------------------------------
+    ADAPTER_UNSAFE_IN_PRODUCTION = "adapter_unsafe_in_production"

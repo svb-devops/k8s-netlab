@@ -214,6 +214,21 @@ AI_TUTOR_MAX_TURNS: int = _get_env_int("AI_TUTOR_MAX_TURNS", 20)
 if not DEEPSEEK_API_KEY:
     logger.warning("DEEPSEEK_API_KEY not set — AI tutor (/api/ai/chat) will be unavailable")
 
+# --- LabGen Runtime Mode ---
+# Controls which namespace lifecycle adapter is used and whether production safety checks apply.
+# LABGEN_RUNTIME_MODE: test | dev | demo | production
+#   - test/dev/demo: stub adapter allowed (no real K8s ops)
+#   - production: k8s adapter required; stub adapter is a blocking error (fail closed)
+# LABGEN_NAMESPACE_ADAPTER: stub | k8s
+#   - stub: StubNamespaceLifecycleAdapter (no real K8s, for test/dev/demo only)
+#   - k8s: K3sNamespaceLifecycleAdapter (requires LABGEN_K8S_PLATFORM_KUBECONFIG_PATH)
+# LABGEN_K8S_PLATFORM_KUBECONFIG_PATH: path to the platform kubeconfig used for namespace management.
+#   Required when LABGEN_NAMESPACE_ADAPTER=k8s and LABGEN_RUNTIME_MODE=production.
+#   Distinct from verifier kubeconfig (which is per-VM).
+LABGEN_RUNTIME_MODE: str = os.getenv("LABGEN_RUNTIME_MODE", "dev")
+LABGEN_NAMESPACE_ADAPTER: str = os.getenv("LABGEN_NAMESPACE_ADAPTER", "stub")
+LABGEN_K8S_PLATFORM_KUBECONFIG_PATH: str = os.getenv("LABGEN_K8S_PLATFORM_KUBECONFIG_PATH", "")
+
 # --- LabGen LLM Provider Configuration ---
 # Controls the provider boundary for LabGen draft generation.
 # Default: fake_only — no real LLM, no API keys, no network calls.

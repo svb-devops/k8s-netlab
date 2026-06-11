@@ -124,6 +124,26 @@
         </div>
     </section>
 
+    <!-- Runtime Adapter Status (admin-only diagnostics) -->
+    <section class="bg-white rounded-lg border border-gray-200 p-5">
+        <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+                <h2 class="font-semibold text-gray-700">Runtime Adapter Status</h2>
+                <span class="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600 font-medium">ADMIN-ONLY</span>
+            </div>
+            <button id="btn-fetch-adapter-status"
+                class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">
+                Fetch Status
+            </button>
+        </div>
+        <p class="text-xs text-gray-400 mb-3">
+            Shows the current namespace adapter mode, production safety, and any config issues.
+            Never shows kubeconfig, service account tokens, cluster credentials, or raw env values.
+            Admin access required.
+        </p>
+        <div id="adapter-status-root" class="text-sm text-gray-400">Click Fetch Status to load.</div>
+    </section>
+
     <!-- Contract Pack -->
     <section class="bg-white rounded-lg border border-gray-200 p-5">
         <div class="flex items-center justify-between mb-3">
@@ -223,7 +243,7 @@
 
 <script type="module">
 import { LabGenClient, LabGenApiError } from '/js/labgenClient.js';
-import { renderContractPackSummary, renderDemoSeedResult, renderErrorState, renderLLMProviderStatus } from '/js/labgenViews.js';
+import { renderContractPackSummary, renderDemoSeedResult, renderErrorState, renderLLMProviderStatus, renderAdapterStatus } from '/js/labgenViews.js';
 
 const client = new LabGenClient();
 
@@ -331,6 +351,19 @@ document.getElementById('btn-validate-config').addEventListener('click', async (
     } catch (e) {
         const msg = e instanceof LabGenApiError ? `${e.status}: ${e.message}` : 'Validation failed.';
         resultEl.innerHTML = '<p class="text-xs text-red-600">' + msg + '</p>';
+    }
+});
+
+// Runtime adapter status
+document.getElementById('btn-fetch-adapter-status').addEventListener('click', async () => {
+    const root = document.getElementById('adapter-status-root');
+    root.textContent = 'Loading…';
+    try {
+        const s = await client.getAdapterStatus();
+        root.innerHTML = renderAdapterStatus(s);
+    } catch (e) {
+        const msg = e instanceof LabGenApiError ? `${e.status}: ${e.message}` : 'Failed to load.';
+        root.innerHTML = renderErrorState(msg);
     }
 });
 
