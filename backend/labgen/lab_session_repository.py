@@ -68,6 +68,16 @@ class LabSessionRepository:
                 logger.error("LabSessionRepository.list_by_student failed: %s", exc)
         return result
 
+    def list_all(self) -> list[LabSessionState]:
+        data = safe_read_json(self._path)
+        result = []
+        for raw in data.values():
+            try:
+                result.append(LabSessionState.model_validate(raw))
+            except Exception as exc:
+                logger.error("LabSessionRepository.list_all failed: %s", exc)
+        return result
+
     def list_by_vm_id(self, vm_id: str) -> list[LabSessionState]:
         data = safe_read_json(self._path)
         result = []

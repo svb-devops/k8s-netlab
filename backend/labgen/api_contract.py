@@ -268,6 +268,16 @@ _ENDPOINTS: list[ApiContractEndpoint] = [
         is_read_only=True,
         tags=["labgen"],
     ),
+    ApiContractEndpoint(
+        path="/api/labgen/runtime/expire-sessions",
+        method="POST",
+        summary="Expire timed-out lab sessions — cleanup + taint (admin-only, not learner-facing)",
+        category=ApiContractCategory.ADMIN_REVIEW,
+        auth="admin",
+        response_model="ExpireSessionsResponse",
+        is_read_only=False,
+        tags=["labgen"],
+    ),
 ]
 
 
@@ -946,6 +956,10 @@ _NOTES = [
     "runtime adapter status (GET /api/labgen/runtime/adapter-status) is admin-only and "
     "not in any learner-facing category. Returns only: mode, adapter kind, production_safe flag, "
     "issue codes, and human-readable issue messages. No cluster auth material is returned.",
+    "runtime expire-sessions (POST /api/labgen/runtime/expire-sessions) is admin-only and "
+    "not in any learner-facing category. Response contains session IDs, VM IDs, issue counts, "
+    "and a timestamp — no namespace, kubeconfig, credential, raw exception, or stack trace. "
+    "Use dry_run=true to identify expired sessions without mutating state.",
 ]
 
 

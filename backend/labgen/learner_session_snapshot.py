@@ -303,6 +303,7 @@ def _build_action_availability(
 
 
 def _build_session_issues(session: "LabSessionState") -> list[LearnerSessionIssue]:
+    from backend.labgen.failure_reasons import FailureReason
     issues: list[LearnerSessionIssue] = []
     if session.lab_session_status == LabSessionStatus.LAB_CLEANUP_FAILED:
         issues.append(LearnerSessionIssue(
@@ -326,6 +327,13 @@ def _build_session_issues(session: "LabSessionState") -> list[LearnerSessionIssu
                 severity="error",
                 source="session",
             ))
+    if session.failure_reason == FailureReason.LAB_TIMEOUT.value:
+        issues.append(LearnerSessionIssue(
+            code="LAB_TIMEOUT",
+            message=_sanitize("Lab session exceeded the time limit and was automatically closed."),
+            severity="info",
+            source="session",
+        ))
     return issues
 
 

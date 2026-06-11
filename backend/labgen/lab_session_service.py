@@ -48,6 +48,16 @@ _TERMINAL_STATES: frozenset[LabSessionStatus] = frozenset({
     LabSessionStatus.LAB_START_FAILED,
 })
 
+# States that have already ended (either terminal or completed lifecycle) — timeout is a no-op.
+_ALREADY_ENDED_STATES: frozenset[LabSessionStatus] = frozenset({
+    LabSessionStatus.LAB_CLOSED,
+    LabSessionStatus.LAB_CLEANUP_FAILED,
+    LabSessionStatus.LAB_START_FAILED,
+    LabSessionStatus.LAB_TIMEOUT,
+    LabSessionStatus.LAB_COMPLETED,
+    LabSessionStatus.LAB_ABORTED,
+})
+
 _ACTIVE_STATES: frozenset[LabSessionStatus] = frozenset({
     LabSessionStatus.LAB_CREATED,
     LabSessionStatus.LAB_STARTING,
@@ -450,6 +460,26 @@ class LabSessionService:
         session = self._require_session(session_id)
         if session.lab_session_status in _TERMINAL_STATES:
             return session  # idempotent — already closed or permanently failed
+        return self._do_cleanup(session)
+
+    def timeout_session(self, session_id: str) -> LabSessionState:
+        """Apply LAB_TIMEOUT to an active session then run cleanup.
+
+        Idempotent: returns session unchanged if it has already ended.
+        Does NOT emit a new audit event for the timeout transition itself
+        (no matching RuntimeAuditEventType — timeout is expressed via
+        failure_reason on the session and via CLEANUP_FAILED/VM_TAINTED
+        audit events if cleanup fails).
+        """
+        session = self._require_session(session_id)
+        if session.lab_session_status in _ALREADY_ENDED_STATES:
+            return session
+
+        session.lab_session_status = LabSessionStatus.LAB_TIMEOUT
+        session.failure_reason = FailureReason.LAB_TIMEOUT.value
+        session.connection_state = ConnectionState.DISCONNECTED
+        session.ended_at = datetime.now(tz=timezone.utc)
+        session = self._session_repo.update(session)
         return self._do_cleanup(session)
 
     # ------------------------------------------------------------------

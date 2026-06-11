@@ -714,10 +714,10 @@ class TestRegression:
     def test_contract_pack_endpoint_count(self):
         """Endpoint count must match the number of declared routes."""
         pack = build_contract_pack()
-        # 18 endpoints: 1 generate + 3 admin_review + 3 learner_catalog +
+        # 19 endpoints: 1 generate + 3 admin_review + 3 learner_catalog +
         # 2 learner_runtime + 5 runtime_actions + 2 llm_provider + 1 validate-config
-        # + 1 runtime/adapter-status
-        assert len(pack.endpoints) == 18
+        # + 1 runtime/adapter-status + 1 runtime/expire-sessions
+        assert len(pack.endpoints) == 19
 
     def test_contract_pack_example_count(self):
         pack = build_contract_pack()

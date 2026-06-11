@@ -87,6 +87,7 @@ from backend.labgen.learner_session_snapshot import (
 )
 from backend.labgen.api_contract import ApiContractPack, build_contract_pack
 from backend.labgen.runtime_precheck import RuntimePrecheckService
+from backend.labgen.vm_expiry import VMExpiryResult, VMExpiryService
 
 router = APIRouter(prefix="/api/labgen", tags=["labgen"])
 
@@ -168,6 +169,19 @@ def get_session_service() -> LabSessionService:
             ),
         )
     return _session_svc
+
+
+_expiry_svc: Optional[VMExpiryService] = None
+
+
+def get_expiry_service() -> VMExpiryService:
+    global _expiry_svc
+    if _expiry_svc is None:
+        _expiry_svc = VMExpiryService(
+            session_repo=get_session_repository(),
+            session_service=get_session_service(),
+        )
+    return _expiry_svc
 
 
 def get_publish_service() -> PublishService:
@@ -573,6 +587,53 @@ async def get_runtime_adapter_status(
         ],
         warnings=[i.message for i in result.issues if i.severity == "warning"],
         checked_at=result.checked_at,
+    )
+
+
+# ===========================================================================
+# Runtime Expiry — POST /api/labgen/runtime/expire-sessions  (admin-only)
+# ===========================================================================
+
+
+class ExpireSessionsRequest(BaseModel):
+    dry_run: bool = False
+    limit: Optional[int] = Field(None, ge=1, le=500)
+
+
+class ExpireSessionsResponse(BaseModel):
+    expired_session_ids: list[str]
+    cleaned_session_ids: list[str]
+    failed_session_ids: list[str]
+    tainted_vm_ids: list[str]
+    issue_count: int
+    checked_at: str
+
+
+@router.post(
+    "/runtime/expire-sessions",
+    response_model=ExpireSessionsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Expire timed-out lab sessions (admin-only)",
+    tags=["labgen"],
+)
+async def expire_sessions(
+    body: ExpireSessionsRequest,
+    admin: str = Depends(require_admin_user),
+    svc: VMExpiryService = Depends(get_expiry_service),
+) -> ExpireSessionsResponse:
+    """Identify and process lab sessions that have exceeded their TTL.
+
+    Admin-only. Never returns kubeconfig, namespace, credential material, raw exceptions,
+    or stack traces. Use dry_run=true to inspect without mutating state.
+    """
+    result = svc.expire_sessions(dry_run=body.dry_run, limit=body.limit)
+    return ExpireSessionsResponse(
+        expired_session_ids=result.expired_session_ids,
+        cleaned_session_ids=result.cleaned_session_ids,
+        failed_session_ids=result.failed_session_ids,
+        tainted_vm_ids=result.tainted_vm_ids,
+        issue_count=len(result.issues),
+        checked_at=result.checked_at.isoformat(),
     )
 
 
