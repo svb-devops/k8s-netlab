@@ -85,11 +85,13 @@ check_range() {
     fi
 
     # ------------------------------------------------------------------
-    # 2. API keys and tokens
+    # 2. API keys and tokens (tests/ excluded — fixture keys are intentional)
     # ------------------------------------------------------------------
     echo "  [2/8] API密钥和Token..."
-    if echo "$ADDED" | grep -iE '(api_key|apikey|secret_key|access_key)\s*=\s*["\x27][A-Za-z0-9_\-]{10,}["\x27]' \
-        | grep -v 'your-key\|example\|<.*KEY.*>\|getenv\|os\.environ' \
+    local ADDED_NO_TESTS
+    ADDED_NO_TESTS=$(git diff "$range" -- ':!tests/' 2>/dev/null | grep "^+" | grep -v "^+++" || true)
+    if echo "$ADDED_NO_TESTS" | grep -iE '(api_key|apikey|secret_key|access_key)\s*=\s*["\x27][A-Za-z0-9_\-]{10,}["\x27]' \
+        | grep -v 'your-key\|example\|<.*KEY.*>\|getenv\|os\.environ\|fake\|test\|mock\|placeholder' \
         | grep -qE '.'; then
         echo "  ❌ 发现API密钥"
         ISSUES=$((ISSUES + 1))
