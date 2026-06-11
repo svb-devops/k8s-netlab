@@ -1,9 +1,11 @@
 # LabGen MVP Engineering Contract — Audit Report v0.1
 
 > **Auditor**: Claude Sonnet 4.6 (claude-sonnet-4-6)  
-> **Audit date**: 2026-06-10  
+> **Audit date**: 2026-06-10 (updated 2026-06-11 — production blockers closed)  
 > **Source of truth**: `docs/labgen/MVP_ENGINEERING_CONTRACT_v0.1.md`  
 > **Scope**: Full gap audit across all backend modules, test files, and frontend integration.
+
+> **Update 2026-06-11**: Production-blocking Gaps 1–4 are all closed as of commit `d90fb95`. See [PRODUCTION_READINESS_RC_v0.1.md](PRODUCTION_READINESS_RC_v0.1.md) for RC gate decision. **RC verdict: RC_READY_WITH_NOTES.**
 
 ---
 
@@ -11,14 +13,17 @@
 
 | Item | Value |
 |------|-------|
-| Current commit | `745c384` — feat(labgen): LLM Provider Boundary Hardening v0.1 |
-| Python test count | 1513 passed, 0 failed |
-| labgen module coverage | 63%–100% per module (verifier_credentials.py lowest at 63%) |
-| Full-suite coverage (all backend) | 73.54% (below 75% threshold due to non-labgen modules) |
-| Frontend test count | 117 passed, 1 failed |
-| Frontend failing test | `admin view: BLOCKED shows blocked reasons` — stale fixture in test_views.mjs |
+| Current commit | `d90fb95` — feat(labgen): LAB_TIMEOUT VM Tracker Expiry Integration v0.1 |
+| Python test count | 2363 passed, 0 failed |
+| labgen module coverage | 80%–100% per module (verifier_credentials.py at 63% for real-K3s paths only) |
+| Full-suite coverage (all backend) | **94.09%** |
+| Frontend test count | 118 passed, 0 failed |
 | Pre-push hook | Configured and operational |
 | Safety reviewer | Available via subagent |
+
+### Production blockers closed as of `d90fb95`
+
+All four production-blocking gaps (Gap 1–4) are closed. **RC gate verdict: RC_READY_WITH_NOTES** — ready for demo and integration testing; not yet ready for live student sessions pending `K3sNamespaceLifecycleAdapter` implementation. See [PRODUCTION_READINESS_RC_v0.1.md](PRODUCTION_READINESS_RC_v0.1.md) for full RC gate report.
 
 ### Overall completion verdict
 
@@ -57,8 +62,8 @@
 | §11 LabSessionState machine | All 18 states defined in enum | **DONE** | `LabSessionStatus` enum | `test_labgen_models.py` | — |
 | §11 State transitions | create→precheck→image_check→namespace→active flow | **PARTIAL** | `LabSessionService.create_session()` implements precheck + image check + namespace creating; VERIFIER_BINDING_CREATING state exists but no K3s binding call | `test_labgen_lab_session.py` | Real namespace binding deferred (StubNamespaceLifecycleAdapter in production default) |
 | §11 connection_state separation | WS disconnect ≠ cleanup trigger | **DONE** | LabSessionState.connection_state independent field | `test_labgen_models.py` | No WS code in labgen — connection_state is a model-only field |
-| §11 VM_PRECHECK_RUNNING conditions | 6 conditions checked including vm_tainted | **DONE** | `LabSessionService.run_precheck()` | `test_labgen_vm_taint_recovery.py` | Cond 4 (namespace terminating >5min) and Cond 6 (cluster_scoped cleanup_verified) are not checked — see gaps |
-| §12 Cleanup triggers | student complete/abort → cleanup | **DONE** | `complete_session()`, `abort_session()`, `run_cleanup()` | `test_labgen_lab_completion.py` | VM timeout trigger (LAB_TIMEOUT) not wired to vm_tracker expiry callback |
+| §11 VM_PRECHECK_RUNNING conditions | 6 conditions checked including vm_tainted | **DONE** | `LabSessionService.run_precheck()` + `RuntimePrecheckService` (Gap 3 closed `252a618`) | `test_labgen_vm_taint_recovery.py`, `test_labgen_runtime_precheck.py` | Condition 4/6 now checked via RuntimePrecheckService; `K3sNamespaceLifecycleAdapter.is_namespace_stuck_terminating()` still NotImplementedError |
+| §12 Cleanup triggers | student complete/abort/timeout → cleanup | **DONE** | `complete_session()`, `abort_session()`, `run_cleanup()`, `timeout_session()` (Gap 4 closed `d90fb95`) | `test_labgen_lab_completion.py`, `test_labgen_vm_expiry.py` | LAB_TIMEOUT now wired via VMExpiryService + POST /api/labgen/runtime/expire-sessions |
 | §13 VM Tracker / Lab Session event boundary | port interface + RealVMTracker + StubVMTracker | **DONE** | `VMTrackerPort`, `RealVMTracker`, `StubVMTracker` | `test_labgen_vm_taint_recovery.py` | LAB_SESSION_STARTED / LAB_SESSION_CLEANUP_VERIFIED events not emitted (only taint) |
 | §14 VerifierCredentialMetadata | schema_version, all fields | **DONE** | `VerifierCredentialMetadata` model | `test_labgen_models.py` | — |
 | §14 Credential storage | creds/vm_creds/{vm_id}_verifier.yaml, chmod 700/600 | **DONE** | `VerifierCredentialStore` | `test_labgen_verifier_credentials.py` | — |
@@ -152,59 +157,43 @@
 
 ### Gap 1 — `StubNamespaceLifecycleAdapter` wired as default in production routing
 
-**Why it matters**: In production, `POST /api/lab-sessions` creates a session but never actually creates a K8s namespace. Students enter "LAB_ACTIVE" state with a fake namespace. All verify checks against that namespace succeed trivially via StubVMTracker. This means the entire lab session flow is currently a demo-only skeleton in production.
+> **STATUS: DONE — closed at commit `a5b87a9`**
 
-**Scope**: `backend/labgen/routes.py:149` — `ns_lifecycle=StubNamespaceLifecycleAdapter()`
+**Closure**: `RuntimeAdapterSelectionService` (new module `backend/labgen/runtime_adapter_selection.py`) checks the configured runtime mode and adapter kind on every `create_session()` call. Production mode + stub adapter → `LAB_START_FAILED` (fail-closed) before any resource creation. `GET /api/labgen/runtime/adapter-status` provides operator visibility. Tests: `tests/test_labgen_runtime_adapter_selection.py` + `tests/test_labgen_runtime_adapter_routes.py` (~62 tests). safety-reviewer PASS; Codex PASS.
 
-**Recommended next task**: Wire `K3sNamespaceLifecycleAdapter` (currently `NotImplementedError` skeleton) before production deployment. This is the largest remaining engineering task.
+**Original issue**: In production, `POST /api/lab-sessions` created a session but never actually created a K8s namespace. Students entered "LAB_ACTIVE" state with a fake namespace.
 
-**Blocks Real LLM Provider Adapter?** No — LLM adapter is independent of K3s wiring.
-
-**Blocks frontend demo?** No — demo sessions work fine with stub.
-
-**Blocks production deployment?** YES.
+**Remaining**: `K3sNamespaceLifecycleAdapter` is still `NotImplementedError` — required before live student sessions but correctly blocked by the Gap 1 guard in production mode.
 
 ---
 
 ### Gap 2 — Verifier credential cleanup on VM reclaim not implemented
 
-**Why it matters**: Contract §14 requires: "vm_tracker reclaim VM → delete cred file; failure → `credential_cleanup_failed` + alert". Currently, when a VM is reclaimed, `creds/vm_creds/{vm_id}_verifier.yaml` persists indefinitely. If a VM is reassigned to another student, stale credentials remain on disk.
+> **STATUS: DONE — closed at commit `139e767`**
 
-**Scope**: `backend/vm_tracker.py` reclaim path + `VerifierCredentialStore.delete()` (method exists but is never called from reclaim path).
+**Closure**: `VerifierCredentialReclaimer` added to `verifier_credentials.py`. `_do_cleanup()` restructured as two phases: Phase 1 namespace deletion (original behavior) + Phase 2 credential reclaim. Credential deletion failure → `LAB_CLEANUP_FAILED` + `mark_vm_tainted` (same policy as namespace cleanup failure). Path-traversal guard: path must be within credential root, no symlinks. Audit metadata: only `cleanup_phase="verifier_credential_reclaim"` (no path/content/kubeconfig/token). Tests: `tests/test_labgen_verifier_credential_reclaim.py` (35 tests). safety-reviewer PASS.
 
-**Blocks Real LLM Provider Adapter?** No.
-
-**Blocks frontend demo?** No.
-
-**Blocks production deployment?** YES — security concern for multi-session environments.
+**Original issue**: Contract §14 requires vm_tracker reclaim VM → delete cred file. Stale credentials persisted indefinitely after VM reassignment.
 
 ---
 
 ### Gap 3 — VM_PRECHECK_RUNNING conditions 4 and 6 not checked
 
-**Why it matters**: Contract §11 specifies 6 precheck conditions. Condition 4 ("no prior namespace in Terminating >5min") and Condition 6 ("if prior lab declared cluster_scoped_resources, cleanup_verified=true") are absent from `run_precheck()`. A student could start a new lab on a VM whose prior cleanup is incomplete.
+> **STATUS: DONE — closed at commit `252a618`**
 
-**Scope**: `backend/labgen/lab_session_service.py` `run_precheck()` method.
+**Closure**: `RuntimePrecheckService` (new module `backend/labgen/runtime_precheck.py`) implements Condition 4 (prior namespace stuck Terminating >5min) and Condition 6 (cluster-scoped resources declared + `cleanup_verified=False`). Service injected into `LabSessionService.__init__` as optional dep. BLOCKED result → `LAB_START_FAILED` session + safe audit event (only `blocked_conditions` + `issue_codes` in metadata, no kubeconfig/credential/traceback). Fail-closed: any exception → BLOCKED safe issue. `NamespaceLifecyclePort` extended with `is_namespace_stuck_terminating()`. Tests: `tests/test_labgen_runtime_precheck.py` + `tests/test_labgen_runtime_start_precheck.py` (~67 tests). safety-reviewer PASS.
 
-**Blocks Real LLM Provider Adapter?** No.
-
-**Blocks frontend demo?** No (stub always passes).
-
-**Blocks production deployment?** YES for cluster-scoped labs; low risk for namespace-only labs.
+**Original issue**: Student could start a new lab on a VM whose prior namespace was stuck Terminating or whose cluster-scoped resources were not cleaned up.
 
 ---
 
 ### Gap 4 — LAB_TIMEOUT trigger not wired to vm_tracker expiry
 
-**Why it matters**: Contract §12 states VM session timeout triggers `LAB_TIMEOUT`. Currently, `LabSessionStatus.LAB_TIMEOUT` exists in the enum and state machine but no code path actually sets it. vm_tracker expiry callbacks do not reach the LabSessionService.
+> **STATUS: DONE — closed at commit `d90fb95`**
 
-**Scope**: Integration between `backend/vm_tracker.py` expiry event and `LabSessionService`.
+**Closure**: `VMExpiryService` (new module `backend/labgen/vm_expiry.py`) scans `session.started_at + TTL` expiry against injectable clock. `LabSessionService.timeout_session()`: `LAB_ACTIVE → LAB_TIMEOUT → _do_cleanup()`. `failure_reason=lab_timeout` preserved through successful cleanup. `POST /api/labgen/runtime/expire-sessions` (admin-only, dry_run, limit 1–500). `LabSessionRepository.list_all()` added. `FailureReason.LAB_TIMEOUT` stable machine code added. Learner snapshot shows safe LAB_TIMEOUT issue. Cleanup failure → `LAB_CLEANUP_FAILED` + `mark_vm_tainted` (existing policy). Tests: `tests/test_labgen_vm_expiry.py` (30 tests) + `tests/test_labgen_lab_timeout_integration.py` (44 tests). `vm_expiry.py` at 100% coverage. safety-reviewer PASS; Codex PASS.
 
-**Blocks Real LLM Provider Adapter?** No.
-
-**Blocks frontend demo?** No.
-
-**Blocks production deployment?** YES — session hygiene for timed-out labs.
+**Original issue**: `LabSessionStatus.LAB_TIMEOUT` existed in enum but no code path set it. Timed-out labs stayed `LAB_ACTIVE` indefinitely.
 
 ---
 

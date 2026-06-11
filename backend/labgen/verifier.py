@@ -173,7 +173,9 @@ class VerifierService:
 
         resolved_ns = session.namespace
         if resolved_ns is None or template.namespace not in {_NS_SENTINEL, resolved_ns}:
-            return _fail(FailureReason.VERIFIER_NAMESPACE_MISMATCH, f"expected={resolved_ns!r}")
+            # Do not include resolved_ns in detail: namespace is internal and must not
+            # appear in learner-facing StepCheckResponse.verify_results.detail.
+            return _fail(FailureReason.VERIFIER_NAMESPACE_MISMATCH)
 
         if template.type not in _SUPPORTED_TYPES:
             return _fail(
