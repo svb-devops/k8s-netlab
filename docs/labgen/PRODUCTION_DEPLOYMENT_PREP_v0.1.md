@@ -3,7 +3,7 @@
 > **Prepared**: 2026-06-11  
 > **Basis**: RC_READY_WITH_NOTES (commit `2c02478`), Contract MVP v0.1  
 > **Status**: DEPLOYMENT PREPARATION — not a completed deployment  
-> **Next step after this doc**: Staging Deployment Dry Run v0.1
+> **Next step after this doc**: Controlled Staging Trial v0.1 (Staging Deployment Dry Run v0.1 complete)
 
 ---
 
@@ -528,3 +528,23 @@ The staging dry run validates preflight, startup, admin diagnostics, contract pa
 **Boundary**: The staging dry run is NOT a production deployment, NOT a real K3s E2E validation, and NOT a live-traffic cutover. It validates the system is safe to operate in staging. Lab sessions are expected to fail (K3sNamespaceLifecycleAdapter is NotImplementedError).
 
 **Next step after dry run passes**: Controlled Staging Trial v0.1 — requires a real K3s staging cluster.
+
+---
+
+## J. Controlled Staging Trial
+
+Tooling for the controlled staging trial is ready.
+
+| Item | Value |
+|------|-------|
+| Trial runbook | [CONTROLLED_STAGING_TRIAL_v0.1.md](CONTROLLED_STAGING_TRIAL_v0.1.md) |
+| Checklist template | `deploy/labgen/staging_trial_checklist.md` |
+| Trial helper script | `scripts/labgen_controlled_staging_trial.py` |
+| Trial tests | `tests/test_labgen_controlled_staging_trial.py` (58 tests) |
+
+**Current status**: TOOLING_READY — Live execution BLOCKED pending staging environment inputs.
+
+**Required inputs**: real staging K3s cluster, staging kubeconfig, staging Proxmox with VMID range, staging-only storage and credential root.
+
+**Boundary**: Controlled staging trial is NOT a production deployment and NOT a production-live declaration.
+Trial PASS means the system is ready for production deployment — not that production is live.

@@ -175,4 +175,34 @@ The staging dry run validates that the system can safely enter a staging environ
 
 ---
 
-*This document records the RC gate decision at commit `d90fb95`, Production Deployment Preparation at commit `a5996e4`, and Staging Deployment Dry Run definition. It does not represent completed live production deployment or real K3s E2E integration.*
+---
+
+## I. Controlled Staging Trial Status (2026-06-11)
+
+> **Added at commit `532e6d3` → Controlled Staging Trial v0.1 tooling**
+
+| Item | Status |
+|------|--------|
+| Trial runbook | `docs/labgen/CONTROLLED_STAGING_TRIAL_v0.1.md` |
+| Checklist template | `deploy/labgen/staging_trial_checklist.md` |
+| Trial helper script | `scripts/labgen_controlled_staging_trial.py` |
+| Trial tests | `tests/test_labgen_controlled_staging_trial.py` (58 tests) |
+| Live execution status | **TOOLING_READY — BLOCKED (missing staging environment)** |
+
+### Required staging inputs before live execution
+
+1. Real staging K3s cluster endpoint and kubeconfig
+2. Staging Proxmox with VMID range and staging service account
+3. Staging internal image registry
+4. Staging-only storage mount and verifier credential root
+5. Staging test student account session for runtime-start phase
+
+### What TOOLING_READY means
+
+All scripts, tests, runbook, and checklist are written and passing. Live trial execution
+cannot proceed until the staging environment inputs above are provided by the ops team.
+The trial tooling does not connect to production as a substitute.
+
+---
+
+*This document records the RC gate decision at commit `d90fb95`, Production Deployment Preparation at commit `a5996e4`, Staging Deployment Dry Run at commit `532e6d3`, and Controlled Staging Trial tooling. It does not represent completed live production deployment or real K3s E2E integration.*

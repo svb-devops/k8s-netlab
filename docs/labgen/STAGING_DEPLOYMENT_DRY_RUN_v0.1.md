@@ -282,6 +282,30 @@ Fill in this table after executing the checklist. Keep a copy as evidence.
 
 ---
 
+---
+
+## G. Next Step: Controlled Staging Trial
+
+Once the dry run gate passes (overall: pass or warning, no blocking issues), the next step is
+**Controlled Staging Trial v0.1** — a real staging environment trial with a live K3s cluster.
+
+| Artifact | Path |
+|----------|------|
+| Runbook | `docs/labgen/CONTROLLED_STAGING_TRIAL_v0.1.md` |
+| Checklist template | `deploy/labgen/staging_trial_checklist.md` |
+| Trial helper script | `scripts/labgen_controlled_staging_trial.py` |
+
+The controlled trial requires:
+- Real staging K3s cluster (not stub)
+- Staging kubeconfig injected via secret manager
+- Staging Proxmox with VMID range
+- Staging-only storage and credential root
+
+Without these inputs, the trial is BLOCKED — dry run tooling is complete
+but live trial execution cannot proceed.
+
+---
+
 *This document records the staging dry run process for LabGen MVP v0.1.  
 It does not represent a completed production deployment, a real K3s E2E validation,  
 or a live-traffic cutover. See `PRODUCTION_DEPLOYMENT_PREP_v0.1.md` for the full deployment plan.*
