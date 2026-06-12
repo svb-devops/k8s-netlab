@@ -45,6 +45,8 @@ See [Section D](#d-required-secrets-inventory) for full secrets inventory.
 | Live run result (LIVE_TRIAL_BLOCKED) | `docs/labgen/CONTROLLED_STAGING_TRIAL_LIVE_RUN_RESULT_v0.1.md` |
 | Staging environment provisioning plan | `docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md` |
 | Infrastructure checklist (fillable) | `deploy/labgen/staging_infrastructure_checklist.md` |
+| **Ops provisioning ticket pack** | **`docs/labgen/OPS_PROVISIONING_TICKET_PACK_v0.1.md`** |
+| Ticket status tracker | `deploy/labgen/staging_ops_ticket_status.md` |
 | Missing inputs helper (quick check) | `scripts/labgen_staging_missing_inputs.py` |
 | Staging env template | `deploy/labgen/.env.staging.example` |
 | Controlled staging trial runbook | `docs/labgen/CONTROLLED_STAGING_TRIAL_v0.1.md` |
@@ -61,6 +63,8 @@ the staging environment.
 | Script | Purpose | Tests |
 |--------|---------|-------|
 | `scripts/labgen_ops_staging_intake_verify.py` | **Unified intake gate** — calls all helpers in sequence, produces single READY/BLOCKED decision. No network calls in offline mode. | 34 tests pass |
+| `scripts/labgen_ops_secret_injection_verify.py` | **Per-key secret injection verifier** — classifies each of 7 required keys (PRESENT_REDACTED/MISSING/PLACEHOLDER/EMPTY/INVALID_FORMAT). Offline. | 52 tests pass |
+| `scripts/labgen_ops_ticket_verify.py` | **Ops ticket verification wrapper** — per-ticket VERIFIED/BLOCKED status for each of 6 provisioning tickets. Offline. | 66 tests pass |
 | `scripts/labgen_staging_provisioning_validate.py` | Static env file validator — checks safety of `.env.staging` before any runtime action. No network calls. | 82 tests pass |
 | `scripts/labgen_production_preflight.py` | Runtime config preflight — checks all required secrets are set. No network calls in offline mode. | 48 tests pass |
 | `scripts/labgen_staging_dry_run.py` | Live service diagnostics — safe GET probes only, no destructive calls. Requires running backend. | 51 tests pass |
@@ -428,6 +432,7 @@ Use this checklist to track ops provisioning progress before requesting a live t
 | I-15 | `.env.staging` file created from template, all placeholders filled | Operator | — | File diff (no values) | `grep '<' .env.staging` → no output | `[ ]` | Gitignored |
 | I-16 | Missing inputs helper exits 0 | Operator | — | Script output | `python scripts/labgen_staging_missing_inputs.py --env-file <staging-env-file>` | `[ ]` | Exit code 0 = all inputs set |
 | **I-16a** | **Secret injection verify: decision = SECRET\_INJECTION\_READY** | Operator | — | JSON output → `docs/labgen/OPS_SECRET_INJECTION_VERIFICATION_RESULT_v0.1.md` | `python scripts/labgen_ops_secret_injection_verify.py --env-file <staging-env-file> --json` | `[ ]` | **Run before I-19a** — all 7 keys must be PRESENT\_REDACTED |
+| **I-16b** | **Ticket pack: all 6 tickets VERIFIED** | Operator | — | JSON output → `deploy/labgen/staging_ops_ticket_status.md` | `python scripts/labgen_ops_ticket_verify.py --env-file <staging-env-file> --all --json` | `[ ]` | **Run after I-16a** — all tickets must show VERIFIED; see `docs/labgen/OPS_PROVISIONING_TICKET_PACK_v0.1.md` |
 | I-17 | Provisioning validator exits 0 | Operator | — | Script output | `python scripts/labgen_staging_provisioning_validate.py --env-file <staging-env-file>` | `[ ]` | No blocking issues |
 | I-18 | Preflight exits 0 | Operator | — | Script output | `python scripts/labgen_production_preflight.py --env-file <staging-env-file>` | `[ ]` | No blocking issues |
 | I-19 | Staging dry run exits 0 or warning | Operator | — | JSON output | `python scripts/labgen_staging_dry_run.py --env-file <staging-env-file> --base-url <staging-base-url> --json` | `[ ]` | `"overall": "pass"` or `"warning"` |
@@ -441,9 +446,12 @@ Use this checklist to track ops provisioning progress before requesting a live t
 
 ## Notes
 
-- This handoff package is updated as of commit `478b39e`. No further dev work is required to unblock the staging trial.
+- This handoff package is updated as of commit `d8f80d0`. No further dev work is required to unblock the staging trial.
 - Secret injection verification tool added: `scripts/labgen_ops_secret_injection_verify.py` (step I-16a).
   Current result: `SECRET_INJECTION_BLOCKED` — see `docs/labgen/OPS_SECRET_INJECTION_VERIFICATION_RESULT_v0.1.md`.
+- Ops provisioning ticket pack added: `docs/labgen/OPS_PROVISIONING_TICKET_PACK_v0.1.md` (step I-16b).
+  Ticket verification wrapper: `scripts/labgen_ops_ticket_verify.py`.
+  Status tracker: `deploy/labgen/staging_ops_ticket_status.md`.
 - The live trial can proceed as soon as ops provisions the staging environment and all checklist items are satisfied.
 - Only after a successful live trial (`LIVE_TRIAL_PASSED` or `LIVE_TRIAL_PASSED_WITH_NOTES`) is it permitted to proceed to `Production Cutover Plan v0.1`.
 - **Do not declare staging live-passed until the trial script itself reports LIVE\_TRIAL\_PASSED.**

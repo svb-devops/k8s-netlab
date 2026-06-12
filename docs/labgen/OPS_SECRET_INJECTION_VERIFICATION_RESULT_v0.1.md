@@ -120,12 +120,19 @@ python scripts/labgen_ops_staging_intake_verify.py \
 
 ## H. Next Steps
 
-1. Ops team injects all 6 missing secrets into staging secret manager → `.env.staging`.
-2. Re-runs this verification: `python scripts/labgen_ops_secret_injection_verify.py --env-file .env.staging --json` → decision must be `SECRET_INJECTION_READY`.
-3. If `SECRET_INJECTION_READY`, re-runs Ops Staging Intake Gate with real env + base-url.
-4. If intake gate decision is `READY_TO_RERUN_CONTROLLED_STAGING_TRIAL`, re-executes Controlled Staging Trial Live Run.
+1. Ops team reads the provisioning ticket pack: `docs/labgen/OPS_PROVISIONING_TICKET_PACK_v0.1.md`.
+2. Executes each of the 6 tickets (see Section B for ticket IDs per key).
+3. Verifies each ticket: `python scripts/labgen_ops_ticket_verify.py --env-file .env.staging --ticket <ID> --json`.
+4. When all 6 tickets are VERIFIED, re-runs this verification:
+   ```bash
+   python scripts/labgen_ops_secret_injection_verify.py --env-file .env.staging --json
+   # Expected: "decision": "SECRET_INJECTION_READY"
+   ```
+5. If `SECRET_INJECTION_READY`, re-runs Ops Staging Intake Gate with real env + base-url.
+6. If intake gate decision is `READY_TO_RERUN_CONTROLLED_STAGING_TRIAL`, re-executes Controlled Staging Trial Live Run.
 
-No code changes are required — all tooling is ready (2727 tests, 94.08% coverage).
+Track ticket progress: `deploy/labgen/staging_ops_ticket_status.md`.  
+No code changes are required — all tooling is ready (2835 tests, 94.08% coverage).
 
 ---
 

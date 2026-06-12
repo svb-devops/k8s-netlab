@@ -144,6 +144,7 @@ python scripts/labgen_staging_missing_inputs.py --env-file <staging-env-file>
 | # | Item | Owner | Required? | Validation Command | Validated by script? | Status | Validation Result | Notes |
 |---|------|-------|-----------|--------------------|--------------------|--------|-------------------|-------|
 | V-0b | **Secret injection verify exits 0** (per-key status check — run before V-0a) | Operator | **YES** | `python scripts/labgen_ops_secret_injection_verify.py --env-file .env.staging --json` | `labgen_ops_secret_injection_verify.py` | `[ ]` | | Decision must be `SECRET_INJECTION_READY` |
+| V-0c | **Ticket pack all VERIFIED** (per-ticket wrapper — run after V-0b) | Operator | **YES** | `python scripts/labgen_ops_ticket_verify.py --env-file .env.staging --all --json` | `labgen_ops_ticket_verify.py` | `[ ]` | | All 6 tickets must show `"status": "VERIFIED"`; see `deploy/labgen/staging_ops_ticket_status.md` |
 | V-0a | **Intake verification gate exits 0** (unified gate: all phases in one command) | Operator | **YES** | `python scripts/labgen_ops_staging_intake_verify.py --env-file .env.staging --json` | `labgen_ops_staging_intake_verify.py` | `[ ]` | | Decision must be `READY_TO_RERUN_CONTROLLED_STAGING_TRIAL` |
 | V-0 | Missing inputs helper exits 0 | Operator | **YES** | `python scripts/labgen_staging_missing_inputs.py --env-file .env.staging` | `labgen_staging_missing_inputs.py` | `[ ]` | | Exit 0 = all blocking inputs set |
 | V-1 | Provisioning validator passes (exit code 0) | Operator | **YES** | `python scripts/labgen_staging_provisioning_validate.py --env-file .env.staging` | `labgen_staging_provisioning_validate.py` | `[ ]` | | No blocking issues |
@@ -165,6 +166,7 @@ All of the following must be `[x]` before proceeding to Controlled Staging Trial
 | # | Gate | Verified by | Evidence Path | Intake Decision | Intake Verified? | Ready for live rerun? |
 |---|------|-------------|---------------|----------------|-----------------|----------------------|
 | G-0b | **Secret Injection Verification exits 0** | `labgen_ops_secret_injection_verify.py` | `docs/labgen/OPS_SECRET_INJECTION_VERIFICATION_RESULT_v0.1.md` | `SECRET_INJECTION_BLOCKED` (2026-06-12) | `[ ]` | `[ ]` |
+| G-0c | **Ticket Pack all VERIFIED** | `labgen_ops_ticket_verify.py` | `deploy/labgen/staging_ops_ticket_status.md` | All TODO (2026-06-12) | `[ ]` | `[ ]` |
 | G-0a | **Ops Staging Intake Verification Gate exits 0** | `labgen_ops_staging_intake_verify.py` | `docs/labgen/OPS_STAGING_INTAKE_VERIFICATION_RESULT_v0.1.md` | `BLOCKED_MISSING_INPUTS` (2026-06-12) | `[ ]` | `[ ]` |
 
 Run command:
@@ -211,7 +213,8 @@ secret values that look like real credentials.
 | Helper | When to run | What it checks |
 |--------|-------------|----------------|
 | `scripts/labgen_ops_secret_injection_verify.py` | **Phase 6, V-0b (run first — per-key secret status)** | Per-key injection status for 7 required secrets (offline, no network) |
-| `scripts/labgen_ops_staging_intake_verify.py` | **Phase 6, V-0a (run after V-0b — unified gate)** | All phases in sequence: missing inputs + provisioning + preflight + dry run + optional diagnostics |
+| `scripts/labgen_ops_ticket_verify.py` | **Phase 6, V-0c (run after V-0b — per-ticket status)** | Per-ticket VERIFIED/BLOCKED status for 6 ops provisioning tickets (offline, no network) |
+| `scripts/labgen_ops_staging_intake_verify.py` | **Phase 6, V-0a (run after V-0b/V-0c — unified gate)** | All phases in sequence: missing inputs + provisioning + preflight + dry run + optional diagnostics |
 | `scripts/labgen_staging_missing_inputs.py` | Phase 6, V-0 (detail check) | Which blocking inputs are missing or placeholder (offline) |
 | `scripts/labgen_staging_provisioning_validate.py` | Phase 6, V-1 | Static env file safety (offline) |
 | `scripts/labgen_production_preflight.py` | Phase 6, V-2 | Runtime config against current env (offline) |
