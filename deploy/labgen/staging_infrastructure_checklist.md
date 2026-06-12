@@ -1,9 +1,11 @@
 # LabGen MVP — Staging Infrastructure Checklist
 
-> **Status**: BLANK TEMPLATE — fill in during provisioning  
+> **Status**: FIRST LIVE RUN BLOCKED (2026-06-12) — provisioning not yet complete  
 > **Basis**: `docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`  
 > **Purpose**: Track provisioning of each infrastructure component required for  
 > Controlled Staging Trial v0.1 live execution  
+> **Live run result**: `docs/labgen/CONTROLLED_STAGING_TRIAL_LIVE_RUN_RESULT_v0.1.md`  
+> **Ops handoff**: `docs/labgen/STAGING_OPS_HANDOFF_v0.1.md`  
 > **No real secrets in this file** — use `<set-in-secret-manager>` or `<placeholder>` only  
 
 ---
@@ -15,6 +17,31 @@
 3. Record the **Validation Result** — the actual output of the validation command.
 4. Once all items are `[x]`, run the provisioning validator and trial dry run.
 5. Keep the completed copy as evidence — do not discard after the trial.
+
+---
+
+## Blocking Items from First Live Run (2026-06-12)
+
+The first controlled staging live run was executed on 2026-06-12 and returned **LIVE\_TRIAL\_BLOCKED**.
+The following items must be resolved before the trial can proceed. See
+`docs/labgen/CONTROLLED_STAGING_TRIAL_LIVE_RUN_RESULT_v0.1.md` Section F for full detail.
+
+| Blocker ID | Item | Config Key | Responsible | Secret injected? | Required before rerun? |
+|------------|------|------------|-------------|------------------|------------------------|
+| F-1 | Staging K3s cluster not provisioned | — | Ops | N/A | **YES** |
+| F-2 | K3s kubeconfig not injected | `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` | Ops | `[ ]` | **YES** |
+| F-3 | `ADMIN_TOKEN` not set | `ADMIN_TOKEN` | Ops | `[ ]` | **YES** |
+| F-4 | `PROXMOX_TOKEN_SECRET` is placeholder | `PROXMOX_TOKEN_SECRET` | Ops | `[ ]` | **YES** |
+| F-5 | `VM_SSH_PASSWORD` is placeholder | `VM_SSH_PASSWORD` | Ops | `[ ]` | **YES** |
+| F-6 | Staging image registry not provisioned | `VM_REGISTRY_MIRROR` | Ops | N/A | **YES** |
+| F-7 | Staging storage mount not confirmed | `data/` path, `LABGEN_VERIFIER_CREDENTIAL_ROOT` | Ops | N/A | **YES** |
+
+**Quick check** (run after filling `.env.staging`):
+```bash
+python scripts/labgen_staging_missing_inputs.py --env-file <staging-env-file>
+# Exit 0 = all blocking inputs are set
+# Exit 1 = still missing inputs (shows grouped list)
+```
 
 ---
 
@@ -98,31 +125,32 @@
 
 ## Phase 5 — Secrets and Config
 
-| # | Item | Owner | Required? | Config Key | Validation Command | Status | Validation Result | Notes |
-|---|------|-------|-----------|------------|--------------------|--------|-------------------|-------|
-| C-1 | `ADMIN_TOKEN` injected (≥ 32 chars) | Ops | **YES** | `ADMIN_TOKEN=<set-in-secret-manager>` | `echo ${#ADMIN_TOKEN}` → ≥ 32 | `[ ]` | | Never in plaintext file |
-| C-2 | `LABGEN_RUNTIME_MODE=production` in `.env.staging` | Operator | **YES** | `LABGEN_RUNTIME_MODE=production` | `grep LABGEN_RUNTIME_MODE .env.staging` | `[ ]` | | |
-| C-3 | `LABGEN_NAMESPACE_ADAPTER=k8s` in `.env.staging` | Operator | **YES** | `LABGEN_NAMESPACE_ADAPTER=k8s` | `grep LABGEN_NAMESPACE_ADAPTER .env.staging` | `[ ]` | | |
-| C-4 | `LABGEN_LLM_PROVIDER_MODE=fake_only` in `.env.staging` | Operator | **YES** | `LABGEN_LLM_PROVIDER_MODE=fake_only` | `grep LABGEN_LLM_PROVIDER_MODE .env.staging` | `[ ]` | | Must NOT be `live_enabled` |
-| C-5 | `LABGEN_LLM_OPENAI_API_KEY` is NOT set (or unset) | Operator | **YES** | — | `echo ${LABGEN_LLM_OPENAI_API_KEY:-UNSET}` → UNSET | `[ ]` | | LLM disabled; no key needed |
-| C-6 | `SESSION_COOKIE_SECURE` value appropriate for staging TLS setup | Operator | YES | `SESSION_COOKIE_SECURE=false` (no TLS) or `true` (TLS) | Config review | `[ ]` | | |
-| C-7 | `ALLOWED_ORIGINS` set to staging host only | Operator | YES | `ALLOWED_ORIGINS=http://<staging-host>:8000` | Config review | `[ ]` | | |
-| C-8 | `ADMIN_USERNAMES` set (non-empty) | Operator | YES | `ADMIN_USERNAMES=admin` | Config review | `[ ]` | | |
-| C-9 | No production credentials in `.env.staging` | Operator | **YES** | — | Manual inspection + provisioning validator | `[ ]` | | |
+| # | Item | Owner | Required? | Required before rerun? | Config Key | Validation Command | Secret injected? | Status | Validation Result | Notes |
+|---|------|-------|-----------|------------------------|------------|--------------------|-----------------|--------|-------------------|-------|
+| C-1 | `ADMIN_TOKEN` injected (≥ 32 chars) | Ops | **YES** | **YES — F-3 BLOCKER** | `ADMIN_TOKEN=<set-in-secret-manager>` | `echo ${#ADMIN_TOKEN}` → ≥ 32 | `[ ]` | `[ ]` | | Never in plaintext file |
+| C-2 | `LABGEN_RUNTIME_MODE=production` in `.env.staging` | Operator | **YES** | YES | `LABGEN_RUNTIME_MODE=production` | `grep LABGEN_RUNTIME_MODE .env.staging` | N/A | `[ ]` | | |
+| C-3 | `LABGEN_NAMESPACE_ADAPTER=k8s` in `.env.staging` | Operator | **YES** | YES | `LABGEN_NAMESPACE_ADAPTER=k8s` | `grep LABGEN_NAMESPACE_ADAPTER .env.staging` | N/A | `[ ]` | | |
+| C-4 | `LABGEN_LLM_PROVIDER_MODE=fake_only` in `.env.staging` | Operator | **YES** | YES | `LABGEN_LLM_PROVIDER_MODE=fake_only` | `grep LABGEN_LLM_PROVIDER_MODE .env.staging` | N/A | `[ ]` | | Must NOT be `live_enabled` |
+| C-5 | `LABGEN_LLM_OPENAI_API_KEY` is NOT set (or unset) | Operator | **YES** | YES | — | `echo ${LABGEN_LLM_OPENAI_API_KEY:-UNSET}` → UNSET | N/A | `[ ]` | | LLM disabled; no key needed |
+| C-6 | `SESSION_COOKIE_SECURE` value appropriate for staging TLS setup | Operator | YES | NO | `SESSION_COOKIE_SECURE=false` (no TLS) or `true` (TLS) | Config review | N/A | `[ ]` | | |
+| C-7 | `ALLOWED_ORIGINS` set to staging host only | Operator | YES | YES | `ALLOWED_ORIGINS=http://<staging-host>:8000` | Config review | N/A | `[ ]` | | |
+| C-8 | `ADMIN_USERNAMES` set (non-empty) | Operator | YES | NO | `ADMIN_USERNAMES=admin` | Config review | N/A | `[ ]` | | |
+| C-9 | No production credentials in `.env.staging` | Operator | **YES** | YES | — | Manual inspection + provisioning validator | N/A | `[ ]` | | |
 
 ---
 
 ## Phase 6 — Validation
 
-| # | Item | Owner | Required? | Config Key | Validation Command | Status | Validation Result | Notes |
-|---|------|-------|-----------|------------|--------------------|--------|-------------------|-------|
-| V-1 | Provisioning validator passes (exit code 0) | Operator | **YES** | — | `python scripts/labgen_staging_provisioning_validate.py --env-file .env.staging` | `[ ]` | | No blocking issues |
-| V-2 | Preflight passes (exit code 0 or warnings only) | Operator | **YES** | — | `python scripts/labgen_production_preflight.py` | `[ ]` | | Warnings acceptable |
-| V-3 | Staging dry run passes | Operator | **YES** | — | `python scripts/labgen_staging_dry_run.py --env-file .env.staging --base-url http://<staging-host>:8000 --json` | `[ ]` | | `"overall": "pass"` or `"warning"` |
-| V-4 | Backend starts without errors | Operator | **YES** | — | Check stdout / journalctl for ERROR lines | `[ ]` | | |
-| V-5 | `GET /api/labgen/runtime/adapter-status` → `production_safe=true` | Operator | **YES** | — | `curl -H "X-Admin-Token: $ADMIN_TOKEN" http://<staging-host>:8000/api/labgen/runtime/adapter-status` | `[ ]` | | |
-| V-6 | `GET /api/labgen/llm-provider/status` → `live_enabled=false` | Operator | **YES** | — | `curl -H "X-Admin-Token: $ADMIN_TOKEN" http://<staging-host>:8000/api/labgen/llm-provider/status` | `[ ]` | | |
-| V-7 | No sensitive patterns in any diagnostic response | Operator | **YES** | — | Visual inspection of all diagnostic responses | `[ ]` | | `sk-ant-`, `-----BEGIN`, `client-certificate-data:` must be absent |
+| # | Item | Owner | Required? | Validation Command | Validated by script? | Status | Validation Result | Notes |
+|---|------|-------|-----------|--------------------|--------------------|--------|-------------------|-------|
+| V-0 | Missing inputs helper exits 0 | Operator | **YES** | `python scripts/labgen_staging_missing_inputs.py --env-file .env.staging` | `labgen_staging_missing_inputs.py` | `[ ]` | | Exit 0 = all blocking inputs set |
+| V-1 | Provisioning validator passes (exit code 0) | Operator | **YES** | `python scripts/labgen_staging_provisioning_validate.py --env-file .env.staging` | `labgen_staging_provisioning_validate.py` | `[ ]` | | No blocking issues |
+| V-2 | Preflight passes (exit code 0 or warnings only) | Operator | **YES** | `python scripts/labgen_production_preflight.py --env-file .env.staging` | `labgen_production_preflight.py` | `[ ]` | | Warnings acceptable |
+| V-3 | Staging dry run passes | Operator | **YES** | `python scripts/labgen_staging_dry_run.py --env-file .env.staging --base-url http://<staging-host>:8000 --json` | `labgen_staging_dry_run.py` | `[ ]` | | `"overall": "pass"` or `"warning"` |
+| V-4 | Backend starts without errors | Operator | **YES** | Check stdout / journalctl for ERROR lines | Manual | `[ ]` | | |
+| V-5 | `GET /api/labgen/runtime/adapter-status` → `production_safe=true` | Operator | **YES** | `curl -H "X-Admin-Token: $ADMIN_TOKEN" http://<staging-host>:8000/api/labgen/runtime/adapter-status` | Manual | `[ ]` | | |
+| V-6 | `GET /api/labgen/llm-provider/status` → `live_enabled=false` | Operator | **YES** | `curl -H "X-Admin-Token: $ADMIN_TOKEN" http://<staging-host>:8000/api/labgen/llm-provider/status` | Manual | `[ ]` | | |
+| V-7 | No sensitive patterns in any diagnostic response | Operator | **YES** | Visual inspection of all diagnostic responses | Manual | `[ ]` | | `sk-ant-`, `-----BEGIN`, `client-certificate-data:` must be absent |
 
 ---
 
@@ -132,6 +160,7 @@ All of the following must be `[x]` before proceeding to Controlled Staging Trial
 
 | # | Gate | Satisfied? |
 |---|------|------------|
+| G-0 | Missing inputs helper: exit code 0 (all blocking inputs set) | `[ ]` |
 | G-1 | All Phase 1–6 items are `[x]` | `[ ]` |
 | G-2 | Provisioning validator: exit code 0 (no blocking issues) | `[ ]` |
 | G-3 | Staging dry run: `"overall": "pass"` or `"warning"` | `[ ]` |
@@ -159,6 +188,7 @@ secret values that look like real credentials.
 
 | Helper | When to run | What it checks |
 |--------|-------------|----------------|
+| `scripts/labgen_staging_missing_inputs.py` | Phase 6, V-0 (first check) | Which blocking inputs are missing or placeholder (offline) |
 | `scripts/labgen_staging_provisioning_validate.py` | Phase 6, V-1 | Static env file safety (offline) |
 | `scripts/labgen_production_preflight.py` | Phase 6, V-2 | Runtime config against current env (offline) |
 | `scripts/labgen_staging_dry_run.py` | Phase 6, V-3 | Live service diagnostics (online, safe GETs only) |

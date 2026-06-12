@@ -539,13 +539,21 @@ Trial tooling is ready. Before executing the trial, the staging environment must
 
 | Item | Value |
 |------|-------|
+| **Ops handoff package** | **[STAGING_OPS_HANDOFF_v0.1.md](STAGING_OPS_HANDOFF_v0.1.md) — start here** |
 | **Provisioning plan** | **[STAGING_ENVIRONMENT_PROVISIONING_v0.1.md](STAGING_ENVIRONMENT_PROVISIONING_v0.1.md)** |
-| **Infrastructure checklist** | **`deploy/labgen/staging_infrastructure_checklist.md`** |
+| **Infrastructure checklist** | **`deploy/labgen/staging_infrastructure_checklist.md`** (blocked items marked) |
+| **Missing inputs helper** | **`scripts/labgen_staging_missing_inputs.py`** (65 tests) |
 | **Provisioning validator** | **`scripts/labgen_staging_provisioning_validate.py`** (82 tests) |
 
-Run the provisioning validator to confirm readiness before proceeding:
+Run in order to confirm readiness before proceeding:
 ```bash
-python scripts/labgen_staging_provisioning_validate.py --env-file .env.staging
+# 1. Quick check: which inputs are missing
+python scripts/labgen_staging_missing_inputs.py --env-file <staging-env-file>
+# Must exit 0
+
+# 2. Full static validation
+python scripts/labgen_staging_provisioning_validate.py --env-file <staging-env-file>
+# Must exit 0
 ```
 
 ### Step 2 — Execute Controlled Staging Trial v0.1
@@ -558,7 +566,7 @@ python scripts/labgen_staging_provisioning_validate.py --env-file .env.staging
 | Trial helper script | `scripts/labgen_controlled_staging_trial.py` |
 | Trial tests | `tests/test_labgen_controlled_staging_trial.py` (61 tests) |
 
-**Current status**: LIVE\_TRIAL\_BLOCKED — first live run executed 2026-06-12, blocked on missing staging secrets (7 items, see result artifact Section F).
+**Current status**: LIVE\_TRIAL\_BLOCKED — first live run executed 2026-06-12, blocked on missing staging secrets (7 items, see result artifact Section F and ops handoff Section I checklist).
 
 **Required inputs**: real staging K3s cluster + kubeconfig (`F-1`, `F-2`), staging admin token (`F-3`), staging Proxmox credentials (`F-4`), staging VM SSH password (`F-5`), staging image registry (`F-6`), staging storage mount (`F-7`).
 

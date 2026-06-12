@@ -44,17 +44,20 @@ staging secrets have not been injected into a real `.env.staging` file.
 | Artifact | Path | Status |
 |----------|------|--------|
 | **Live run result** | **`docs/labgen/CONTROLLED_STAGING_TRIAL_LIVE_RUN_RESULT_v0.1.md`** | **LIVE\_TRIAL\_BLOCKED — unblock checklist inside** |
+| **Ops handoff package** | **`docs/labgen/STAGING_OPS_HANDOFF_v0.1.md`** | **Actionable — ops start here** |
 | **Provisioning plan** | **`docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`** | **Ready — complete first** |
-| **Infrastructure checklist** | **`deploy/labgen/staging_infrastructure_checklist.md`** | **Ready to fill** |
+| **Infrastructure checklist** | **`deploy/labgen/staging_infrastructure_checklist.md`** | **Ready to fill (blocked items marked)** |
+| **Missing inputs helper** | **`scripts/labgen_staging_missing_inputs.py`** | **Ready (65 tests pass) — quick check after filling `.env.staging`** |
 | **Provisioning validator** | **`scripts/labgen_staging_provisioning_validate.py`** | Ready (82 tests pass) |
 | Runbook | `docs/labgen/CONTROLLED_STAGING_TRIAL_v0.1.md` | Ready |
 | Trial checklist template | `deploy/labgen/staging_trial_checklist.md` | Ready |
 | Trial helper script | `scripts/labgen_controlled_staging_trial.py` | Ready (61 tests pass) |
 | Tests | `tests/test_labgen_controlled_staging_trial.py` | 61 passing |
 
-To unblock the trial, ops team must provide the 7 items listed in
+To unblock the trial, ops team must complete `docs/labgen/STAGING_OPS_HANDOFF_v0.1.md`
+handoff checklist (Section I), provide the 7 items listed in
 `docs/labgen/CONTROLLED_STAGING_TRIAL_LIVE_RUN_RESULT_v0.1.md` Section F (F-1 through F-7),
-then re-run with a real `.env.staging` file pointing at a live staging cluster.
+and re-run with a real `.env.staging` file pointing at a live staging cluster.
 
 ---
 

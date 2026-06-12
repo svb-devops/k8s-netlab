@@ -42,7 +42,9 @@ All trial tooling is ready (`TOOLING_READY`). Live execution is BLOCKED because 
 | Artifact | Path | Status |
 |----------|------|--------|
 | Provisioning plan | `docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md` | **This document** |
-| Infrastructure checklist | `deploy/labgen/staging_infrastructure_checklist.md` | Ready to fill |
+| **Ops handoff package** | **`docs/labgen/STAGING_OPS_HANDOFF_v0.1.md`** | **Actionable — ops start here** |
+| Infrastructure checklist | `deploy/labgen/staging_infrastructure_checklist.md` | Ready to fill (blocked items marked) |
+| **Missing inputs helper** | **`scripts/labgen_staging_missing_inputs.py`** | **Ready (65 tests pass)** |
 | Provisioning validator | `scripts/labgen_staging_provisioning_validate.py` | Ready (82 tests pass) |
 | Staging dry run runbook | `docs/labgen/STAGING_DEPLOYMENT_DRY_RUN_v0.1.md` | Complete |
 | Controlled trial runbook | `docs/labgen/CONTROLLED_STAGING_TRIAL_v0.1.md` | Complete |

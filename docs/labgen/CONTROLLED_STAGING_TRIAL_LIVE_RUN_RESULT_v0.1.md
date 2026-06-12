@@ -249,7 +249,12 @@ Complete these items in order before re-running the trial:
 
 ### Recommended Next Step
 
-Ops team fills in `deploy/labgen/staging_infrastructure_checklist.md` Phase 0–7, provides real staging secrets, and re-executes this trial. No code changes are required; all tooling is ready.
+1. Ops team reads `docs/labgen/STAGING_OPS_HANDOFF_v0.1.md` (actionable handoff package — Section I checklist).
+2. Fills in `deploy/labgen/staging_infrastructure_checklist.md` Phase 0–7.
+3. Provides real staging secrets. Runs `scripts/labgen_staging_missing_inputs.py` to confirm all blocking inputs are set.
+4. Re-executes this trial with a real `.env.staging` pointing at a live staging cluster.
+
+No code changes are required — all tooling is ready (2693 tests, 94.08% coverage).
 
 ---
 
