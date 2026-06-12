@@ -1,10 +1,11 @@
 # LabGen MVP — Staging Environment Provisioning Plan v0.1
 
 > **Status**: PROVISIONING PLAN — no live provisioning performed  
-> **Basis**: Controlled Staging Trial v0.1 (commit `fd544e3`), RC_READY_WITH_NOTES  
+> **Basis**: Controlled Staging Trial v0.1 (commit `4717e98`), RC_READY_WITH_NOTES  
 > **Purpose**: Enable team to prepare the real staging environment so that  
 > Controlled Staging Trial v0.1 live execution can proceed  
-> **Live execution**: BLOCKED until provisioning checklist is complete  
+> **Live execution**: BLOCKED — first live run 2026-06-12 → LIVE\_TRIAL\_BLOCKED (staging secrets missing)  
+> **Live run result**: `docs/labgen/CONTROLLED_STAGING_TRIAL_LIVE_RUN_RESULT_v0.1.md`  
 
 ---
 

@@ -553,14 +553,14 @@ python scripts/labgen_staging_provisioning_validate.py --env-file .env.staging
 | Item | Value |
 |------|-------|
 | Trial runbook | [CONTROLLED_STAGING_TRIAL_v0.1.md](CONTROLLED_STAGING_TRIAL_v0.1.md) |
+| **Live run result** | **[CONTROLLED_STAGING_TRIAL_LIVE_RUN_RESULT_v0.1.md](CONTROLLED_STAGING_TRIAL_LIVE_RUN_RESULT_v0.1.md)** |
 | Trial checklist template | `deploy/labgen/staging_trial_checklist.md` |
 | Trial helper script | `scripts/labgen_controlled_staging_trial.py` |
 | Trial tests | `tests/test_labgen_controlled_staging_trial.py` (61 tests) |
 
-**Current status**: TOOLING_READY — Live execution BLOCKED until provisioning checklist Phase 7 gate is complete.
+**Current status**: LIVE\_TRIAL\_BLOCKED — first live run executed 2026-06-12, blocked on missing staging secrets (7 items, see result artifact Section F).
 
-**Required inputs**: real staging K3s cluster, staging kubeconfig, staging Proxmox with VMID range,  
-staging-only storage and credential root — all documented in `STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`.
+**Required inputs**: real staging K3s cluster + kubeconfig (`F-1`, `F-2`), staging admin token (`F-3`), staging Proxmox credentials (`F-4`), staging VM SSH password (`F-5`), staging image registry (`F-6`), staging storage mount (`F-7`).
 
 **Boundary**: Controlled staging trial is NOT a production deployment and NOT a production-live declaration.
 Trial PASS means the system is ready for production deployment — not that production is live.

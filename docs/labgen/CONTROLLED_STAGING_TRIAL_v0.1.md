@@ -1,10 +1,10 @@
 # LabGen MVP — Controlled Staging Trial v0.1
 
-> **Trial date**: TBD (requires provisioning checklist complete — see Section A)  
-> **Operator**: —  
+> **Trial date**: 2026-06-12 (first attempt — BLOCKED; see `docs/labgen/CONTROLLED_STAGING_TRIAL_LIVE_RUN_RESULT_v0.1.md`)  
+> **Operator**: k8s-netlab team  
 > **Basis**: Staging Deployment Dry Run v0.1 (`docs/labgen/STAGING_DEPLOYMENT_DRY_RUN_v0.1.md`)  
 > **Provisioning plan**: `docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`  
-> **Commit**: `fd544e3` or later  
+> **Commit**: `4717e98` or later  
 > **RC verdict**: RC_READY_WITH_NOTES  
 
 ---
@@ -32,26 +32,29 @@
 
 ### Current Status
 
-> **TOOLING_READY — Live Execution: BLOCKED (provisioning checklist not yet complete)**
+> **TOOLING_READY — Live Execution: BLOCKED (staging secrets not injected)**
+>
+> First live run attempt: 2026-06-12 → **LIVE\_TRIAL\_BLOCKED**  
+> See: `docs/labgen/CONTROLLED_STAGING_TRIAL_LIVE_RUN_RESULT_v0.1.md`
 
-All trial tooling is ready and tested:
+All trial tooling is ready and tested. The first live run was executed on 2026-06-12;
+static validation passed (WARNING), but all runtime preflight checks are BLOCKING because
+staging secrets have not been injected into a real `.env.staging` file.
 
 | Artifact | Path | Status |
 |----------|------|--------|
-| **Provisioning plan** | **`docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`** | **Ready — complete this first** |
+| **Live run result** | **`docs/labgen/CONTROLLED_STAGING_TRIAL_LIVE_RUN_RESULT_v0.1.md`** | **LIVE\_TRIAL\_BLOCKED — unblock checklist inside** |
+| **Provisioning plan** | **`docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`** | **Ready — complete first** |
 | **Infrastructure checklist** | **`deploy/labgen/staging_infrastructure_checklist.md`** | **Ready to fill** |
-| **Provisioning validator** | **`scripts/labgen_staging_provisioning_validate.py`** | **Ready (82 tests pass)** |
+| **Provisioning validator** | **`scripts/labgen_staging_provisioning_validate.py`** | Ready (82 tests pass) |
 | Runbook | `docs/labgen/CONTROLLED_STAGING_TRIAL_v0.1.md` | Ready |
 | Trial checklist template | `deploy/labgen/staging_trial_checklist.md` | Ready |
 | Trial helper script | `scripts/labgen_controlled_staging_trial.py` | Ready (61 tests pass) |
 | Tests | `tests/test_labgen_controlled_staging_trial.py` | 61 passing |
 
-Live execution requires provisioning checklist (Phase 7 gate) to be complete. Without it:
-1. Mark trial **BLOCKED**.
-2. Complete `deploy/labgen/staging_infrastructure_checklist.md` Phase 0–7 first.
-3. Run provisioning validator: `python scripts/labgen_staging_provisioning_validate.py --env-file .env.staging`
-4. Do not proceed with destructive/runtime trial phases.
-5. Do not substitute production environment as fallback.
+To unblock the trial, ops team must provide the 7 items listed in
+`docs/labgen/CONTROLLED_STAGING_TRIAL_LIVE_RUN_RESULT_v0.1.md` Section F (F-1 through F-7),
+then re-run with a real `.env.staging` file pointing at a live staging cluster.
 
 ---
 
