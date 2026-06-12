@@ -1,8 +1,9 @@
 # LabGen MVP — Staging Ops Ticket Status Tracker
 
 > **Purpose**: Track completion status of each ops provisioning ticket.  
-> **Updated**: 2026-06-12  
+> **Updated**: 2026-06-12 (K3s adapter implemented; same-Proxmox path documented)  
 > **Current state**: All tickets BLOCKED_WITH_EVIDENCE — no real staging env exists; ops has not injected staging secrets.  
+> **Code blocker resolved**: `K3sNamespaceLifecycleAdapter` is fully implemented (commit `44cce73`). Remaining blockers are ops-side only.  
 > **Ticket pack**: `docs/labgen/OPS_PROVISIONING_TICKET_PACK_v0.1.md`  
 > **Execution result**: `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md`  
 > **No real secrets in this file** — use `<set-in-secret-manager>` or `<placeholder>` only.
@@ -25,9 +26,9 @@
 
 | Ticket ID | Title | Owner | Status | Env Key | Evidence Path | Last Verification Command | Last Decision | Notes |
 |-----------|-------|-------|--------|---------|---------------|--------------------------|---------------|-------|
-| OPS-K3S-001 | Provision staging K3s kubeconfig / SA | Infra / K8s Ops | BLOCKED_WITH_EVIDENCE | `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` | `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md` | `python scripts/labgen_ops_ticket_verify.py --env-file deploy/labgen/.env.staging.example --ticket OPS-K3S-001 --json` | BLOCKED | No real `.env.staging`; kubeconfig path is placeholder; staging K3s not provisioned |
+| OPS-K3S-001 | Provision staging K3s kubeconfig / SA | Infra / K8s Ops | BLOCKED_WITH_EVIDENCE | `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` | `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md` | `python scripts/labgen_ops_ticket_verify.py --env-file deploy/labgen/.env.staging.example --ticket OPS-K3S-001 --json` | BLOCKED | **CODE BLOCKER RESOLVED** (commit 44cce73). Remaining: inject real kubeconfig. Same-K3s-as-production acceptable with staging namespace prefix `lab-stg-`. |
 | OPS-AUTH-001 | Inject staging ADMIN_TOKEN | Security / Ops | BLOCKED_WITH_EVIDENCE | `ADMIN_TOKEN` | `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md` | `python scripts/labgen_ops_ticket_verify.py --env-file deploy/labgen/.env.staging.example --ticket OPS-AUTH-001 --json` | BLOCKED | No real `.env.staging`; ADMIN_TOKEN is commented-out placeholder |
-| OPS-PROXMOX-001 | Configure staging PROXMOX_HOST | Infra / Proxmox Ops | BLOCKED_WITH_EVIDENCE | `PROXMOX_HOST` | `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md` | `python scripts/labgen_ops_ticket_verify.py --env-file deploy/labgen/.env.staging.example --ticket OPS-PROXMOX-001 --json` | BLOCKED | No real `.env.staging`; PROXMOX_HOST contains `<staging-host>` placeholder |
+| OPS-PROXMOX-001 | Configure staging PROXMOX_HOST | Infra / Proxmox Ops | BLOCKED_WITH_EVIDENCE | `PROXMOX_HOST` | `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md` | `python scripts/labgen_ops_ticket_verify.py --env-file deploy/labgen/.env.staging.example --ticket OPS-PROXMOX-001 --json` | BLOCKED | No real `.env.staging`. **Same-Proxmox host acceptable** if staging pool `k8s-netlab-staging` is created. Set `PROXMOX_HOST` to production host IP. |
 | OPS-PROXMOX-002 | Inject staging PROXMOX_TOKEN_SECRET | Security / Proxmox Ops | BLOCKED_WITH_EVIDENCE | `PROXMOX_TOKEN_SECRET` | `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md` | `python scripts/labgen_ops_ticket_verify.py --env-file deploy/labgen/.env.staging.example --ticket OPS-PROXMOX-002 --json` | BLOCKED | No real `.env.staging`; PROXMOX_TOKEN_SECRET is commented-out placeholder |
 | OPS-VM-001 | Inject staging VM SSH credential | Infra / VM Ops | BLOCKED_WITH_EVIDENCE | `VM_SSH_PASSWORD` | `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md` | `python scripts/labgen_ops_ticket_verify.py --env-file deploy/labgen/.env.staging.example --ticket OPS-VM-001 --json` | BLOCKED | No real `.env.staging`; VM_SSH_PASSWORD is commented-out placeholder |
 | OPS-REGISTRY-001 | Configure staging VM_REGISTRY_MIRROR | Infra / Registry Ops | BLOCKED_WITH_EVIDENCE | `VM_REGISTRY_MIRROR` | `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md` | `python scripts/labgen_ops_ticket_verify.py --env-file deploy/labgen/.env.staging.example --ticket OPS-REGISTRY-001 --json` | BLOCKED | No real `.env.staging`; VM_REGISTRY_MIRROR contains `http://<staging-host>:5000` placeholder |

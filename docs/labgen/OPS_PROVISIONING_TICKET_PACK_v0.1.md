@@ -1,7 +1,8 @@
 # LabGen MVP — Ops Provisioning Ticket Pack v0.1
 
 > **Status**: SECRET_INJECTION_BLOCKED / LIVE_TRIAL_BLOCKED (2026-06-12)  
-> **Commit**: `d8f80d0`  
+> **Updated**: 2026-06-12 — K3sNamespaceLifecycleAdapter fully implemented (commit `44cce73`); same-Proxmox acceptable  
+> **Commit**: `d8f80d0` (ops ticket pack) / `44cce73` (K3s adapter)  
 > **Purpose**: Actionable ops provisioning tickets for the 6 missing staging inputs.  
 > Ops executes each ticket individually, verifies with the wrapper, then re-runs the injection verification and intake gate.  
 > **This document does NOT perform real provisioning — no K3s/Proxmox/registry connections are made here.**
@@ -75,10 +76,20 @@ They do not connect to production, do not print secret values, and do not fake a
 
 #### Purpose
 
-Provision a dedicated staging K3s cluster, create a minimum-privilege service account,
-and inject the absolute path to the staging kubeconfig into `.env.staging`.
-LabGen uses this kubeconfig to create and delete lab namespaces. Without it,
-lab sessions cannot start.
+**[CODE BLOCKER RESOLVED]** `K3sNamespaceLifecycleAdapter` is fully implemented as of commit `44cce73`.
+The adapter now has working implementations of all 7 `NamespaceLifecyclePort` methods — no more
+`NotImplementedError` skeleton. The remaining blocker for this ticket is **kubeconfig injection only**.
+
+Provision a staging K3s cluster (or use same-K3s-as-production with staging namespace prefix),
+create a minimum-privilege service account, and inject the absolute path to the staging kubeconfig
+into `.env.staging`. LabGen uses this kubeconfig to create and delete lab namespaces.
+Without it, lab sessions cannot start.
+
+**Same-K3s option**: If a dedicated staging K3s VM is not available, the same K3s cluster
+used by production can be reused, provided:
+- `LABGEN_K8S_NAMESPACE_ALLOWED_PREFIXES=lab-stg-` in staging env.
+- `LABGEN_K8S_NAMESPACE_ALLOWED_PREFIXES=lab-` in production env.
+- Staging service account is scoped to `lab-stg-*` namespaces only.
 
 #### Required input
 

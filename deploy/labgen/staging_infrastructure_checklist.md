@@ -1,6 +1,7 @@
 # LabGen MVP — Staging Infrastructure Checklist
 
 > **Status**: SECRET INJECTION BLOCKED (2026-06-12) — 6 of 7 secrets are placeholder; intake gate rerun not permitted  
+> **Updated**: 2026-06-12 — K3sNamespaceLifecycleAdapter implemented (commit `44cce73`); same-Proxmox isolation documented  
 > **Basis**: `docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`  
 > **Purpose**: Track provisioning of each infrastructure component required for  
 > Controlled Staging Trial v0.1 live execution  
@@ -28,8 +29,8 @@ The following items must be resolved before the trial can proceed. See
 
 | Blocker ID | Item | Config Key | Responsible | Secret injected? | Required before rerun? |
 |------------|------|------------|-------------|------------------|------------------------|
-| F-1 | Staging K3s cluster not provisioned | — | Ops | N/A | **YES** |
-| F-2 | K3s kubeconfig not injected | `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` | Ops | `[ ]` | **YES** |
+| F-1 | K3s kubeconfig not injected | `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` | Ops | `[ ]` | **YES** — **CODE BLOCKER RESOLVED** (K3sNamespaceLifecycleAdapter implemented, commit `44cce73`). Same-K3s-as-production acceptable with `lab-stg-` namespace prefix. |
+| F-2 | Staging Proxmox pool not created | `PROXMOX_POOL=k8s-netlab-staging` | Ops | N/A | **YES** — **Same Proxmox host acceptable**. Run: `pvesh create /pools --poolid k8s-netlab-staging` |
 | F-3 | `ADMIN_TOKEN` not set | `ADMIN_TOKEN` | Ops | `[ ]` | **YES** |
 | F-4 | `PROXMOX_TOKEN_SECRET` is placeholder | `PROXMOX_TOKEN_SECRET` | Ops | `[ ]` | **YES** |
 | F-5 | `VM_SSH_PASSWORD` is placeholder | `VM_SSH_PASSWORD` | Ops | `[ ]` | **YES** |

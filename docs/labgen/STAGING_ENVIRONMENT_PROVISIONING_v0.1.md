@@ -2,10 +2,12 @@
 
 > **Status**: PROVISIONING PLAN — no live provisioning performed  
 > **Basis**: Controlled Staging Trial v0.1 (commit `4717e98`), RC_READY_WITH_NOTES  
+> **Updated**: 2026-06-12 — same-Proxmox lightweight isolation added as acceptable MVP approach  
 > **Purpose**: Enable team to prepare the real staging environment so that  
 > Controlled Staging Trial v0.1 live execution can proceed  
 > **Live execution**: BLOCKED — first live run 2026-06-12 → LIVE\_TRIAL\_BLOCKED (staging secrets missing)  
 > **Live run result**: `docs/labgen/CONTROLLED_STAGING_TRIAL_LIVE_RUN_RESULT_v0.1.md`  
+> **Profile doc**: `docs/labgen/HOME_LAB_MVP_STAGING_PROFILE_v0.1.md` — see for full isolation model  
 
 ---
 
@@ -138,6 +140,30 @@ Labs create namespaces with the prefix `lab-<session-uuid>`. The staging cluster
 | VMID range | Staging-only range — **must not overlap** with `500–599` (production range) |
 | Template VM ID | Staging-specific clone template (not VM 101) |
 | Pool membership | Template VM must be added to the staging pool before LabGen can clone from it |
+
+### Same-Proxmox isolation (acceptable for MVP)
+
+A separate Proxmox host is NOT required for the home_lab_mvp staging profile.
+The same physical Proxmox host (`pve`) can serve both staging and production, provided
+all of the following isolation boundaries are in place:
+
+| Isolation Dimension | Requirement |
+|--------------------|-------------|
+| Proxmox pool | `k8s-netlab-staging` (separate from `k8s-netlab`) |
+| VMID range | Non-overlapping with 500–599 |
+| VM template | Separate template VM (not VM 101) in staging pool |
+| Proxmox token | `labgen-staging@pve!labgen-staging-api` (not production token) |
+| Data storage | Separate `data-staging/` directory |
+| Verifier credential root | `/var/lib/labgen-staging/verifier-credentials` |
+| Service port | 8001 (not 8000) |
+
+**ACCEPTED_MVP_RISK**: Same physical host means a Proxmox host failure affects both environments.
+This is explicitly accepted at MVP scale. See `HOME_LAB_MVP_STAGING_PROFILE_v0.1.md` Section F.
+
+To create the staging pool:
+```bash
+pvesh create /pools --poolid k8s-netlab-staging
+```
 
 ### VM identity and tracker expectations
 

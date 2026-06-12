@@ -1,9 +1,11 @@
 # LabGen MVP — Staging Ops Handoff Package v0.1
 
 > **Status**: HANDOFF PACKAGE — for ops team to provision staging environment  
-> **Commit**: `96fdac9`  
+> **Commit**: `96fdac9` (live trial) / `44cce73` (K3s adapter implemented)  
 > **Live trial decision**: LIVE_TRIAL_BLOCKED (first attempt 2026-06-12)  
+> **Updated**: 2026-06-12 — same-Proxmox lightweight isolation added; K3s adapter now fully implemented  
 > **Live run result**: `docs/labgen/CONTROLLED_STAGING_TRIAL_LIVE_RUN_RESULT_v0.1.md`  
+> **Profile doc**: `docs/labgen/HOME_LAB_MVP_STAGING_PROFILE_v0.1.md`  
 > **This document is NOT a deployment record — no real provisioning is performed here**
 
 ---
@@ -26,15 +28,15 @@ It is not a code failure. The tooling behaved exactly as specified:
 
 ### What is currently blocking the live trial
 
-| # | Blocking Input | Config Key | Responsible |
-|---|---------------|------------|-------------|
-| F-1 | Staging K3s cluster not provisioned | `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` | Ops |
-| F-2 | K3s kubeconfig not injected | `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` | Ops |
-| F-3 | Admin token not set | `ADMIN_TOKEN` | Ops |
-| F-4 | Proxmox staging credentials not set | `PROXMOX_TOKEN_SECRET` | Ops |
-| F-5 | VM SSH password not set | `VM_SSH_PASSWORD` | Ops |
-| F-6 | Staging image registry not provisioned | `VM_REGISTRY_MIRROR` | Ops |
-| F-7 | Staging storage mount not confirmed | `data/` writable, audit log path | Ops |
+| # | Blocking Input | Config Key | Responsible | Notes |
+|---|---------------|------------|-------------|-------|
+| F-1 | K3s kubeconfig not injected | `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` | Ops | **K3sNamespaceLifecycleAdapter is now fully implemented** (commit `44cce73`). Code blocker resolved. Remaining blocker: inject real kubeconfig for staging K3s. |
+| F-2 | Admin token not set | `ADMIN_TOKEN` | Ops | Generate ≥ 32-char random token; staging-specific |
+| F-3 | Proxmox staging credentials not set | `PROXMOX_TOKEN_SECRET` | Ops | **Same Proxmox host acceptable** — use staging pool `k8s-netlab-staging` + staging-scoped token |
+| F-4 | Staging Proxmox pool not created | `PROXMOX_POOL=k8s-netlab-staging` | Ops | `pvesh create /pools --poolid k8s-netlab-staging` |
+| F-5 | VM SSH password not set | `VM_SSH_PASSWORD` | Ops | |
+| F-6 | Staging image registry not provisioned | `VM_REGISTRY_MIRROR` | Ops | Acceptable to run on same host at different port (e.g. 5002) |
+| F-7 | Staging storage mount not confirmed | `data/` writable, audit log path | Ops | |
 
 See [Section D](#d-required-secrets-inventory) for full secrets inventory.
 
@@ -99,15 +101,17 @@ secret manager or direct infra provisioning.
 
 | Item | Notes |
 |------|-------|
-| Staging K3s cluster | Dedicated staging-only cluster, not shared with production |
+| Staging K3s kubeconfig + RBAC | K3sNamespaceLifecycleAdapter is implemented — only kubeconfig injection remains. Can use same K3s host as production with staging namespace prefix `lab-stg-`. |
 | K3s RBAC: service account + ClusterRole | Namespace create/delete + rolebinding create/delete permissions |
-| Staging Proxmox pool and VM template | Not production pool; VMID range must not overlap 500–599 |
-| Staging Proxmox API token | Staging-specific token with `VM.Clone`, `VM.Allocate`, `VM.Config.*` on staging pool |
-| Internal image registry | Registry at `<staging-registry-host>:5000`; required images pushed |
-| Persistent storage mount | `data/` directory writable by service user; local filesystem (flock requires local FS) |
-| Verifier credential root | Directory with `chmod 700`; staging-only; not under `/tmp` |
-| Audit log storage | `data/lab_audit_events.json` path writable |
-| Staging base URL, TLS (optional), DNS | Required for dry run and trial HTTP probes |
+| Staging Proxmox pool | `k8s-netlab-staging` — **same physical host as production is acceptable** (ACCEPTED_MVP_RISK). Create with: `pvesh create /pools --poolid k8s-netlab-staging` |
+| Staging VMID range | Must not overlap 500–599. Coordinate with infra owner. |
+| Staging VM template | Clone from VM 101 into staging pool; assign staging VMID. |
+| Staging Proxmox API token | `labgen-staging@pve!labgen-staging-api` — scoped to staging pool only |
+| Internal image registry | Same host acceptable at different port (e.g. `registry:2` at port 5002). Push required images. |
+| Persistent storage mount | Staging-specific `data-staging/` directory; local filesystem (flock requires local FS) |
+| Verifier credential root | `/var/lib/labgen-staging/verifier-credentials` with `chmod 700` |
+| Audit log storage | Inside `data-staging/` path |
+| Staging base URL, TLS (optional), DNS | Required for dry run and trial HTTP probes. HTTP acceptable if no TLS. |
 | Rollback access | Ability to delete staging namespaces, VMs, and credentials after trial |
 
 ### Required images (push to staging registry)

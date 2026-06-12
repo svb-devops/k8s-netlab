@@ -444,7 +444,7 @@ def _check_runtime_mode(active: dict[str, str], result: ProvisioningResult) -> N
     mode = active.get("LABGEN_RUNTIME_MODE", "")
     if not mode or _PLACEHOLDER_RE.match(mode):
         return
-    valid_modes = {"test", "dev", "demo", "production"}
+    valid_modes = {"test", "dev", "demo", "production", "home_lab_mvp", "cloud"}
     if mode not in valid_modes:
         result.block(
             check="runtime_mode_valid",
