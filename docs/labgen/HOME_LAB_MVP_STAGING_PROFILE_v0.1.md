@@ -332,6 +332,9 @@ The above static checks verify that:
 
 Current state: LIVE_TRIAL_BLOCKED (no real `.env.staging`; no real staging secrets).
 K3sNamespaceLifecycleAdapter is **fully implemented** (not a skeleton) as of commit `44cce73`.
+K3s adapter smoke result (2026-06-12): **K3S_SMOKE_BLOCKED_BY_MISSING_KUBECONFIG** — all kubeconfig
+locations searched on this host; none found; staging K3s VM (clone of VM 101) must be provisioned
+before smoke can reach the write phase. See `docs/labgen/CONTROLLED_K3S_ADAPTER_SMOKE_RESULT_v0.1.md`.
 
 The remaining blockers are all ops-side:
 

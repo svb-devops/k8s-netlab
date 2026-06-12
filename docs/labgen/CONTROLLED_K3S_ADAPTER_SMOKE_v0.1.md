@@ -139,15 +139,14 @@ python scripts/labgen_controlled_k3s_adapter_smoke.py \
 
 ---
 
-## G. Current Execution Result (2026-06-12)
+## G. Execution History
 
-### Precheck Result
+### Execution 1 — 2026-06-12 (Precheck Only)
 
-```
-Decision: K3S_SMOKE_BLOCKED
-```
+**Decision: K3S_SMOKE_BLOCKED_BY_MISSING_KUBECONFIG**
 
 Executed against: `deploy/labgen/.env.staging.example`
+Full result artifact: `docs/labgen/CONTROLLED_K3S_ADAPTER_SMOKE_RESULT_v0.1.md`
 
 | Phase | Status | Message |
 |-------|--------|---------|
@@ -158,6 +157,13 @@ Executed against: `deploy/labgen/.env.staging.example`
 Missing inputs:
 - `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` is not set or is a placeholder — inject the real kubeconfig path
 
+Kubeconfig investigation (ops-side):
+- All standard kubeconfig locations on this host searched: none found
+- VM 101 (`k8s-template`): Proxmox template (`template: 1`), cannot be started, production-only
+- No K3s binary or running K3s service on host
+- No running student VMs (VMID 500-599)
+- **Sole blocker**: no real K3s cluster accessible from this host without provisioning a staging VM
+
 Audit confirmation:
 - `runtime_start_executed: false` ✓
 - `proxmox_called: false` ✓
@@ -165,14 +171,10 @@ Audit confirmation:
 - `llm_called: false` ✓
 - `wrote_namespace: false` ✓
 - `wrote_rolebinding: false` ✓
+- No namespace residuals ✓
 
-### Why BLOCKED
-
-No real home_lab_mvp env file exists. The `.env.staging.example` template has
-`LABGEN_K8S_PLATFORM_KUBECONFIG_PATH=<set-in-staging-secret-manager>` which is a placeholder.
-
-The code path (K3sNamespaceLifecycleAdapter) is fully implemented and tested with
-57 unit tests. The blocker is an **ops-side input** (kubeconfig injection), not a code blocker.
+The code path (`K3sNamespaceLifecycleAdapter`) is fully implemented and tested.
+The blocker is an **ops-side infrastructure** requirement (staging K3s VM provisioning), not a code blocker.
 
 ---
 
@@ -204,11 +206,11 @@ To reach K3S_SMOKE_PASSED, ops must complete:
 |-----------|--------|--------|
 | K3sNamespaceLifecycleAdapter | Fully implemented | 44cce73 |
 | home_lab_mvp profile guardrails | 57 tests, PASS | 3bb58bc |
-| Controlled K3s Adapter Smoke helper | Implemented + 57 tests | this commit |
+| Controlled K3s Adapter Smoke helper | Implemented + 69 tests (incl. BLOCKED_BY_MISSING_KUBECONFIG) | 87e0297+ |
 | Namespace safety validator | Integrated | 44cce73 |
 | Error sanitization | Integrated | 44cce73 |
 
-No code blockers remain. Remaining blocker: **ops kubeconfig injection**.
+No code blockers remain. Remaining blocker: **ops-side staging K3s VM provisioning + kubeconfig injection**.
 
 ---
 

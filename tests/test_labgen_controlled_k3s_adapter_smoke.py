@@ -5,7 +5,8 @@ Guarantees under test:
 - No real network calls (all K8s interactions use StubNamespaceLifecycleAdapter)
 - No Proxmox / registry / LLM calls
 - No runtime start
-- Placeholder / missing inputs → K3S_SMOKE_BLOCKED
+- Kubeconfig is sole blocker → K3S_SMOKE_BLOCKED_BY_MISSING_KUBECONFIG
+- Multiple/non-kubeconfig missing inputs → K3S_SMOKE_BLOCKED
 - Stub adapter in home_lab_mvp → K3S_SMOKE_BLOCKED
 - Create failure → K3S_SMOKE_FAILED
 - Delete failure → K3S_SMOKE_FAILED
@@ -111,6 +112,44 @@ class TestIsPlaceholder:
 
     def test_case_insensitive_placeholder_caps(self):
         assert _smoke._is_placeholder("PLACEHOLDER_VALUE") is True
+
+
+# ---------------------------------------------------------------------------
+# _is_kubeconfig_only_blocker
+# ---------------------------------------------------------------------------
+
+
+class TestIsKubeconfigOnlyBlocker:
+    def test_empty_list_returns_false(self):
+        assert _smoke._is_kubeconfig_only_blocker([]) is False
+
+    def test_single_kubeconfig_message_returns_true(self):
+        msg = "LABGEN_K8S_PLATFORM_KUBECONFIG_PATH is not set or is a placeholder"
+        assert _smoke._is_kubeconfig_only_blocker([msg]) is True
+
+    def test_nonexistent_file_message_returns_true(self):
+        msg = "LABGEN_K8S_PLATFORM_KUBECONFIG_PATH points to a non-existent file"
+        assert _smoke._is_kubeconfig_only_blocker([msg]) is True
+
+    def test_non_kubeconfig_message_returns_false(self):
+        assert _smoke._is_kubeconfig_only_blocker(["LABGEN_RUNTIME_MODE must be home_lab_mvp"]) is False
+
+    def test_mixed_messages_returns_false(self):
+        msgs = [
+            "LABGEN_K8S_PLATFORM_KUBECONFIG_PATH is not set or is a placeholder",
+            "LABGEN_RUNTIME_MODE must be 'home_lab_mvp', got 'dev'",
+        ]
+        assert _smoke._is_kubeconfig_only_blocker(msgs) is False
+
+    def test_two_kubeconfig_messages_returns_true(self):
+        msgs = [
+            "LABGEN_K8S_PLATFORM_KUBECONFIG_PATH is not set or is a placeholder",
+            "LABGEN_K8S_PLATFORM_KUBECONFIG_PATH points to a non-existent file",
+        ]
+        assert _smoke._is_kubeconfig_only_blocker(msgs) is True
+
+    def test_constant_is_exported(self):
+        assert _smoke.FINAL_BLOCKED_MISSING_KUBECONFIG == "K3S_SMOKE_BLOCKED_BY_MISSING_KUBECONFIG"
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +297,19 @@ class TestRunSmokeBlocked:
     def test_missing_kubeconfig_file_blocked(self, tmp_path):
         env = dict(_VALID_ENV)
         env["LABGEN_K8S_PLATFORM_KUBECONFIG_PATH"] = str(tmp_path / "missing_kube")
+        result = _smoke.run_smoke(env, allow_k8s_write=True)
+        assert result.decision == _smoke.FINAL_BLOCKED_MISSING_KUBECONFIG
+
+    def test_placeholder_kubeconfig_gives_missing_kubeconfig_decision(self, tmp_path):
+        env = dict(_VALID_ENV)
+        env["LABGEN_K8S_PLATFORM_KUBECONFIG_PATH"] = "<set-in-staging-secret-manager>"
+        result = _smoke.run_smoke(env, allow_k8s_write=True)
+        assert result.decision == _smoke.FINAL_BLOCKED_MISSING_KUBECONFIG
+
+    def test_wrong_mode_plus_kubeconfig_gives_generic_blocked(self, tmp_path):
+        env = dict(_VALID_ENV)
+        env["LABGEN_RUNTIME_MODE"] = "dev"
+        env["LABGEN_K8S_PLATFORM_KUBECONFIG_PATH"] = "<placeholder>"
         result = _smoke.run_smoke(env, allow_k8s_write=True)
         assert result.decision == _smoke.FINAL_BLOCKED
 
@@ -513,6 +565,7 @@ class TestJsonOutputSchema:
         assert _smoke.FINAL_PASSED == "K3S_SMOKE_PASSED"
         assert _smoke.FINAL_PASSED_WITH_NOTES == "K3S_SMOKE_PASSED_WITH_NOTES"
         assert _smoke.FINAL_BLOCKED == "K3S_SMOKE_BLOCKED"
+        assert _smoke.FINAL_BLOCKED_MISSING_KUBECONFIG == "K3S_SMOKE_BLOCKED_BY_MISSING_KUBECONFIG"
         assert _smoke.FINAL_FAILED == "K3S_SMOKE_FAILED"
 
     def test_json_serializable(self, tmp_path):
@@ -567,6 +620,21 @@ class TestMain:
     def test_blocked_returns_2(self, tmp_path):
         f = tmp_path / ".env"
         f.write_text("LABGEN_RUNTIME_MODE=dev\n")
+        code = _smoke.main(["--env-file", str(f)])
+        assert code == 2
+
+    def test_blocked_by_missing_kubeconfig_returns_2(self, tmp_path):
+        f = tmp_path / ".env"
+        f.write_text(
+            "LABGEN_RUNTIME_MODE=home_lab_mvp\n"
+            "LABGEN_NAMESPACE_ADAPTER=k8s\n"
+            "LABGEN_K8S_PLATFORM_KUBECONFIG_PATH=<placeholder>\n"
+            "LABGEN_K8S_NAMESPACE_ALLOWED_PREFIXES=lab-stg-\n"
+            "LABGEN_K8S_VERIFIER_SA_NAME=labgen-verifier\n"
+            "LABGEN_K8S_VERIFIER_SA_NAMESPACE=kube-system\n"
+            "LABGEN_K8S_VERIFIER_ROLE_NAME=labgen-verifier-role\n"
+            "LABGEN_K8S_VERIFIER_ROLEBINDING_NAME=labgen-verifier-binding\n"
+        )
         code = _smoke.main(["--env-file", str(f)])
         assert code == 2
 

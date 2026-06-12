@@ -46,6 +46,7 @@ Exit codes:
   0  K3S_SMOKE_PASSED or K3S_SMOKE_PASSED_WITH_NOTES
   1  K3S_SMOKE_FAILED
   2  K3S_SMOKE_BLOCKED (preconditions not met, env missing, write not authorized)
+     K3S_SMOKE_BLOCKED_BY_MISSING_KUBECONFIG (sole blocker is missing/placeholder kubeconfig)
 """
 
 from __future__ import annotations
@@ -78,7 +79,10 @@ logger = logging.getLogger(__name__)
 FINAL_PASSED = "K3S_SMOKE_PASSED"
 FINAL_PASSED_WITH_NOTES = "K3S_SMOKE_PASSED_WITH_NOTES"
 FINAL_BLOCKED = "K3S_SMOKE_BLOCKED"
+FINAL_BLOCKED_MISSING_KUBECONFIG = "K3S_SMOKE_BLOCKED_BY_MISSING_KUBECONFIG"
 FINAL_FAILED = "K3S_SMOKE_FAILED"
+
+_KUBECONFIG_MSG_PREFIX = "LABGEN_K8S_PLATFORM_KUBECONFIG_PATH"
 
 _SEV_PASS = "pass"
 _SEV_WARN = "warn"
@@ -160,6 +164,17 @@ def _is_placeholder(value: str) -> bool:
         if marker.lower() in lower:
             return True
     return False
+
+
+def _is_kubeconfig_only_blocker(missing_inputs: List[str]) -> bool:
+    """Return True iff every missing input is about the platform kubeconfig specifically.
+
+    Used to emit the more specific K3S_SMOKE_BLOCKED_BY_MISSING_KUBECONFIG decision
+    when the kubeconfig is the sole blocker (mode, adapter, and other config are correct).
+    """
+    if not missing_inputs:
+        return False
+    return all(item.startswith(_KUBECONFIG_MSG_PREFIX) for item in missing_inputs)
 
 
 # ---------------------------------------------------------------------------
@@ -313,7 +328,10 @@ def run_smoke(
     result.missing_inputs.extend(missing1)
 
     if result.missing_inputs:
-        result.decision = FINAL_BLOCKED
+        if _is_kubeconfig_only_blocker(result.missing_inputs):
+            result.decision = FINAL_BLOCKED_MISSING_KUBECONFIG
+        else:
+            result.decision = FINAL_BLOCKED
         result.phases.append(PhaseResult(
             "phase2_precheck", _SEV_BLOCKED,
             f"Blocked: {len(result.missing_inputs)} precondition(s) not met"
@@ -631,7 +649,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if result.decision in (FINAL_PASSED, FINAL_PASSED_WITH_NOTES):
         return 0
-    if result.decision == FINAL_BLOCKED:
+    if result.decision in (FINAL_BLOCKED, FINAL_BLOCKED_MISSING_KUBECONFIG):
         return 2
     return 1
 
