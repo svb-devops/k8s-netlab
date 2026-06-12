@@ -35,7 +35,9 @@
 > **TOOLING_READY — Live Execution: BLOCKED (staging secrets not injected)**
 >
 > First live run attempt: 2026-06-12 → **LIVE\_TRIAL\_BLOCKED**  
-> See: `docs/labgen/CONTROLLED_STAGING_TRIAL_LIVE_RUN_RESULT_v0.1.md`
+> K3s adapter smoke (2026-06-12): **K3S\_SMOKE\_BLOCKED** (kubeconfig not injected — ops-side)  
+> See: `docs/labgen/CONTROLLED_STAGING_TRIAL_LIVE_RUN_RESULT_v0.1.md`  
+> K3s smoke runbook: `docs/labgen/CONTROLLED_K3S_ADAPTER_SMOKE_v0.1.md`
 
 All trial tooling is ready and tested. The first live run was executed on 2026-06-12;
 static validation passed (WARNING), but all runtime preflight checks are BLOCKING because

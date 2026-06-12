@@ -107,8 +107,8 @@ Only `exc.status` (HTTP status code) and `exc.reason` (HTTP reason phrase) are u
 
 | Phase | Description | Trigger |
 |-------|-------------|---------|
-| **Now** | Home-lab MVP smoke | `home_lab_mvp` profile on T430 |
-| **Next** | Lightweight same-Proxmox staging | Separate pool / VMID range / namespace prefix / port |
+| **Now** | K3s adapter smoke (namespace lifecycle only) | `home_lab_mvp` profile; K3S_SMOKE_BLOCKED (ops kubeconfig pending); see `docs/labgen/CONTROLLED_K3S_ADAPTER_SMOKE_v0.1.md` |
+| **Next** | K3s adapter smoke write phase | After kubeconfig injected; then controlled home-lab runtime session smoke |
 | **Then** | Small customer pilot (home-lab) | ≤ 10 concurrent students, monitored |
 | **Later** | Cloud deployment design | When T430 CPU becomes the bottleneck |
 | **Later** | Cloud staging migration | New `cloud` profile, EKS/ACK kubeconfig or in-cluster |

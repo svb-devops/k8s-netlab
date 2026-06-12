@@ -78,6 +78,7 @@ python scripts/labgen_ops_staging_intake_verify.py \
 | All 6 tickets VERIFIED | `[ ]` NOT READY — 6/6 BLOCKED_WITH_EVIDENCE | `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md` |
 | Secret injection: SECRET_INJECTION_READY | `[ ]` NOT READY | `docs/labgen/OPS_SECRET_INJECTION_VERIFICATION_RESULT_v0.1.md` — currently BLOCKED |
 | Intake gate: READY_TO_RERUN | `[ ]` NOT READY | `docs/labgen/OPS_STAGING_INTAKE_VERIFICATION_RESULT_v0.1.md` — currently BLOCKED |
+| **K3S Adapter Smoke: K3S_SMOKE_PASSED or K3S_SMOKE_PASSED_WITH_NOTES** | `[ ]` NOT READY — **K3S_SMOKE_BLOCKED** (2026-06-12) | `docs/labgen/CONTROLLED_K3S_ADAPTER_SMOKE_v0.1.md` — precheck run, blocked on kubeconfig injection |
 | Controlled Trial rerun: LIVE_TRIAL_PASSED | `[ ]` NOT READY | To be recorded after rerun |
 
 **None of the above may be declared passed until the corresponding verification script outputs the READY/PASSED decision.**

@@ -193,6 +193,7 @@ python scripts/labgen_ops_staging_intake_verify.py \
 | G-6 | Rollback plan reviewed (Section F of `CONTROLLED_STAGING_TRIAL_v0.1.md`) | `[ ]` |
 | G-7 | STAGING_USER_SESSION available (for Phase 4 runtime start) | `[ ]` |
 | G-8 | Published staging lab draft available in lab catalog | `[ ]` |
+| G-9 | **K3s Adapter Smoke: K3S_SMOKE_PASSED or K3S_SMOKE_PASSED_WITH_NOTES** | `[ ]` — currently K3S_SMOKE_BLOCKED (kubeconfig not injected) |
 
 **If G-0a is `[ ]` (intake gate not READY): trial is BLOCKED. Do not run Phase 3+.**  
 **If any other gate is `[ ]`: trial is BLOCKED. Do not proceed with Phase 3+ of the trial runbook.**
@@ -220,6 +221,7 @@ secret values that look like real credentials.
 | `scripts/labgen_staging_provisioning_validate.py` | Phase 6, V-1 | Static env file safety (offline) |
 | `scripts/labgen_production_preflight.py` | Phase 6, V-2 | Runtime config against current env (offline) |
 | `scripts/labgen_staging_dry_run.py` | Phase 6, V-3 | Live service diagnostics (online, safe GETs only) |
+| `scripts/labgen_controlled_k3s_adapter_smoke.py` | **Before trial — K3S smoke gate** | Namespace lifecycle smoke: create/verify/rolebinding/delete (precheck-only by default; `--allow-k8s-write` to execute) |
 | `scripts/labgen_controlled_staging_trial.py` | Trial Phase 0 | Full trial execution (with explicit allow flags) |
 
 ---

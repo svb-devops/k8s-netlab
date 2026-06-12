@@ -434,6 +434,7 @@ All of the following must be satisfied before Controlled Staging Trial v0.1 live
 | J-8 | Staging test lab (published draft) available | `GET /api/lab-catalog` → at least one published lab |
 | J-9 | Rollback path defined and reviewed | Section F of `CONTROLLED_STAGING_TRIAL_v0.1.md` read by operator |
 | J-10 | Provisioning validator passes (no blocking issues) | `python scripts/labgen_staging_provisioning_validate.py --env-file .env.staging` → exit code 0 |
+| **J-11** | **K3s adapter smoke: K3S_SMOKE_PASSED or K3S_SMOKE_PASSED_WITH_NOTES** | Precheck: `python scripts/labgen_controlled_k3s_adapter_smoke.py --env-file .env.home_lab`; write: add `--allow-k8s-write --json` with operator authorization |
 
 **J-0 (intake gate) is mandatory and must be run before any runtime action.**  
 **If any criterion is unmet:** mark trial BLOCKED, do not proceed with Phase 3+ of the trial runbook.

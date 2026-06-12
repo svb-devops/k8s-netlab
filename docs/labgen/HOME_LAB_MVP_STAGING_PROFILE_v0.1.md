@@ -346,10 +346,13 @@ The remaining blockers are all ops-side:
 | 7 | Inject `PROXMOX_TOKEN_SECRET` (staging-scoped token) | OPS-PROXMOX-002 |
 | 8 | Inject `VM_SSH_PASSWORD` | OPS-VM-001 |
 | 9 | Deploy staging registry (new port on same host, e.g. 5002) or confirm reuse path | OPS-REGISTRY-001 |
-| 10 | Create real `.env.staging` — DO NOT copy `.env.staging.example`; use secret manager | Operator |
-| 11 | Run `labgen_staging_missing_inputs.py` → exit 0 | Operator |
-| 12 | Run `labgen_ops_staging_intake_verify.py` → `READY_TO_RERUN_CONTROLLED_STAGING_TRIAL` | Operator |
-| 13 | Rerun controlled staging trial | Operator |
+| 10 | Create real `.env.home_lab` or `.env.staging` — DO NOT copy `.env.staging.example`; use secret manager | Operator |
+| 11 | Run K3s adapter smoke precheck: `python scripts/labgen_controlled_k3s_adapter_smoke.py --env-file .env.home_lab` | Operator |
+| 12 | With operator authorization, run smoke write phase: `python scripts/labgen_controlled_k3s_adapter_smoke.py --env-file .env.home_lab --allow-k8s-write --json` | Operator |
+| 13 | Confirm K3S_SMOKE_PASSED or K3S_SMOKE_PASSED_WITH_NOTES and cleanup_confirmed=true | Operator |
+| 14 | Run `labgen_staging_missing_inputs.py` → exit 0 | Operator |
+| 15 | Run `labgen_ops_staging_intake_verify.py` → `READY_TO_RERUN_CONTROLLED_STAGING_TRIAL` | Operator |
+| 16 | Rerun controlled staging trial | Operator |
 
 **Steps 1–3 can be done by ops on the production Proxmox host without any production risk**,
 since they only create new pools/VMs in the staging range.
