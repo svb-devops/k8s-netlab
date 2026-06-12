@@ -427,20 +427,23 @@ Use this checklist to track ops provisioning progress before requesting a live t
 | I-14 | Verifier credential root created, chmod 700 | Ops | — | `stat` output | `stat <path>` → drwx------ | `[ ]` | Not /tmp |
 | I-15 | `.env.staging` file created from template, all placeholders filled | Operator | — | File diff (no values) | `grep '<' .env.staging` → no output | `[ ]` | Gitignored |
 | I-16 | Missing inputs helper exits 0 | Operator | — | Script output | `python scripts/labgen_staging_missing_inputs.py --env-file <staging-env-file>` | `[ ]` | Exit code 0 = all inputs set |
+| **I-16a** | **Secret injection verify: decision = SECRET\_INJECTION\_READY** | Operator | — | JSON output → `docs/labgen/OPS_SECRET_INJECTION_VERIFICATION_RESULT_v0.1.md` | `python scripts/labgen_ops_secret_injection_verify.py --env-file <staging-env-file> --json` | `[ ]` | **Run before I-19a** — all 7 keys must be PRESENT\_REDACTED |
 | I-17 | Provisioning validator exits 0 | Operator | — | Script output | `python scripts/labgen_staging_provisioning_validate.py --env-file <staging-env-file>` | `[ ]` | No blocking issues |
 | I-18 | Preflight exits 0 | Operator | — | Script output | `python scripts/labgen_production_preflight.py --env-file <staging-env-file>` | `[ ]` | No blocking issues |
 | I-19 | Staging dry run exits 0 or warning | Operator | — | JSON output | `python scripts/labgen_staging_dry_run.py --env-file <staging-env-file> --base-url <staging-base-url> --json` | `[ ]` | `"overall": "pass"` or `"warning"` |
-| **I-19a** | **Intake verification gate: decision = READY\_TO\_RERUN\_CONTROLLED\_STAGING\_TRIAL** | Operator | — | JSON output saved to file | `python scripts/labgen_ops_staging_intake_verify.py --env-file <staging-env-file> --base-url <staging-base-url> --json` | `[ ]` | **Must pass before I-20** — see `docs/labgen/OPS_STAGING_INTAKE_VERIFICATION_v0.1.md` |
-| I-20 | Controlled trial rerun executed | Operator | — | Live run result artifact v0.2 | Full trial script with allow flags | `[ ]` | Requires I-19a = READY — replaces this blocked run |
+| **I-19a** | **Intake verification gate: decision = READY\_TO\_RERUN\_CONTROLLED\_STAGING\_TRIAL** | Operator | — | JSON output saved to file | `python scripts/labgen_ops_staging_intake_verify.py --env-file <staging-env-file> --base-url <staging-base-url> --json` | `[ ]` | **Must pass before I-20** — see `docs/labgen/OPS_STAGING_INTAKE_VERIFICATION_RESULT_v0.1.md` |
+| I-20 | Controlled trial rerun executed | Operator | — | Live run result artifact v0.2 | Full trial script with allow flags | `[ ]` | Requires I-16a = READY + I-19a = READY — replaces this blocked run |
 
 **Gate**: All items must be `[x]` before proceeding to controlled live trial rerun.  
-**Critical**: I-19a (intake gate) must output `READY_TO_RERUN_CONTROLLED_STAGING_TRIAL` before I-20 may be executed.
+**Critical**: I-16a (secret injection) must output `SECRET_INJECTION_READY` and I-19a (intake gate) must output `READY_TO_RERUN_CONTROLLED_STAGING_TRIAL` before I-20 may be executed.
 
 ---
 
 ## Notes
 
-- This handoff package is complete as of commit `96fdac9`. No further dev work is required to unblock the staging trial.
+- This handoff package is updated as of commit `478b39e`. No further dev work is required to unblock the staging trial.
+- Secret injection verification tool added: `scripts/labgen_ops_secret_injection_verify.py` (step I-16a).
+  Current result: `SECRET_INJECTION_BLOCKED` — see `docs/labgen/OPS_SECRET_INJECTION_VERIFICATION_RESULT_v0.1.md`.
 - The live trial can proceed as soon as ops provisions the staging environment and all checklist items are satisfied.
 - Only after a successful live trial (`LIVE_TRIAL_PASSED` or `LIVE_TRIAL_PASSED_WITH_NOTES`) is it permitted to proceed to `Production Cutover Plan v0.1`.
 - **Do not declare staging live-passed until the trial script itself reports LIVE\_TRIAL\_PASSED.**

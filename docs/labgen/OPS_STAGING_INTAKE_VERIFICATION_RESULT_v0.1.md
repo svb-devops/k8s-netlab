@@ -192,7 +192,8 @@ See `docs/labgen/STAGING_OPS_HANDOFF_v0.1.md` (Section I checklist) for the full
 
 1. Ops team reads `docs/labgen/STAGING_OPS_HANDOFF_v0.1.md` (actionable handoff — Section I).
 2. Fills in `deploy/labgen/staging_infrastructure_checklist.md` Phase 0–7.
-3. Injects all 6 missing secrets. Re-runs `scripts/labgen_staging_missing_inputs.py` → exit 0.
+3. Injects all 6 missing secrets. Re-runs `scripts/labgen_ops_secret_injection_verify.py --env-file .env.staging --json` → decision must be `SECRET_INJECTION_READY`.
+   See `docs/labgen/OPS_SECRET_INJECTION_VERIFICATION_RESULT_v0.1.md` for per-key status detail.
 4. Re-runs intake verification gate with real env file and staging base URL.
 5. Re-executes Controlled Staging Trial **only after** intake gate outputs `READY_TO_RERUN_CONTROLLED_STAGING_TRIAL`.
 

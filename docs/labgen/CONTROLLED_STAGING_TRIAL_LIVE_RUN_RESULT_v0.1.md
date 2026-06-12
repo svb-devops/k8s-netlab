@@ -242,6 +242,16 @@ Complete these items in order before re-running the trial:
 - [ ] F-5: Set `VM_SSH_PASSWORD` via secret manager → `.env.staging`
 - [ ] F-6: Deploy staging internal image registry, push required images
 - [ ] F-7: Mount staging data directory, confirm writable
+- [x] **Run secret injection verification** (executed 2026-06-12) → **SECRET_INJECTION_BLOCKED** (6 of 7 keys are placeholder):
+  `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH`, `ADMIN_TOKEN`, `PROXMOX_HOST`, `PROXMOX_TOKEN_SECRET`,
+  `VM_SSH_PASSWORD`, `VM_REGISTRY_MIRROR`.
+  `PROXMOX_TOKEN_ID` is PRESENT_REDACTED — no action needed for that key.
+  See `docs/labgen/OPS_SECRET_INJECTION_VERIFICATION_RESULT_v0.1.md` for full result.
+  Re-run after G-1–G-7 are complete → decision must be `SECRET_INJECTION_READY`:
+  ```bash
+  python scripts/labgen_ops_secret_injection_verify.py \
+      --env-file .env.staging --json
+  ```
 - [x] **Run intake verification gate** (executed 2026-06-12) → **BLOCKED_MISSING_INPUTS** (6 inputs missing):
   `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH`, `ADMIN_TOKEN`, `PROXMOX_HOST`, `PROXMOX_TOKEN_SECRET`,
   `VM_SSH_PASSWORD`, `VM_REGISTRY_MIRROR`.
