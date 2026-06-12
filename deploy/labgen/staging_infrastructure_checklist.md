@@ -1,6 +1,6 @@
 # LabGen MVP — Staging Infrastructure Checklist
 
-> **Status**: FIRST LIVE RUN BLOCKED (2026-06-12) — provisioning not yet complete  
+> **Status**: INTAKE GATE BLOCKED (2026-06-12) — 6 missing inputs; live trial rerun not permitted  
 > **Basis**: `docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`  
 > **Purpose**: Track provisioning of each infrastructure component required for  
 > Controlled Staging Trial v0.1 live execution  

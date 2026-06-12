@@ -242,12 +242,15 @@ Complete these items in order before re-running the trial:
 - [ ] F-5: Set `VM_SSH_PASSWORD` via secret manager → `.env.staging`
 - [ ] F-6: Deploy staging internal image registry, push required images
 - [ ] F-7: Mount staging data directory, confirm writable
-- [ ] **Run intake verification gate** → decision must be `READY_TO_RERUN_CONTROLLED_STAGING_TRIAL`:
+- [x] **Run intake verification gate** (executed 2026-06-12) → **BLOCKED_MISSING_INPUTS** (6 inputs missing):
+  `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH`, `ADMIN_TOKEN`, `PROXMOX_HOST`, `PROXMOX_TOKEN_SECRET`,
+  `VM_SSH_PASSWORD`, `VM_REGISTRY_MIRROR`.
+  See `docs/labgen/OPS_STAGING_INTAKE_VERIFICATION_RESULT_v0.1.md` for full gate result.
+  Re-run after F-1–F-7 are complete → decision must be `READY_TO_RERUN_CONTROLLED_STAGING_TRIAL`:
   ```bash
   python scripts/labgen_ops_staging_intake_verify.py \
       --env-file .env.staging --base-url http://<staging-host>:8000 --json
   ```
-  See `docs/labgen/OPS_STAGING_INTAKE_VERIFICATION_v0.1.md` for phase-by-phase detail.
 - [ ] Re-run this trial with `--env-file .env.staging --base-url http://<staging-host>:8000`
 
 ### Recommended Next Step
@@ -258,7 +261,7 @@ Complete these items in order before re-running the trial:
 4. Runs intake verification gate: `scripts/labgen_ops_staging_intake_verify.py --env-file .env.staging --base-url http://<staging-host>:8000 --json`
 5. Re-executes this trial only after intake gate outputs `READY_TO_RERUN_CONTROLLED_STAGING_TRIAL`.
 
-No code changes are required — all tooling is ready (2693 tests, 94.08% coverage).
+No code changes are required — all tooling is ready (2727 tests, 94.08% coverage).
 
 ---
 
