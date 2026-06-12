@@ -50,11 +50,12 @@ pytestmark = pytest.mark.static
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _select(runtime_mode, adapter_kind, kubeconfig=""):
+def _select(runtime_mode, adapter_kind, kubeconfig="", in_cluster=False):
     return RuntimeAdapterSelectionService.select(
         runtime_mode_raw=runtime_mode,
         adapter_kind_raw=adapter_kind,
         k8s_kubeconfig_path=kubeconfig,
+        k8s_in_cluster=in_cluster,
     )
 
 
@@ -147,10 +148,57 @@ class TestSelectionLogic:
         r = _select("dev", "stub")
         assert r.namespace_adapter_kind == NamespaceAdapterKind.STUB
 
+    # Codex P1 regression: mutually exclusive K8s config must always block
+    def test_kubeconfig_and_in_cluster_both_set_is_blocking(self):
+        r = _select("home_lab_mvp", "k8s", kubeconfig="/etc/k8s/platform.yaml", in_cluster=True)
+        assert ISSUE_K8S_ADAPTER_NOT_CONFIGURED in _codes(r)
+        assert len(_blocking(r)) >= 1
+        assert r.production_safe is False
+
+    def test_kubeconfig_and_in_cluster_cloud_mode_is_blocking(self):
+        r = _select("cloud", "k8s", kubeconfig="/etc/k8s/eks.yaml", in_cluster=True)
+        assert ISSUE_K8S_ADAPTER_NOT_CONFIGURED in _codes(r)
+        assert len(_blocking(r)) >= 1
+        assert r.production_safe is False
+
+    def test_kubeconfig_and_in_cluster_production_mode_is_blocking(self):
+        r = _select("production", "k8s", kubeconfig="/etc/k8s/platform.yaml", in_cluster=True)
+        assert ISSUE_K8S_ADAPTER_NOT_CONFIGURED in _codes(r)
+        assert len(_blocking(r)) >= 1
+        assert r.production_safe is False
+
+    def test_kubeconfig_only_in_cloud_is_production_safe(self):
+        r = _select("cloud", "k8s", kubeconfig="/etc/k8s/eks.yaml", in_cluster=False)
+        assert r.production_safe is True
+        assert len(_blocking(r)) == 0
+
+    def test_in_cluster_only_in_cloud_is_production_safe(self):
+        r = _select("cloud", "k8s", kubeconfig="", in_cluster=True)
+        assert r.production_safe is True
+        assert len(_blocking(r)) == 0
+
+    def test_neither_kubeconfig_nor_in_cluster_in_cloud_is_blocking(self):
+        r = _select("cloud", "k8s", kubeconfig="", in_cluster=False)
+        assert ISSUE_K8S_ADAPTER_NOT_CONFIGURED in _codes(r)
+        assert r.production_safe is False
+
+    def test_mutual_exclusion_check_message_is_descriptive(self):
+        r = _select("home_lab_mvp", "k8s", kubeconfig="/etc/k8s/platform.yaml", in_cluster=True)
+        blocking = _blocking(r)
+        assert any("mutually exclusive" in i.message.lower() for i in blocking)
+
 
 # ---------------------------------------------------------------------------
 # B. build_adapter()
 # ---------------------------------------------------------------------------
+
+def _k8s_adapter_config(kubeconfig: str = "/etc/k8s/platform.yaml"):
+    from backend.labgen.namespace_lifecycle import K8sAdapterConfig
+    return K8sAdapterConfig(
+        kubeconfig_path=kubeconfig,
+        allowed_namespace_prefixes=["lab-"],
+    )
+
 
 class TestBuildAdapter:
     def test_stub_mode_returns_stub_adapter(self):
@@ -162,7 +210,7 @@ class TestBuildAdapter:
     def test_k8s_mode_returns_k3s_adapter(self):
         from backend.labgen.namespace_lifecycle import K3sNamespaceLifecycleAdapter
         r = _select("production", "k8s", kubeconfig="/etc/k8s/platform.yaml")
-        adapter = RuntimeAdapterSelectionService.build_adapter(r)
+        adapter = RuntimeAdapterSelectionService.build_adapter(r, adapter_config=_k8s_adapter_config())
         assert isinstance(adapter, K3sNamespaceLifecycleAdapter)
 
     def test_production_stub_builds_stub_not_raises(self):
@@ -171,6 +219,20 @@ class TestBuildAdapter:
         r = _select("production", "stub")
         adapter = RuntimeAdapterSelectionService.build_adapter(r)
         assert isinstance(adapter, StubNamespaceLifecycleAdapter)
+
+    def test_home_lab_mvp_k8s_returns_k3s_adapter(self):
+        from backend.labgen.namespace_lifecycle import K3sNamespaceLifecycleAdapter
+        r = _select("home_lab_mvp", "k8s", kubeconfig="/etc/k8s/platform.yaml")
+        adapter = RuntimeAdapterSelectionService.build_adapter(r, adapter_config=_k8s_adapter_config())
+        assert isinstance(adapter, K3sNamespaceLifecycleAdapter)
+
+    def test_cloud_k8s_returns_k3s_adapter(self):
+        from backend.labgen.namespace_lifecycle import K3sNamespaceLifecycleAdapter
+        r = _select("cloud", "k8s", kubeconfig="/etc/k8s/eks.yaml")
+        adapter = RuntimeAdapterSelectionService.build_adapter(
+            r, adapter_config=_k8s_adapter_config("/etc/k8s/eks.yaml")
+        )
+        assert isinstance(adapter, K3sNamespaceLifecycleAdapter)
 
 
 # ---------------------------------------------------------------------------
@@ -215,7 +277,7 @@ class TestCreateFromConfig:
     def test_create_from_config_returns_result(self):
         r = RuntimeAdapterSelectionService.create_from_config()
         # Default config: LABGEN_RUNTIME_MODE=dev, LABGEN_NAMESPACE_ADAPTER=stub
-        assert r.runtime_mode in (RuntimeMode.DEV, RuntimeMode.TEST, RuntimeMode.DEMO, RuntimeMode.PRODUCTION)
+        assert r.runtime_mode in list(RuntimeMode)
         assert r.namespace_adapter_kind in (NamespaceAdapterKind.STUB, NamespaceAdapterKind.K8S)
         assert isinstance(r.production_safe, bool)
         assert r.checked_at
@@ -225,6 +287,7 @@ class TestCreateFromConfig:
         monkeypatch.setattr(_cfg, "LABGEN_RUNTIME_MODE", "dev")
         monkeypatch.setattr(_cfg, "LABGEN_NAMESPACE_ADAPTER", "stub")
         monkeypatch.setattr(_cfg, "LABGEN_K8S_PLATFORM_KUBECONFIG_PATH", "")
+        monkeypatch.setattr(_cfg, "LABGEN_K8S_IN_CLUSTER", False)
         r = RuntimeAdapterSelectionService.create_from_config()
         assert r.runtime_mode == RuntimeMode.DEV
         assert r.namespace_adapter_kind == NamespaceAdapterKind.STUB

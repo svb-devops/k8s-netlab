@@ -58,3 +58,10 @@ class FailureReason(str, Enum):
 
     # -- Session timeout (Contract §12 LAB_TIMEOUT) ---------------------------
     LAB_TIMEOUT = "lab_timeout"
+
+    # -- Namespace lifecycle (K8s adapter) ------------------------------------
+    NAMESPACE_STUCK_TERMINATING = "namespace_stuck_terminating"
+    K8S_API_UNAVAILABLE = "k8s_api_unavailable"
+    NAMESPACE_CONFIG_MISSING = "namespace_config_missing"
+    NAMESPACE_INVALID_NAME = "namespace_invalid_name"
+    NAMESPACE_ADAPTER_CONFIG_UNSAFE = "namespace_adapter_config_unsafe"

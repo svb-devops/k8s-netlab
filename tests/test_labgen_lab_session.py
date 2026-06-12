@@ -1043,22 +1043,15 @@ class TestNamespaceLifecycle:
     # Verifier kubeconfig separation (structural, not integration)
     # ------------------------------------------------------------------
 
-    def test_k3s_adapter_skeleton_raises_not_implemented(self):
-        """K3sNamespaceLifecycleAdapter raises NotImplementedError — real K8s not called."""
-        from backend.labgen.namespace_lifecycle import K3sNamespaceLifecycleAdapter
-        adapter = K3sNamespaceLifecycleAdapter()
-        with pytest.raises(NotImplementedError):
-            adapter.create_namespace("lab-test")
-        with pytest.raises(NotImplementedError):
-            adapter.namespace_exists("lab-test")
-        with pytest.raises(NotImplementedError):
-            adapter.delete_namespace("lab-test")
-        with pytest.raises(NotImplementedError):
-            adapter.is_namespace_deleted("lab-test")
-        with pytest.raises(NotImplementedError):
-            adapter.ensure_verifier_rolebinding("lab-test")
-        with pytest.raises(NotImplementedError):
-            adapter.verifier_rolebinding_exists("lab-test")
+    def test_k3s_adapter_requires_config(self):
+        """K3sNamespaceLifecycleAdapter requires K8sAdapterConfig — no-arg construction forbidden."""
+        from backend.labgen.namespace_lifecycle import K3sNamespaceLifecycleAdapter, K8sAdapterConfig, NamespaceAdapterConfigError
+        # Must pass a valid K8sAdapterConfig — cannot construct without config
+        with pytest.raises(TypeError):
+            K3sNamespaceLifecycleAdapter()  # type: ignore[call-arg]
+        # With invalid config, NamespaceAdapterConfigError is raised at config construction
+        with pytest.raises(NamespaceAdapterConfigError):
+            K8sAdapterConfig(kubeconfig_path="", in_cluster=False)
 
 
 # ===========================================================================

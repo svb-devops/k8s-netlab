@@ -229,6 +229,36 @@ LABGEN_RUNTIME_MODE: str = os.getenv("LABGEN_RUNTIME_MODE", "dev")
 LABGEN_NAMESPACE_ADAPTER: str = os.getenv("LABGEN_NAMESPACE_ADAPTER", "stub")
 LABGEN_K8S_PLATFORM_KUBECONFIG_PATH: str = os.getenv("LABGEN_K8S_PLATFORM_KUBECONFIG_PATH", "")
 
+# Whether to use in-cluster Kubernetes config (for cloud/EKS/ACK environments).
+# Mutually exclusive with LABGEN_K8S_PLATFORM_KUBECONFIG_PATH.
+LABGEN_K8S_IN_CLUSTER: bool = _get_env_bool("LABGEN_K8S_IN_CLUSTER", False)
+
+# Optional kubeconfig context to use (leave empty for default context).
+LABGEN_K8S_CONTEXT: str = os.getenv("LABGEN_K8S_CONTEXT", "")
+
+# Kubernetes API call timeout in seconds for namespace lifecycle operations.
+LABGEN_K8S_API_TIMEOUT_SECONDS: int = _get_env_int("LABGEN_K8S_API_TIMEOUT_SECONDS", 10)
+if LABGEN_K8S_API_TIMEOUT_SECONDS < 1:
+    raise RuntimeError("LABGEN_K8S_API_TIMEOUT_SECONDS must be >= 1")
+
+# Comma-separated allowed namespace prefixes. Namespaces not starting with one
+# of these prefixes are rejected before any K8s API call.
+# Default "lab-" matches the existing lab-<uuid> naming convention.
+LABGEN_K8S_NAMESPACE_ALLOWED_PREFIXES: str = os.getenv(
+    "LABGEN_K8S_NAMESPACE_ALLOWED_PREFIXES", "lab-"
+)
+
+# Verifier service account, role, and rolebinding names.
+# Must be valid Kubernetes resource names (DNS subdomain).
+LABGEN_K8S_VERIFIER_SA_NAME: str = os.getenv("LABGEN_K8S_VERIFIER_SA_NAME", "lab-verifier")
+LABGEN_K8S_VERIFIER_SA_NAMESPACE: str = os.getenv("LABGEN_K8S_VERIFIER_SA_NAMESPACE", "kube-system")
+LABGEN_K8S_VERIFIER_ROLE_NAME: str = os.getenv(
+    "LABGEN_K8S_VERIFIER_ROLE_NAME", "lab-verifier-namespace-readonly"
+)
+LABGEN_K8S_VERIFIER_ROLEBINDING_NAME: str = os.getenv(
+    "LABGEN_K8S_VERIFIER_ROLEBINDING_NAME", "lab-verifier-readonly"
+)
+
 # Root directory for per-VM verifier credential files.
 # In production this must be an absolute path outside the application directory
 # (e.g. /var/lib/labgen/verifier-credentials).

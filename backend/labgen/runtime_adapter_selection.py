@@ -4,12 +4,19 @@ Runtime adapter selection service.
 Determines which NamespaceLifecyclePort implementation to use based on
 LABGEN_RUNTIME_MODE and LABGEN_NAMESPACE_ADAPTER configuration.
 
+Deployment profiles:
+  dev / test / demo  — stub adapter allowed (no real K8s ops).
+  home_lab_mvp       — K3s on a physical server; stub forbidden; kubeconfig required.
+  cloud              — EKS / ACK / managed K8s; stub forbidden;
+                       kubeconfig OR in-cluster config required.
+  production         — same semantics as home_lab_mvp (legacy alias, kept for compatibility).
+
 Design contracts:
 - Pure configuration analysis: no K8s calls, no namespace creation, no session state.
-- production mode requires k8s adapter + LABGEN_K8S_PLATFORM_KUBECONFIG_PATH set.
-- production mode with stub adapter is a blocking issue (fail closed at lab start).
+- home_lab_mvp / cloud / production mode with stub adapter is a blocking issue (fail closed).
 - test/dev/demo mode with stub adapter emits a warning but is allowed.
 - Invalid mode/adapter values are blocking issues (not silent fallbacks).
+- No hardcoded host assumptions; all values come from env/config.
 """
 
 from __future__ import annotations
@@ -17,10 +24,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from backend.labgen.namespace_lifecycle import NamespaceLifecyclePort
+    from backend.labgen.namespace_lifecycle import K8sAdapterConfig, NamespaceLifecyclePort
 
 
 # ---------------------------------------------------------------------------
@@ -33,11 +40,29 @@ class RuntimeMode(str, Enum):
     DEV = "dev"
     DEMO = "demo"
     PRODUCTION = "production"
+    HOME_LAB_MVP = "home_lab_mvp"
+    CLOUD = "cloud"
 
 
 class NamespaceAdapterKind(str, Enum):
     STUB = "stub"
     K8S = "k8s"
+
+
+# ---------------------------------------------------------------------------
+# Production-like modes: stub forbidden, real K8s adapter required.
+# ---------------------------------------------------------------------------
+
+_PRODUCTION_LIKE_MODES: frozenset[RuntimeMode] = frozenset({
+    RuntimeMode.PRODUCTION,
+    RuntimeMode.HOME_LAB_MVP,
+    RuntimeMode.CLOUD,
+})
+
+# Modes that support in-cluster Kubernetes config (no kubeconfig file).
+_IN_CLUSTER_MODES: frozenset[RuntimeMode] = frozenset({
+    RuntimeMode.CLOUD,
+})
 
 
 # ---------------------------------------------------------------------------
@@ -47,7 +72,7 @@ class NamespaceAdapterKind(str, Enum):
 
 @dataclass
 class RuntimeAdapterSelectionIssue:
-    code: str       # stable machine code, e.g. STUB_ADAPTER_IN_PRODUCTION
+    code: str       # stable machine code
     severity: str   # "blocking" | "warning"
     message: str    # human-readable; must not contain credential values
 
@@ -78,8 +103,7 @@ ISSUE_NON_PRODUCTION_STUB_ALLOWED = "NON_PRODUCTION_STUB_ALLOWED"
 
 
 class RuntimeAdapterSelectionService:
-    """
-    Evaluates the runtime adapter configuration and returns a selection result.
+    """Evaluates the runtime adapter configuration and returns a selection result.
 
     Does NOT create adapters, namespaces, or sessions.
     Does NOT make network calls.
@@ -94,6 +118,7 @@ class RuntimeAdapterSelectionService:
             runtime_mode_raw=_cfg.LABGEN_RUNTIME_MODE,
             adapter_kind_raw=_cfg.LABGEN_NAMESPACE_ADAPTER,
             k8s_kubeconfig_path=_cfg.LABGEN_K8S_PLATFORM_KUBECONFIG_PATH,
+            k8s_in_cluster=_cfg.LABGEN_K8S_IN_CLUSTER,
         )
 
     @classmethod
@@ -102,6 +127,7 @@ class RuntimeAdapterSelectionService:
         runtime_mode_raw: str,
         adapter_kind_raw: str,
         k8s_kubeconfig_path: str = "",
+        k8s_in_cluster: bool = False,
     ) -> RuntimeAdapterSelectionResult:
         """Pure selection logic — testable without importing config."""
         issues: list[RuntimeAdapterSelectionIssue] = []
@@ -125,40 +151,68 @@ class RuntimeAdapterSelectionService:
         try:
             adapter_kind = NamespaceAdapterKind(adapter_kind_raw)
         except ValueError:
-            valid = [k.value for k in NamespaceAdapterKind]
+            valid_kinds = [k.value for k in NamespaceAdapterKind]
             issues.append(RuntimeAdapterSelectionIssue(
                 code=ISSUE_INVALID_ADAPTER_KIND,
                 severity="blocking",
                 message=(
                     f"Unknown LABGEN_NAMESPACE_ADAPTER value '{adapter_kind_raw}'. "
-                    f"Valid values: {valid}"
+                    f"Valid values: {valid_kinds}"
                 ),
             ))
             adapter_kind = NamespaceAdapterKind.STUB  # safe fallback
 
-        # Mode-specific validation
-        if runtime_mode == RuntimeMode.PRODUCTION:
+        # Reject mutually exclusive K8s config — both set means misconfiguration.
+        # K8sAdapterConfig.__post_init__ also rejects this, but we must catch it here
+        # so that production_safe is never True when build_adapter() would crash.
+        if k8s_kubeconfig_path and k8s_in_cluster:
+            issues.append(RuntimeAdapterSelectionIssue(
+                code=ISSUE_K8S_ADAPTER_NOT_CONFIGURED,
+                severity="blocking",
+                message=(
+                    "LABGEN_K8S_PLATFORM_KUBECONFIG_PATH and LABGEN_K8S_IN_CLUSTER=true "
+                    "are mutually exclusive. Set exactly one."
+                ),
+            ))
+
+        if runtime_mode in _PRODUCTION_LIKE_MODES:
+            # Stub forbidden in all production-like profiles.
             if adapter_kind == NamespaceAdapterKind.STUB:
                 issues.append(RuntimeAdapterSelectionIssue(
                     code=ISSUE_STUB_ADAPTER_IN_PRODUCTION,
                     severity="blocking",
                     message=(
-                        "StubNamespaceLifecycleAdapter must not be used in production mode. "
-                        "Set LABGEN_NAMESPACE_ADAPTER=k8s and provide "
-                        "LABGEN_K8S_PLATFORM_KUBECONFIG_PATH."
+                        f"StubNamespaceLifecycleAdapter must not be used in "
+                        f"{runtime_mode.value} mode. "
+                        "Set LABGEN_NAMESPACE_ADAPTER=k8s and provide a kubeconfig or "
+                        "in-cluster config."
                     ),
                 ))
-            elif adapter_kind == NamespaceAdapterKind.K8S and not k8s_kubeconfig_path:
-                issues.append(RuntimeAdapterSelectionIssue(
-                    code=ISSUE_K8S_ADAPTER_NOT_CONFIGURED,
-                    severity="blocking",
-                    message=(
-                        "LABGEN_NAMESPACE_ADAPTER=k8s requires "
-                        "LABGEN_K8S_PLATFORM_KUBECONFIG_PATH to be set."
-                    ),
-                ))
+            elif adapter_kind == NamespaceAdapterKind.K8S:
+                # cloud supports in-cluster; home_lab_mvp and production require kubeconfig.
+                if runtime_mode in _IN_CLUSTER_MODES:
+                    if not k8s_kubeconfig_path and not k8s_in_cluster:
+                        issues.append(RuntimeAdapterSelectionIssue(
+                            code=ISSUE_K8S_ADAPTER_NOT_CONFIGURED,
+                            severity="blocking",
+                            message=(
+                                f"LABGEN_NAMESPACE_ADAPTER=k8s in {runtime_mode.value} mode "
+                                "requires LABGEN_K8S_PLATFORM_KUBECONFIG_PATH or "
+                                "LABGEN_K8S_IN_CLUSTER=true."
+                            ),
+                        ))
+                else:
+                    if not k8s_kubeconfig_path:
+                        issues.append(RuntimeAdapterSelectionIssue(
+                            code=ISSUE_K8S_ADAPTER_NOT_CONFIGURED,
+                            severity="blocking",
+                            message=(
+                                f"LABGEN_NAMESPACE_ADAPTER=k8s in {runtime_mode.value} mode "
+                                "requires LABGEN_K8S_PLATFORM_KUBECONFIG_PATH to be set."
+                            ),
+                        ))
         else:
-            # Non-production: stub is allowed, but emit a warning
+            # Non-production-like: stub is allowed with a warning.
             if adapter_kind == NamespaceAdapterKind.STUB:
                 issues.append(RuntimeAdapterSelectionIssue(
                     code=ISSUE_NON_PRODUCTION_STUB_ALLOWED,
@@ -166,16 +220,23 @@ class RuntimeAdapterSelectionService:
                     message=(
                         f"StubNamespaceLifecycleAdapter is active in {runtime_mode.value} mode. "
                         "No real K8s operations will occur. "
-                        "This adapter must not be used in production."
+                        "This adapter must not be used in production-like profiles."
                     ),
                 ))
 
-        # production_safe: true only when production + k8s + kubeconfig + no blocking issues
+        # production_safe: true only when production-like + k8s + valid config + no blocking
         blocking = [i for i in issues if i.severity == "blocking"]
+        cloud_config_ok = bool(k8s_kubeconfig_path) or (
+            runtime_mode in _IN_CLUSTER_MODES and k8s_in_cluster
+        )
+        non_cloud_config_ok = bool(k8s_kubeconfig_path)
+        k8s_config_ok = (
+            cloud_config_ok if runtime_mode in _IN_CLUSTER_MODES else non_cloud_config_ok
+        )
         production_safe = (
-            runtime_mode == RuntimeMode.PRODUCTION
+            runtime_mode in _PRODUCTION_LIKE_MODES
             and adapter_kind == NamespaceAdapterKind.K8S
-            and bool(k8s_kubeconfig_path)
+            and k8s_config_ok
             and len(blocking) == 0
         )
 
@@ -187,18 +248,26 @@ class RuntimeAdapterSelectionService:
         )
 
     @staticmethod
-    def build_adapter(result: RuntimeAdapterSelectionResult) -> "NamespaceLifecyclePort":
+    def build_adapter(
+        result: RuntimeAdapterSelectionResult,
+        adapter_config: "Optional[K8sAdapterConfig]" = None,
+    ) -> "NamespaceLifecyclePort":
         """Instantiate the selected adapter.
+
+        For K8S adapter kind: pass adapter_config explicitly, or it is built from
+        the application config module via K8sAdapterConfig.from_config().
 
         Does NOT validate production safety — callers must check result.production_safe
         and handle accordingly (e.g. reject lab start if unsafe in production).
         Does NOT make network calls.
-        Does NOT read kubeconfig files.
+        Does NOT read kubeconfig files at this point (lazy client init on first API call).
         """
         from backend.labgen.namespace_lifecycle import (
             K3sNamespaceLifecycleAdapter,
+            K8sAdapterConfig,
             StubNamespaceLifecycleAdapter,
         )
         if result.namespace_adapter_kind == NamespaceAdapterKind.K8S:
-            return K3sNamespaceLifecycleAdapter()
+            cfg = adapter_config if adapter_config is not None else K8sAdapterConfig.from_config()
+            return K3sNamespaceLifecycleAdapter(cfg)
         return StubNamespaceLifecycleAdapter()
