@@ -242,9 +242,12 @@ Complete these items in order before re-running the trial:
 - [ ] F-5: Set `VM_SSH_PASSWORD` via secret manager → `.env.staging`
 - [ ] F-6: Deploy staging internal image registry, push required images
 - [ ] F-7: Mount staging data directory, confirm writable
-- [ ] Run `python scripts/labgen_staging_provisioning_validate.py --env-file .env.staging` → must be PASS (not WARNING)
-- [ ] Run `python scripts/labgen_production_preflight.py --env-file .env.staging` → must be PASS
-- [ ] Run `python scripts/labgen_staging_dry_run.py --env-file .env.staging --base-url http://<staging-host>:8000` → must be PASS
+- [ ] **Run intake verification gate** → decision must be `READY_TO_RERUN_CONTROLLED_STAGING_TRIAL`:
+  ```bash
+  python scripts/labgen_ops_staging_intake_verify.py \
+      --env-file .env.staging --base-url http://<staging-host>:8000 --json
+  ```
+  See `docs/labgen/OPS_STAGING_INTAKE_VERIFICATION_v0.1.md` for phase-by-phase detail.
 - [ ] Re-run this trial with `--env-file .env.staging --base-url http://<staging-host>:8000`
 
 ### Recommended Next Step
@@ -252,7 +255,8 @@ Complete these items in order before re-running the trial:
 1. Ops team reads `docs/labgen/STAGING_OPS_HANDOFF_v0.1.md` (actionable handoff package — Section I checklist).
 2. Fills in `deploy/labgen/staging_infrastructure_checklist.md` Phase 0–7.
 3. Provides real staging secrets. Runs `scripts/labgen_staging_missing_inputs.py` to confirm all blocking inputs are set.
-4. Re-executes this trial with a real `.env.staging` pointing at a live staging cluster.
+4. Runs intake verification gate: `scripts/labgen_ops_staging_intake_verify.py --env-file .env.staging --base-url http://<staging-host>:8000 --json`
+5. Re-executes this trial only after intake gate outputs `READY_TO_RERUN_CONTROLLED_STAGING_TRIAL`.
 
 No code changes are required — all tooling is ready (2693 tests, 94.08% coverage).
 

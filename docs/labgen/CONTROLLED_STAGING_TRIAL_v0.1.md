@@ -47,6 +47,7 @@ staging secrets have not been injected into a real `.env.staging` file.
 | **Ops handoff package** | **`docs/labgen/STAGING_OPS_HANDOFF_v0.1.md`** | **Actionable — ops start here** |
 | **Provisioning plan** | **`docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`** | **Ready — complete first** |
 | **Infrastructure checklist** | **`deploy/labgen/staging_infrastructure_checklist.md`** | **Ready to fill (blocked items marked)** |
+| **Intake verification gate** | **`scripts/labgen_ops_staging_intake_verify.py`** | **Ready (34 tests pass) — run before Phase 3+** |
 | **Missing inputs helper** | **`scripts/labgen_staging_missing_inputs.py`** | **Ready (65 tests pass) — quick check after filling `.env.staging`** |
 | **Provisioning validator** | **`scripts/labgen_staging_provisioning_validate.py`** | Ready (82 tests pass) |
 | Runbook | `docs/labgen/CONTROLLED_STAGING_TRIAL_v0.1.md` | Ready |
@@ -54,10 +55,11 @@ staging secrets have not been injected into a real `.env.staging` file.
 | Trial helper script | `scripts/labgen_controlled_staging_trial.py` | Ready (61 tests pass) |
 | Tests | `tests/test_labgen_controlled_staging_trial.py` | 61 passing |
 
-To unblock the trial, ops team must complete `docs/labgen/STAGING_OPS_HANDOFF_v0.1.md`
-handoff checklist (Section I), provide the 7 items listed in
-`docs/labgen/CONTROLLED_STAGING_TRIAL_LIVE_RUN_RESULT_v0.1.md` Section F (F-1 through F-7),
-and re-run with a real `.env.staging` file pointing at a live staging cluster.
+To unblock the trial, ops team must:
+1. Complete `docs/labgen/STAGING_OPS_HANDOFF_v0.1.md` handoff checklist (Section I)
+2. Provide the 7 items listed in `docs/labgen/CONTROLLED_STAGING_TRIAL_LIVE_RUN_RESULT_v0.1.md` Section F (F-1 through F-7)
+3. Run intake verification gate → must output `READY_TO_RERUN_CONTROLLED_STAGING_TRIAL`
+4. Re-run with a real `.env.staging` file pointing at a live staging cluster
 
 ---
 
@@ -91,10 +93,17 @@ All 13 items must be confirmed before proceeding to Section C. Record each in
 ### Phase 0 — Config and Preflight
 
 ```bash
-# Run preflight (static config check, no network)
-python scripts/labgen_production_preflight.py --env-file deploy/labgen/.env.staging.example
+# Run unified intake verification gate first (all phases)
+python scripts/labgen_ops_staging_intake_verify.py \
+    --env-file .env.staging \
+    --base-url <staging-base-url> \
+    --json
+# Decision must be: READY_TO_RERUN_CONTROLLED_STAGING_TRIAL
+# If BLOCKED_*: resolve blocking_issues before proceeding
 
-# Run dry run helper (preflight + safe GET probes)
+# Optional: run individual checks for detail
+python scripts/labgen_production_preflight.py --env-file .env.staging
+
 python scripts/labgen_staging_dry_run.py \
     --env-file .env.staging \
     --base-url http://<staging-host>:8000

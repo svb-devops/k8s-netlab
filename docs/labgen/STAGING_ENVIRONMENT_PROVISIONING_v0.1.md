@@ -397,6 +397,7 @@ All of the following must be satisfied before Controlled Staging Trial v0.1 live
 
 | # | Criterion | How to verify |
 |---|-----------|---------------|
+| **J-0** | **Intake verification gate: decision = `READY_TO_RERUN_CONTROLLED_STAGING_TRIAL`** | `python scripts/labgen_ops_staging_intake_verify.py --env-file .env.staging --base-url http://<staging-host>:8000 --json` → decision field is READY |
 | J-1 | Preflight PASS (no blocking issues) | `python scripts/labgen_production_preflight.py` → `Overall: PASS` or `WARN` |
 | J-2 | Staging dry run PASS | `python scripts/labgen_staging_dry_run.py --env-file .env.staging --json` → `"overall": "pass"` or `"warning"` |
 | J-3 | Runtime adapter `production_safe=true` | `GET /api/labgen/runtime/adapter-status` → `namespace_adapter_kind=k8s`, `production_safe=true` |
@@ -408,6 +409,7 @@ All of the following must be satisfied before Controlled Staging Trial v0.1 live
 | J-9 | Rollback path defined and reviewed | Section F of `CONTROLLED_STAGING_TRIAL_v0.1.md` read by operator |
 | J-10 | Provisioning validator passes (no blocking issues) | `python scripts/labgen_staging_provisioning_validate.py --env-file .env.staging` → exit code 0 |
 
+**J-0 (intake gate) is mandatory and must be run before any runtime action.**  
 **If any criterion is unmet:** mark trial BLOCKED, do not proceed with Phase 3+ of the trial runbook.
 
 ---

@@ -143,6 +143,7 @@ python scripts/labgen_staging_missing_inputs.py --env-file <staging-env-file>
 
 | # | Item | Owner | Required? | Validation Command | Validated by script? | Status | Validation Result | Notes |
 |---|------|-------|-----------|--------------------|--------------------|--------|-------------------|-------|
+| V-0a | **Intake verification gate exits 0** (unified gate: all phases in one command) | Operator | **YES** | `python scripts/labgen_ops_staging_intake_verify.py --env-file .env.staging --json` | `labgen_ops_staging_intake_verify.py` | `[ ]` | | Decision must be `READY_TO_RERUN_CONTROLLED_STAGING_TRIAL` |
 | V-0 | Missing inputs helper exits 0 | Operator | **YES** | `python scripts/labgen_staging_missing_inputs.py --env-file .env.staging` | `labgen_staging_missing_inputs.py` | `[ ]` | | Exit 0 = all blocking inputs set |
 | V-1 | Provisioning validator passes (exit code 0) | Operator | **YES** | `python scripts/labgen_staging_provisioning_validate.py --env-file .env.staging` | `labgen_staging_provisioning_validate.py` | `[ ]` | | No blocking issues |
 | V-2 | Preflight passes (exit code 0 or warnings only) | Operator | **YES** | `python scripts/labgen_production_preflight.py --env-file .env.staging` | `labgen_production_preflight.py` | `[ ]` | | Warnings acceptable |
@@ -158,6 +159,24 @@ python scripts/labgen_staging_missing_inputs.py --env-file <staging-env-file>
 
 All of the following must be `[x]` before proceeding to Controlled Staging Trial v0.1 Phase 3+.
 
+### Intake Verification Gate (run first — unified pre-check)
+
+| # | Gate | Verified by | Evidence Path | Intake Decision | Intake Verified? | Ready for live rerun? |
+|---|------|-------------|---------------|----------------|-----------------|----------------------|
+| G-0a | **Ops Staging Intake Verification Gate exits 0** | `labgen_ops_staging_intake_verify.py` | `<path-to-output-json>` | `<intake-decision>` | `[ ]` | `[ ]` |
+
+Run command:
+```bash
+python scripts/labgen_ops_staging_intake_verify.py \
+    --env-file <staging-env-file> \
+    --base-url <staging-host> \
+    --json > intake_verify_result_$(date +%Y%m%d).json
+```
+
+**Intake decision must be `READY_TO_RERUN_CONTROLLED_STAGING_TRIAL` before proceeding.**
+
+### Individual Gate Items
+
 | # | Gate | Satisfied? |
 |---|------|------------|
 | G-0 | Missing inputs helper: exit code 0 (all blocking inputs set) | `[ ]` |
@@ -170,7 +189,8 @@ All of the following must be `[x]` before proceeding to Controlled Staging Trial
 | G-7 | STAGING_USER_SESSION available (for Phase 4 runtime start) | `[ ]` |
 | G-8 | Published staging lab draft available in lab catalog | `[ ]` |
 
-**If any gate is `[ ]`: trial is BLOCKED. Do not proceed with Phase 3+ of the trial runbook.**
+**If G-0a is `[ ]` (intake gate not READY): trial is BLOCKED. Do not run Phase 3+.**  
+**If any other gate is `[ ]`: trial is BLOCKED. Do not proceed with Phase 3+ of the trial runbook.**
 
 ---
 
@@ -188,7 +208,8 @@ secret values that look like real credentials.
 
 | Helper | When to run | What it checks |
 |--------|-------------|----------------|
-| `scripts/labgen_staging_missing_inputs.py` | Phase 6, V-0 (first check) | Which blocking inputs are missing or placeholder (offline) |
+| `scripts/labgen_ops_staging_intake_verify.py` | **Phase 6, V-0a (run first — unified gate)** | All phases in sequence: missing inputs + provisioning + preflight + dry run + optional diagnostics |
+| `scripts/labgen_staging_missing_inputs.py` | Phase 6, V-0 (detail check) | Which blocking inputs are missing or placeholder (offline) |
 | `scripts/labgen_staging_provisioning_validate.py` | Phase 6, V-1 | Static env file safety (offline) |
 | `scripts/labgen_production_preflight.py` | Phase 6, V-2 | Runtime config against current env (offline) |
 | `scripts/labgen_staging_dry_run.py` | Phase 6, V-3 | Live service diagnostics (online, safe GETs only) |

@@ -60,6 +60,7 @@ the staging environment.
 
 | Script | Purpose | Tests |
 |--------|---------|-------|
+| `scripts/labgen_ops_staging_intake_verify.py` | **Unified intake gate** — calls all helpers in sequence, produces single READY/BLOCKED decision. No network calls in offline mode. | 34 tests pass |
 | `scripts/labgen_staging_provisioning_validate.py` | Static env file validator — checks safety of `.env.staging` before any runtime action. No network calls. | 82 tests pass |
 | `scripts/labgen_production_preflight.py` | Runtime config preflight — checks all required secrets are set. No network calls in offline mode. | 48 tests pass |
 | `scripts/labgen_staging_dry_run.py` | Live service diagnostics — safe GET probes only, no destructive calls. Requires running backend. | 51 tests pass |
@@ -240,20 +241,36 @@ python scripts/labgen_staging_missing_inputs.py --env-file <staging-env-file>
 # Must exit 0 (no missing inputs)
 ```
 
-### Phase 7 — Preflight and Dry Run
+### Phase 7 — Intake Verification Gate + Preflight and Dry Run
 
-Run in order. Each must pass before proceeding.
+**Run the unified intake gate first (combines all checks in one command):**
 
 ```bash
-# Static validation (offline — no backend required)
+python scripts/labgen_ops_staging_intake_verify.py \
+  --env-file <staging-env-file> \
+  --base-url <staging-base-url> \
+  --json
+# Decision must be: READY_TO_RERUN_CONTROLLED_STAGING_TRIAL
+# If any BLOCKED_* — resolve blocking_issues before proceeding
+```
+
+See `docs/labgen/OPS_STAGING_INTAKE_VERIFICATION_v0.1.md` for full gate documentation.
+
+If the gate blocks, run individual commands for detail:
+
+```bash
+# Phase 1: check which inputs are missing
+python scripts/labgen_staging_missing_inputs.py --env-file <staging-env-file>
+
+# Phase 2: static validation (offline — no backend required)
 python scripts/labgen_staging_provisioning_validate.py --env-file <staging-env-file>
 # Must exit 0 (no blocking issues)
 
-# Runtime preflight (reads from current process env — load .env.staging first)
+# Phase 3: runtime preflight
 python scripts/labgen_production_preflight.py --env-file <staging-env-file>
 # Must exit 0 (no blocking issues)
 
-# Staging dry run (requires running backend)
+# Phase 4: staging dry run (requires running backend)
 python scripts/labgen_staging_dry_run.py \
   --env-file <staging-env-file> \
   --base-url <staging-base-url> \
@@ -272,6 +289,7 @@ curl -H "X-Admin-Token: <admin-token-from-secret-manager>" \
 
 ### Phase 8 — Controlled Live Trial Rerun
 
+**Intake gate (Phase 7) must output `READY_TO_RERUN_CONTROLLED_STAGING_TRIAL` before running this.**
 All Phase 0–7 gates must be satisfied before proceeding.
 
 ```bash
@@ -293,6 +311,17 @@ Expected result when all inputs are provided: **LIVE\_TRIAL\_PASSED** or **LIVE\
 ## F. Validation Commands Reference
 
 All commands use placeholders — replace before running.
+
+### Unified intake gate (run first — combines all phases)
+
+```bash
+# 0. Unified intake verification gate (offline + optional live diagnostics)
+python scripts/labgen_ops_staging_intake_verify.py \
+  --env-file <staging-env-file> \
+  --base-url <staging-base-url> \
+  --json
+# Decision: READY_TO_RERUN_CONTROLLED_STAGING_TRIAL or BLOCKED_*
+```
 
 ### Static checks (no backend required, no network calls)
 
@@ -401,9 +430,11 @@ Use this checklist to track ops provisioning progress before requesting a live t
 | I-17 | Provisioning validator exits 0 | Operator | — | Script output | `python scripts/labgen_staging_provisioning_validate.py --env-file <staging-env-file>` | `[ ]` | No blocking issues |
 | I-18 | Preflight exits 0 | Operator | — | Script output | `python scripts/labgen_production_preflight.py --env-file <staging-env-file>` | `[ ]` | No blocking issues |
 | I-19 | Staging dry run exits 0 or warning | Operator | — | JSON output | `python scripts/labgen_staging_dry_run.py --env-file <staging-env-file> --base-url <staging-base-url> --json` | `[ ]` | `"overall": "pass"` or `"warning"` |
-| I-20 | Controlled trial rerun executed | Operator | — | Live run result artifact v0.2 | Full trial script with allow flags | `[ ]` | Replaces this blocked run |
+| **I-19a** | **Intake verification gate: decision = READY\_TO\_RERUN\_CONTROLLED\_STAGING\_TRIAL** | Operator | — | JSON output saved to file | `python scripts/labgen_ops_staging_intake_verify.py --env-file <staging-env-file> --base-url <staging-base-url> --json` | `[ ]` | **Must pass before I-20** — see `docs/labgen/OPS_STAGING_INTAKE_VERIFICATION_v0.1.md` |
+| I-20 | Controlled trial rerun executed | Operator | — | Live run result artifact v0.2 | Full trial script with allow flags | `[ ]` | Requires I-19a = READY — replaces this blocked run |
 
-**Gate**: All items must be `[x]` before proceeding to controlled live trial rerun.
+**Gate**: All items must be `[x]` before proceeding to controlled live trial rerun.  
+**Critical**: I-19a (intake gate) must output `READY_TO_RERUN_CONTROLLED_STAGING_TRIAL` before I-20 may be executed.
 
 ---
 
