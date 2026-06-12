@@ -533,18 +533,34 @@ The staging dry run validates preflight, startup, admin diagnostics, contract pa
 
 ## J. Controlled Staging Trial
 
-Tooling for the controlled staging trial is ready.
+Trial tooling is ready. Before executing the trial, the staging environment must be provisioned.
+
+### Step 1 — Provision staging environment
+
+| Item | Value |
+|------|-------|
+| **Provisioning plan** | **[STAGING_ENVIRONMENT_PROVISIONING_v0.1.md](STAGING_ENVIRONMENT_PROVISIONING_v0.1.md)** |
+| **Infrastructure checklist** | **`deploy/labgen/staging_infrastructure_checklist.md`** |
+| **Provisioning validator** | **`scripts/labgen_staging_provisioning_validate.py`** (82 tests) |
+
+Run the provisioning validator to confirm readiness before proceeding:
+```bash
+python scripts/labgen_staging_provisioning_validate.py --env-file .env.staging
+```
+
+### Step 2 — Execute Controlled Staging Trial v0.1
 
 | Item | Value |
 |------|-------|
 | Trial runbook | [CONTROLLED_STAGING_TRIAL_v0.1.md](CONTROLLED_STAGING_TRIAL_v0.1.md) |
-| Checklist template | `deploy/labgen/staging_trial_checklist.md` |
+| Trial checklist template | `deploy/labgen/staging_trial_checklist.md` |
 | Trial helper script | `scripts/labgen_controlled_staging_trial.py` |
-| Trial tests | `tests/test_labgen_controlled_staging_trial.py` (58 tests) |
+| Trial tests | `tests/test_labgen_controlled_staging_trial.py` (61 tests) |
 
-**Current status**: TOOLING_READY — Live execution BLOCKED pending staging environment inputs.
+**Current status**: TOOLING_READY — Live execution BLOCKED until provisioning checklist Phase 7 gate is complete.
 
-**Required inputs**: real staging K3s cluster, staging kubeconfig, staging Proxmox with VMID range, staging-only storage and credential root.
+**Required inputs**: real staging K3s cluster, staging kubeconfig, staging Proxmox with VMID range,  
+staging-only storage and credential root — all documented in `STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`.
 
 **Boundary**: Controlled staging trial is NOT a production deployment and NOT a production-live declaration.
 Trial PASS means the system is ready for production deployment — not that production is live.

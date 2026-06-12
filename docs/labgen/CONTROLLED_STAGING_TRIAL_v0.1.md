@@ -1,9 +1,10 @@
 # LabGen MVP — Controlled Staging Trial v0.1
 
-> **Trial date**: TBD (requires real staging environment — see Section A)  
+> **Trial date**: TBD (requires provisioning checklist complete — see Section A)  
 > **Operator**: —  
 > **Basis**: Staging Deployment Dry Run v0.1 (`docs/labgen/STAGING_DEPLOYMENT_DRY_RUN_v0.1.md`)  
-> **Commit**: `532e6d3` or later  
+> **Provisioning plan**: `docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`  
+> **Commit**: `fd544e3` or later  
 > **RC verdict**: RC_READY_WITH_NOTES  
 
 ---
@@ -31,21 +32,26 @@
 
 ### Current Status
 
-> **TOOLING_READY — Live Execution: BLOCKED (missing staging environment)**
+> **TOOLING_READY — Live Execution: BLOCKED (provisioning checklist not yet complete)**
 
 All trial tooling is ready and tested:
 
 | Artifact | Path | Status |
 |----------|------|--------|
+| **Provisioning plan** | **`docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`** | **Ready — complete this first** |
+| **Infrastructure checklist** | **`deploy/labgen/staging_infrastructure_checklist.md`** | **Ready to fill** |
+| **Provisioning validator** | **`scripts/labgen_staging_provisioning_validate.py`** | **Ready (82 tests pass)** |
 | Runbook | `docs/labgen/CONTROLLED_STAGING_TRIAL_v0.1.md` | Ready |
-| Checklist template | `deploy/labgen/staging_trial_checklist.md` | Ready |
-| Trial helper script | `scripts/labgen_controlled_staging_trial.py` | Ready (58 tests pass) |
-| Tests | `tests/test_labgen_controlled_staging_trial.py` | 58 passing |
+| Trial checklist template | `deploy/labgen/staging_trial_checklist.md` | Ready |
+| Trial helper script | `scripts/labgen_controlled_staging_trial.py` | Ready (61 tests pass) |
+| Tests | `tests/test_labgen_controlled_staging_trial.py` | 61 passing |
 
-Live execution requires staging inputs listed in Section B. Without them:
+Live execution requires provisioning checklist (Phase 7 gate) to be complete. Without it:
 1. Mark trial **BLOCKED**.
-2. Do not proceed with destructive/runtime trial phases.
-3. Do not substitute production environment as fallback.
+2. Complete `deploy/labgen/staging_infrastructure_checklist.md` Phase 0–7 first.
+3. Run provisioning validator: `python scripts/labgen_staging_provisioning_validate.py --env-file .env.staging`
+4. Do not proceed with destructive/runtime trial phases.
+5. Do not substitute production environment as fallback.
 
 ---
 

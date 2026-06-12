@@ -284,25 +284,45 @@ Fill in this table after executing the checklist. Keep a copy as evidence.
 
 ---
 
-## G. Next Step: Controlled Staging Trial
+## G. Next Step: Staging Environment Provisioning → Controlled Staging Trial
 
 Once the dry run gate passes (overall: pass or warning, no blocking issues), the next step is
-**Controlled Staging Trial v0.1** — a real staging environment trial with a live K3s cluster.
+to provision the staging environment and then run **Controlled Staging Trial v0.1**.
+
+### Step 1 — Provision the staging environment
+
+Read and execute the provisioning plan before attempting live trial execution:
+
+| Artifact | Path |
+|----------|------|
+| **Provisioning plan** | **`docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`** |
+| **Infrastructure checklist** | **`deploy/labgen/staging_infrastructure_checklist.md`** |
+| **Provisioning validator** | **`scripts/labgen_staging_provisioning_validate.py`** |
+
+The provisioning plan covers K3s, Proxmox, registry, storage, secrets, and network boundaries.
+Run the validator to confirm readiness before proceeding to the trial:
+
+```bash
+python scripts/labgen_staging_provisioning_validate.py \
+    --env-file .env.staging
+```
+
+### Step 2 — Run Controlled Staging Trial v0.1
 
 | Artifact | Path |
 |----------|------|
 | Runbook | `docs/labgen/CONTROLLED_STAGING_TRIAL_v0.1.md` |
-| Checklist template | `deploy/labgen/staging_trial_checklist.md` |
+| Trial checklist template | `deploy/labgen/staging_trial_checklist.md` |
 | Trial helper script | `scripts/labgen_controlled_staging_trial.py` |
 
 The controlled trial requires:
-- Real staging K3s cluster (not stub)
+- Real staging K3s cluster (not stub) — provisioned in Step 1
 - Staging kubeconfig injected via secret manager
-- Staging Proxmox with VMID range
-- Staging-only storage and credential root
+- Staging Proxmox with VMID range — provisioned in Step 1
+- Staging-only storage and credential root — provisioned in Step 1
 
-Without these inputs, the trial is BLOCKED — dry run tooling is complete
-but live trial execution cannot proceed.
+**Live trial execution is BLOCKED until the provisioning checklist (Phase 7 gate) is complete.**
+Do not substitute production environment as fallback.
 
 ---
 
