@@ -73,6 +73,7 @@ python scripts/labgen_ops_staging_intake_verify.py \
 
 | Gate | Status | Evidence |
 |------|--------|----------|
+| Staging infra bootstrap | `[ ]` NOT READY — STAGING_INFRA_BOOTSTRAP_BLOCKED | `docs/labgen/STAGING_INFRA_BOOTSTRAP_EXECUTION_RESULT_v0.1.md` |
 | All 6 tickets VERIFIED | `[ ]` NOT READY — 6/6 BLOCKED_WITH_EVIDENCE | `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md` |
 | Secret injection: SECRET_INJECTION_READY | `[ ]` NOT READY | `docs/labgen/OPS_SECRET_INJECTION_VERIFICATION_RESULT_v0.1.md` — currently BLOCKED |
 | Intake gate: READY_TO_RERUN | `[ ]` NOT READY | `docs/labgen/OPS_STAGING_INTAKE_VERIFICATION_RESULT_v0.1.md` — currently BLOCKED |
