@@ -152,10 +152,45 @@ class _FailingDeleteAdapter(NamespaceLifecyclePort):
         return True
 
 
+class _DelayedDeleteAdapter(NamespaceLifecyclePort):
+    """Simulates async K3s namespace deletion: delete_namespace returns True immediately
+    (K3s accepted the delete), but is_namespace_deleted returns False for the first
+    `false_count` calls (namespace is Terminating), then True once actually gone.
+
+    Regression adapter for: is_namespace_deleted called immediately after delete_namespace
+    returned False even though deletion eventually completed.
+    """
+
+    def __init__(self, false_count: int = 1) -> None:
+        self._false_count = false_count
+        self._calls = 0
+
+    def create_namespace(self, ns: str) -> bool:
+        return True
+
+    def namespace_exists(self, ns: str) -> bool:
+        return True
+
+    def delete_namespace(self, ns: str) -> bool:
+        return True  # accepted immediately; K3s deletion is async
+
+    def is_namespace_deleted(self, ns: str) -> bool:
+        self._calls += 1
+        return self._calls > self._false_count  # False for first N calls
+
+    def ensure_verifier_rolebinding(self, ns: str) -> bool:
+        return True
+
+    def verifier_rolebinding_exists(self, ns: str) -> bool:
+        return True
+
+
 def _make_svc(
     session_repo: _MemSessionRepo,
     ns_lifecycle: NamespaceLifecyclePort | None = None,
     vm_tracker: VMTrackerPort | None = None,
+    ns_delete_poll_interval: float = 0.0,
+    ns_delete_max_retries: int = 5,
 ) -> LabSessionService:
     return LabSessionService(
         session_repo=session_repo,
@@ -163,6 +198,8 @@ def _make_svc(
         vm_tracker=vm_tracker or StubVMTracker(),
         ns_lifecycle=ns_lifecycle or StubNamespaceLifecycleAdapter(),
         image_resolver=_StubImageResolver(),
+        ns_delete_poll_interval=ns_delete_poll_interval,
+        ns_delete_max_retries=ns_delete_max_retries,
     )
 
 
@@ -295,6 +332,23 @@ class TestCleanupOnComplete:
         svc = _make_svc(repo, ns_lifecycle=_FailingDeleteAdapter(), vm_tracker=tracker)
         svc.complete_session(session.session_id)
         assert "vm-501" in tracker.tainted
+
+    def test_cleanup_succeeds_when_namespace_deletion_is_async(self):
+        """Regression: K3s namespace deletion is async. is_namespace_deleted may return False
+        immediately after delete_namespace (namespace still Terminating), but cleanup must
+        retry and eventually succeed once the namespace is actually gone."""
+        repo = _MemSessionRepo()
+        session = _make_session(ready_to_complete=True, namespace="lab-ns-async-del")
+        repo.create(session)
+        svc = _make_svc(
+            repo,
+            ns_lifecycle=_DelayedDeleteAdapter(false_count=2),
+            ns_delete_poll_interval=0.0,
+            ns_delete_max_retries=5,
+        )
+        result = svc.complete_session(session.session_id)
+        assert result.lab_session_status == LabSessionStatus.LAB_CLOSED
+        assert result.cleanup_verified is True
 
 
 class TestCleanupOnAbort:

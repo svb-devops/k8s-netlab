@@ -213,6 +213,8 @@ class LabSessionService:
         adapter_selection: Optional["RuntimeAdapterSelectionResult"] = None,
         credential_reclaimer: Optional["VerifierCredentialReclaimer"] = None,
         runtime_precheck: Optional["RuntimePrecheckService"] = None,
+        ns_delete_poll_interval: float = 1.0,
+        ns_delete_max_retries: int = 5,
     ) -> None:
         self._session_repo = session_repo
         self._draft_repo = draft_repo
@@ -223,6 +225,8 @@ class LabSessionService:
         self._adapter_selection = adapter_selection
         self._credential_reclaimer = credential_reclaimer
         self._runtime_precheck = runtime_precheck
+        self._ns_delete_poll_interval = ns_delete_poll_interval
+        self._ns_delete_max_retries = ns_delete_max_retries
 
     def _audit(
         self,
@@ -523,7 +527,14 @@ class LabSessionService:
             deleted = False
             try:
                 if self._ns_lifecycle.delete_namespace(session.namespace):
-                    deleted = self._ns_lifecycle.is_namespace_deleted(session.namespace)
+                    # K3s namespace deletion is async — retry until gone or retries exhausted
+                    for attempt in range(self._ns_delete_max_retries):
+                        if self._ns_lifecycle.is_namespace_deleted(session.namespace):
+                            deleted = True
+                            break
+                        if attempt < self._ns_delete_max_retries - 1:
+                            import time
+                            time.sleep(self._ns_delete_poll_interval)
             except Exception:
                 deleted = False
             if not deleted:
