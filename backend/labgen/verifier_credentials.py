@@ -495,3 +495,161 @@ class VerifierCredentialReclaimer:
 # Stable machine codes — must match FailureReason enum values exactly.
 _CRED_PATH_UNSAFE: str = "verifier_credential_path_unsafe"
 _CRED_DELETE_FAILED: str = "verifier_credential_delete_failed"
+
+
+# ---------------------------------------------------------------------------
+# PlatformVerifierInitializer (host-side — uses platform K3s kubeconfig)
+# ---------------------------------------------------------------------------
+
+
+class PlatformK8sApiFactory:
+    """Build (CoreV1Api, RbacAuthorizationV1Api) from a kubeconfig YAML string.
+
+    Injectable for testing: tests replace this with a stub that returns mock
+    API objects without touching the network.
+    Both API objects share one ApiClient (single connection pool).
+    """
+
+    def build(
+        self, kubeconfig_content: str
+    ) -> "tuple[Any, Any]":
+        """Return (CoreV1Api, RbacAuthorizationV1Api)."""
+        import yaml
+        from kubernetes import client as _k8s
+        from kubernetes.config.kube_config import KubeConfigLoader
+
+        config_dict = yaml.safe_load(kubeconfig_content)
+        cfg = _k8s.Configuration()
+        KubeConfigLoader(config_dict=config_dict).load_and_set(cfg)
+        api_client = _k8s.ApiClient(configuration=cfg)
+        return _k8s.CoreV1Api(api_client=api_client), _k8s.RbacAuthorizationV1Api(api_client=api_client)
+
+
+class PlatformVerifierInitializer:
+    """Initialize verifier identity using the platform K3s kubeconfig (host-side).
+
+    Unlike VerifierIdentityManager (QEMU agent on student VMs), this class
+    connects to the platform K3s cluster directly via the Python kubernetes
+    client.  In home_lab_mvp/cloud profiles the lab namespace lifecycle runs
+    on a shared K3s cluster (VM 401 in home_lab_mvp); verifier credentials
+    must therefore point to the SAME cluster so that namespace_exists()
+    checks can succeed.
+
+    Security constraints:
+    - platform_kubeconfig_content MUST NOT appear in log output.
+    - vm_id validated against ^[0-9]+$ (path traversal defence).
+    - No ClusterRoleBinding is created (binding is per-lab at session start).
+    - Token content is never logged or returned to callers.
+    """
+
+    def __init__(
+        self,
+        store: "VerifierCredentialStore",
+        factory: "Optional[PlatformK8sApiFactory]" = None,
+    ) -> None:
+        self._store = store
+        self._factory = factory or PlatformK8sApiFactory()
+
+    def ensure_verifier_identity(
+        self,
+        vm_id: str,
+        platform_kubeconfig_content: str,
+    ) -> "VerifierCredentialMetadata":
+        """Apply lab-verifier SA + ClusterRole; create token; save to store.
+
+        Idempotent: 409 AlreadyExists is silently ignored.
+        Increments credential_generation on re-run.
+        Caller MUST NOT log platform_kubeconfig_content.
+        """
+        _validate_vm_id(vm_id)
+
+        from kubernetes import client as _k8s
+        from kubernetes.client.exceptions import ApiException
+        import yaml
+
+        core_api, rbac_api = self._factory.build(platform_kubeconfig_content)
+
+        # Apply ServiceAccount (idempotent via 409 skip)
+        sa = _k8s.V1ServiceAccount(
+            metadata=_k8s.V1ObjectMeta(name="lab-verifier", namespace="kube-system")
+        )
+        try:
+            core_api.create_namespaced_service_account("kube-system", sa)
+        except ApiException as exc:
+            if exc.status != 409:
+                raise RuntimeError(
+                    f"Failed to apply lab-verifier ServiceAccount: status={exc.status}"
+                ) from exc
+
+        # Apply ClusterRole (idempotent via 409 skip)
+        cluster_role = _k8s.V1ClusterRole(
+            metadata=_k8s.V1ObjectMeta(name="lab-verifier-namespace-readonly"),
+            rules=[
+                _k8s.V1PolicyRule(
+                    api_groups=[""],
+                    resources=["namespaces", "pods", "services", "configmaps", "endpoints"],
+                    verbs=["get", "list", "watch"],
+                ),
+                _k8s.V1PolicyRule(
+                    api_groups=["apps"],
+                    resources=["deployments", "daemonsets", "statefulsets", "replicasets"],
+                    verbs=["get", "list", "watch"],
+                ),
+            ],
+        )
+        try:
+            rbac_api.create_cluster_role(cluster_role)
+        except ApiException as exc:
+            if exc.status != 409:
+                raise RuntimeError(
+                    f"Failed to apply lab-verifier-namespace-readonly ClusterRole: status={exc.status}"
+                ) from exc
+
+        # Create token via TokenRequest API (1-year duration)
+        token_req = _k8s.AuthenticationV1TokenRequest(
+            spec=_k8s.V1TokenRequestSpec(
+                expiration_seconds=8760 * 3600,
+            )
+        )
+        try:
+            resp = core_api.create_namespaced_service_account_token(
+                "lab-verifier", "kube-system", token_req
+            )
+        except ApiException as exc:
+            raise RuntimeError(
+                f"Failed to create lab-verifier token: status={exc.status}"
+            ) from exc
+
+        token = resp.status.token if resp.status else None
+        if not token or not token.strip():
+            raise RuntimeError("TokenRequest returned empty token")
+        token = token.strip()
+
+        # Extract server URL and CA data from platform kubeconfig
+        try:
+            config_dict = yaml.safe_load(platform_kubeconfig_content)
+            cluster_info = config_dict["clusters"][0]["cluster"]
+            server = cluster_info["server"].strip()
+            ca_data = cluster_info.get("certificate-authority-data", "").strip()
+        except (KeyError, IndexError) as exc:
+            raise RuntimeError(f"Malformed platform kubeconfig: {exc}") from exc
+
+        # Build verifier kubeconfig — NEVER log this value
+        kubeconfig = _build_kubeconfig(server, ca_data, token)
+
+        # Increment generation on re-run
+        gen = 1
+        if self._store.exists(vm_id):
+            _, existing_meta = self._store.load(vm_id)
+            gen = existing_meta.credential_generation + 1
+
+        now = datetime.now(tz=timezone.utc)
+        metadata = VerifierCredentialMetadata(
+            vm_id=vm_id,
+            created_at=now,
+            expires_at=now + timedelta(hours=8760),
+            k3s_endpoint=server,
+            credential_generation=gen,
+        )
+        self._store.save(vm_id, kubeconfig, metadata)
+        return metadata

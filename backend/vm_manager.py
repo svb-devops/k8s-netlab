@@ -391,3 +391,87 @@ def initialize_verifier_for_vm(
         return {"success": False, "data": None, "error": str(e)}
     finally:
         slog.generate_report()
+
+
+def initialize_verifier_for_vm_host_side(
+    vm_id: int,
+    platform_kubeconfig_path: str,
+    *,
+    store: Optional[VerifierCredentialStore] = None,
+    _factory: "Optional[Any]" = None,
+) -> Dict[str, Any]:
+    """Initialize verifier identity using the platform K3s kubeconfig (host-side).
+
+    For home_lab_mvp/cloud profiles where lab namespaces are created on a shared
+    K3s cluster (e.g. VM 401 in home_lab_mvp).  Unlike initialize_verifier_for_vm
+    (QEMU agent on student VMs), this function connects to the platform K3s cluster
+    directly from the Proxmox host using the Python kubernetes client, ensuring
+    verifier credentials point to the same K3s where lab namespaces are created.
+
+    Steps:
+      1. Apply lab-verifier ServiceAccount to kube-system (idempotent)
+      2. Apply lab-verifier-namespace-readonly ClusterRole (idempotent)
+      3. Create service account token via TokenRequest API (8760h)
+      4. Build verifier kubeconfig pointing to platform K3s
+      5. Save to VerifierCredentialStore under creds/vm_creds/{vm_id}/
+      6. Run structural smoke test
+
+    Security: platform_kubeconfig_path content is NEVER logged.
+
+    Args:
+        vm_id: Staging VM ID (100-999999; policy requires 400-499 for staging)
+        platform_kubeconfig_path: Absolute path to platform kubeconfig (chmod 600, repo-external)
+        store: VerifierCredentialStore override (default: config.LABGEN_VERIFIER_CREDENTIAL_ROOT)
+
+    Returns:
+        {"success": bool, "data": dict | None, "error": str | None}
+    """
+    _validate_vm_id(vm_id)
+
+    if store is None:
+        store = VerifierCredentialStore(config.LABGEN_VERIFIER_CREDENTIAL_ROOT)
+
+    slog = SmartLogger(f"init_verifier_host_side_{vm_id}")
+
+    try:
+        from pathlib import Path
+        try:
+            kubeconfig_content = Path(platform_kubeconfig_path).read_text()
+        except (OSError, IOError) as exc:
+            return {"success": False, "data": None, "error": f"kubeconfig read failed: {exc}"}
+
+        from backend.labgen.verifier_credentials import PlatformVerifierInitializer, StubVMCommandExecutor
+        initializer = PlatformVerifierInitializer(store=store, factory=_factory)
+        vm_id_str = str(vm_id)
+
+        metadata = initializer.ensure_verifier_identity(vm_id_str, kubeconfig_content)
+        slog.info(
+            f"VM {vm_id}: verifier identity ensured host-side "
+            f"(generation={metadata.credential_generation})"
+        )
+
+        smoke = VerifierIdentityManager(
+            store=store, executor=StubVMCommandExecutor()
+        ).run_smoke_test(vm_id_str)
+        if not smoke.passed:
+            failed = [c.check_name for c in smoke.checks if not c.passed]
+            slog.warning(f"VM {vm_id}: verifier smoke test failed: {failed}")
+            return {"success": False, "data": None, "error": f"smoke_test_failed: {failed}"}
+
+        slog.info(f"VM {vm_id}: host-side verifier initialized and structural smoke passed")
+        slog.generate_report()
+        return {
+            "success": True,
+            "data": {
+                "vm_id": vm_id,
+                "credential_generation": metadata.credential_generation,
+                "k3s_endpoint": "<redacted>",
+                "smoke_passed": True,
+            },
+            "error": None,
+        }
+
+    except Exception as e:
+        slog.error(f"VM {vm_id}: host-side verifier initialization failed: {e}", e)
+        slog.generate_report()
+        return {"success": False, "data": None, "error": str(e)}
