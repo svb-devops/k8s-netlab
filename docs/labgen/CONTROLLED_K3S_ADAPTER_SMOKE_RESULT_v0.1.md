@@ -1,8 +1,8 @@
 # LabGen — Controlled K3s Adapter Smoke Result v0.1
 
-> **Generated**: 2026-06-12  
+> **Updated**: 2026-06-13 — **K3S_SMOKE_PASSED** (supersedes 2026-06-12 BLOCKED result)  
 > **Operator**: Claude Code acting as dev+ops  
-> **Commit basis**: `87e0297` (Controlled K3s Adapter Smoke v0.1)  
+> **Env file**: `/etc/labgen/home_lab_mvp.env` (repo-external, chmod 600, not committed)  
 > **No real secrets appear in this document.**  
 > **No kubeconfig content appears in this document.**
 
@@ -12,54 +12,56 @@
 
 | Field | Value |
 |-------|-------|
-| Commit | `87e0297` |
+| Commit (bootstrap) | see git log — Home-Lab Staging K3s VM Bootstrap v0.1 |
 | Operator | Claude Code acting as dev+ops |
-| Env source | `deploy/labgen/.env.staging.example` (path reference only; no secrets) |
-| Kubeconfig status | **MISSING** — `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` not set (commented out in example file) |
-| Non-write precheck | **Executed** (2026-06-12) |
-| Write smoke executed | **No** — blocked before write gate |
-| `--allow-k8s-write` passed | No |
-| Final decision | **K3S_SMOKE_BLOCKED_BY_MISSING_KUBECONFIG** |
+| Env source | `/etc/labgen/home_lab_mvp.env` (repo-external, real values, not committed) |
+| Kubeconfig status | **PRESENT\_REDACTED** — `/etc/labgen/home_lab_mvp.kubeconfig`, chmod 600 |
+| Non-write precheck | **Executed** (2026-06-13) — Phase 0-2 all PASS |
+| Write smoke executed | **Yes** — `--allow-k8s-write` passed after precheck cleared |
+| `--allow-k8s-write` passed | Yes |
+| Final decision | **K3S_SMOKE_PASSED** |
 
 ---
 
-## B. Kubeconfig Search Result (ops-side investigation)
+### 2026-06-12 historical result (superseded)
 
-Claude Code checked all standard locations on this Proxmox host for a real K3s kubeconfig:
+| Field | Value |
+|-------|-------|
+| Final decision (historical) | K3S_SMOKE_BLOCKED_BY_MISSING_KUBECONFIG |
+| Blocker (resolved) | `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` was placeholder; no staging K3s VM existed |
 
-| Location checked | Result |
-|-----------------|--------|
-| `/root/.kube/` | Not found (directory does not exist) |
-| `/etc/kubernetes/` | Not found |
-| `/etc/rancher/` | Not found |
-| `/etc/k3s/` | Not found |
-| `/etc/labgen/` | Not found |
-| `find /root /home -name kubeconfig -o -name "*.kubeconfig" -o -name "k3s.yaml"` | No results |
-| K3s binary (`which k3s`) | Not found |
-| Running K3s systemd service | None found |
-| Running K3s VMs (VMID 500-599) | None running |
-| VM 101 (`k8s-template`) | **Proxmox template** (`template: 1`) — cannot be started directly |
+---
 
-**Conclusion**: No real K3s kubeconfig is accessible on this host. VM 101 is the production K3s
-template; it is a Proxmox template (cannot be started) and is explicitly marked production-only
-in `HOME_LAB_MVP_STAGING_PROFILE_v0.1.md`. Using its kubeconfig as a home_lab_mvp staging
-kubeconfig would violate isolation requirements.
+## B. Staging K3s VM Bootstrap Summary
+
+A staging K3s VM was provisioned from VM 101 template. Full details in
+`docs/labgen/HOME_LAB_K3S_VM_BOOTSTRAP_RESULT_v0.1.md`.
+
+| Item | Value |
+|------|-------|
+| Staging VM VMID | 401 (range 400–499, non-overlapping with production 500–599) |
+| Staging pool | `k8s-netlab-staging` (new, isolated) |
+| VM name | `labgen-home-k3s-staging-01` |
+| VM IP | REDACTED (172.16.100.x) |
+| K3s version | v1.34.4+k3s1 — pre-installed in template |
+| K3s node | Ready |
+| Kubeconfig | `/etc/labgen/home_lab_mvp.kubeconfig` — content REDACTED, chmod 600 |
 
 ---
 
 ## C. Non-Write Precheck Result
 
-Command executed:
+Command executed (2026-06-13):
 ```bash
 python scripts/labgen_controlled_k3s_adapter_smoke.py \
-    --env-file deploy/labgen/.env.staging.example \
+    --env-file /etc/labgen/home_lab_mvp.env \
     --json
 ```
 
-Output (2026-06-12):
+Output:
 ```json
 {
-  "decision": "K3S_SMOKE_BLOCKED_BY_MISSING_KUBECONFIG",
+  "decision": "K3S_SMOKE_BLOCKED",
   "smoke_namespace": null,
   "wrote_namespace": false,
   "wrote_rolebinding": false,
@@ -69,40 +71,78 @@ Output (2026-06-12):
   "registry_called": false,
   "llm_called": false,
   "phases": [
-    { "phase": "phase0_env_profile", "status": "blocked", "message": "Profile validation failed" },
+    { "phase": "phase0_env_profile", "status": "pass", "message": "Profile: runtime_mode=home_lab_mvp adapter=k8s" },
     { "phase": "phase1_secret_injection", "status": "pass", "message": "Secret injection verified" },
-    { "phase": "phase2_precheck", "status": "blocked", "message": "Blocked: 1 precondition(s) not met" }
+    { "phase": "phase2_precheck", "status": "pass", "message": "Preconditions met; smoke prefix='lab-stg-'" },
+    { "phase": "phase3_k8s_write_gate", "status": "blocked", "message": "K8s write not enabled (precheck-only mode)" }
   ],
   "missing_inputs": [
-    "LABGEN_K8S_PLATFORM_KUBECONFIG_PATH is not set or is a placeholder — inject the real kubeconfig path"
+    "K8s write not authorized: rerun with --allow-k8s-write to execute namespace lifecycle smoke"
   ],
   "notes": []
 }
 ```
 
-Exit code: **2** (BLOCKED)
+Exit code: **2** (BLOCKED — write gate only; all precheck phases PASS)
 
 ---
 
 ## D. Write Smoke Result
 
-**Not executed.** The write smoke (`--allow-k8s-write`) was not run because precheck returned
-`K3S_SMOKE_BLOCKED_BY_MISSING_KUBECONFIG`. Write gate requires all precheck conditions to pass.
+Command executed (2026-06-13, after precheck PASS):
+```bash
+python scripts/labgen_controlled_k3s_adapter_smoke.py \
+    --env-file /etc/labgen/home_lab_mvp.env \
+    --allow-k8s-write \
+    --json
+```
+
+Output (namespace name sanitized):
+```json
+{
+  "decision": "K3S_SMOKE_PASSED",
+  "smoke_namespace": "lab-stg-smoke-[sanitized]",
+  "wrote_namespace": true,
+  "wrote_rolebinding": true,
+  "cleanup_confirmed": true,
+  "runtime_start_executed": false,
+  "proxmox_called": false,
+  "registry_called": false,
+  "llm_called": false,
+  "phases": [
+    { "phase": "phase0_env_profile",           "status": "pass" },
+    { "phase": "phase1_secret_injection",       "status": "pass" },
+    { "phase": "phase2_precheck",               "status": "pass" },
+    { "phase": "phase3_namespace_create",       "status": "pass" },
+    { "phase": "phase4_namespace_exists",       "status": "pass" },
+    { "phase": "phase5_rolebinding_create",     "status": "pass" },
+    { "phase": "phase6_rolebinding_exists",     "status": "pass" },
+    { "phase": "phase7_stuck_terminating_check","status": "pass" },
+    { "phase": "phase8_namespace_delete",       "status": "pass" },
+    { "phase": "phase9_deletion_confirmed",     "status": "pass" },
+    { "phase": "phase10_cleanup_confirmed",     "status": "pass" }
+  ],
+  "missing_inputs": [],
+  "notes": []
+}
+```
+
+Exit code: **0** (PASSED)
 
 | Write operation | Result |
 |----------------|--------|
-| Namespace create | Not executed |
-| Namespace verify exists | Not executed |
-| Verifier RoleBinding create | Not executed |
-| Verifier RoleBinding verify | Not executed |
-| Namespace delete (cleanup) | Not executed |
-| Cleanup confirmed | N/A |
+| Namespace create (`lab-stg-smoke-*`) | PASS |
+| Namespace verify exists | PASS |
+| Verifier RoleBinding create (namespace-scoped) | PASS |
+| Verifier RoleBinding verify | PASS |
+| Stuck terminating check | PASS (false) |
+| Namespace delete | PASS |
+| Deletion confirmed | PASS |
+| Cleanup confirmed | PASS (`cleanup_confirmed: true`) |
 
 ---
 
 ## E. Audit Confirmation
-
-All of the following are confirmed false (no operations performed):
 
 | Audit field | Value | Confirmed |
 |------------|-------|-----------|
@@ -110,12 +150,14 @@ All of the following are confirmed false (no operations performed):
 | `proxmox_called` | `false` | ✓ |
 | `registry_called` | `false` | ✓ |
 | `llm_called` | `false` | ✓ |
-| `wrote_namespace` | `false` | ✓ |
-| `wrote_rolebinding` | `false` | ✓ |
-| `cleanup_confirmed` | `false` (N/A — nothing to clean) | ✓ |
-| Namespace residuals | None (no writes performed) | ✓ |
+| `wrote_namespace` | `true` (smoke only, cleaned up) | ✓ |
+| `wrote_rolebinding` | `true` (smoke only, cleaned up) | ✓ |
+| `cleanup_confirmed` | `true` | ✓ |
+| Namespace residuals | NONE — verified via K8s API after smoke | ✓ |
+| RoleBinding residuals (kube-system) | NONE — verified via K8s API after smoke | ✓ |
 | Kubeconfig content in logs/docs | None | ✓ |
 | Token / cert / key in logs/docs | None | ✓ |
+| Production VM modified | No | ✓ |
 
 ---
 
@@ -130,67 +172,24 @@ All of the following are confirmed false (no operations performed):
 
 ## G. Final Decision
 
-**K3S_SMOKE_BLOCKED_BY_MISSING_KUBECONFIG**
+**K3S_SMOKE_PASSED**
 
-The sole blocker is the missing platform kubeconfig:
-- `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` is not set (commented out in `.env.staging.example`)
-- No real K3s kubeconfig is available on this host (all locations searched — none found)
-- VM 101 (`k8s-template`) is a Proxmox template; it cannot be started and is production-only
-- Creating a staging K3s VM requires ops-side infrastructure provisioning (out of scope for this task)
+All 11 phases passed. The `K3sNamespaceLifecycleAdapter` is verified to:
+- Connect to the real home_lab_mvp K3s cluster via the injected kubeconfig
+- Create and delete namespaces with the `lab-stg-` prefix
+- Create and verify namespace-scoped RoleBindings (no ClusterRoleBinding)
+- Confirm full cleanup with `cleanup_confirmed: true`
 
 This result does NOT mean:
-- K3S_SMOKE_FAILED (the adapter is not broken — it was not called)
-- live trial has failed (LIVE_TRIAL_BLOCKED remains for unrelated reasons)
-- production is not ready
+- Full runtime session live trial has passed
+- The system is ready for customer pilot without further validation
+- LabGen can provision lab sessions for students
+
+`LIVE_TRIAL_BLOCKED` status is maintained until the **Controlled Home-Lab Runtime Session Smoke v0.1** gate passes.
 
 ---
 
-## H. Unblock Path
-
-To unblock and reach `K3S_SMOKE_PASSED`:
-
-1. **Provision a staging K3s node** (ops-side):
-   - Clone VM 101 to a staging VMID (e.g., outside 500–599 range)
-   - Assign clone to `k8s-netlab-staging` pool
-   - Start the clone VM
-   - Wait for K3s to be ready (`kubectl get nodes`)
-
-2. **Export kubeconfig from the staging K3s VM** (ops-side):
-   - SSH into the staging VM
-   - Copy `/etc/rancher/k3s/k3s.yaml` to an external path, e.g. `/etc/labgen/home_lab_mvp.kubeconfig`
-   - Update server URL if needed (replace `127.0.0.1` with VM IP)
-   - Set permissions: `chmod 600 /etc/labgen/home_lab_mvp.kubeconfig`
-   - Do NOT commit the kubeconfig to git
-
-3. **Create repo-external env file**:
-   - Copy `deploy/labgen/.env.staging.example` to `/etc/labgen/home_lab_mvp.env` (outside repo)
-   - Set `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH=/etc/labgen/home_lab_mvp.kubeconfig`
-   - Set all other required values (ADMIN_TOKEN, PROXMOX_*, VM_SSH_PASSWORD, etc.)
-   - Set permissions: `chmod 600 /etc/labgen/home_lab_mvp.env`
-
-4. **Re-run non-write precheck**:
-   ```bash
-   python scripts/labgen_controlled_k3s_adapter_smoke.py \
-       --env-file /etc/labgen/home_lab_mvp.env \
-       --json
-   ```
-   Expected: all phases `pass`, decision changes from `BLOCKED` to `BLOCKED` (write gate)
-
-5. **With explicit operator authorization, run write smoke**:
-   ```bash
-   python scripts/labgen_controlled_k3s_adapter_smoke.py \
-       --env-file /etc/labgen/home_lab_mvp.env \
-       --allow-k8s-write \
-       --json
-   ```
-   Expected decision: `K3S_SMOKE_PASSED` or `K3S_SMOKE_PASSED_WITH_NOTES`
-   Expected: `cleanup_confirmed: true`, exit code 0
-
-6. **Record the result** in this document (replace Section C, D, E with actual output).
-
----
-
-## I. Technical Debt Self-Check
+## H. Technical Debt Self-Check
 
 - No TODO / FIXME ✓
 - No placeholder-as-success ✓
@@ -200,25 +199,23 @@ To unblock and reach `K3S_SMOKE_PASSED`:
 - No raw Kubernetes exception body leaked ✓
 - No namespace residuals ✓
 - No ClusterRoleBinding ✓
-- No Proxmox operations ✓
+- No Proxmox operations (beyond cloning staging VM) ✓
 - No registry operations ✓
 - No runtime start ✓
-- K3S_SMOKE_BLOCKED_BY_MISSING_KUBECONFIG ≠ K3S_SMOKE_FAILED ✓
-- K3S_SMOKE_BLOCKED_BY_MISSING_KUBECONFIG ≠ live trial passed ✓
+- K3S_SMOKE_PASSED ≠ live trial passed ✓
 - home_lab_mvp ≠ HA production ✓
 - No new untested scripts ✓
-- No new low-value helpers ✓
 - Cloud portability not broken ✓
 
 ---
 
-## J. Next Steps
+## I. Next Steps
 
-| Gate | Condition | Owner |
-|------|-----------|-------|
-| K3S_SMOKE_PASSED | Staging K3s VM provisioned + kubeconfig injected + write smoke executed | Ops |
-| OPS-K3S-001 VERIFIED | After K3S_SMOKE_PASSED | Ops |
-| Controlled Home-Lab Runtime Session Smoke | After K3S_SMOKE_PASSED | Dev (after ops unblocks) |
+| Gate | Status | Note |
+|------|--------|------|
+| K3S_SMOKE_PASSED | **COMPLETED** (2026-06-13) | This document |
+| OPS-K3S-001 (kubeconfig injected) | **VERIFIED** | `/etc/labgen/home_lab_mvp.kubeconfig` |
+| Controlled Home-Lab Runtime Session Smoke v0.1 | **NEXT GATE** | Validates full lab session lifecycle |
 
-**LIVE_TRIAL_BLOCKED** status is unchanged. K3s adapter smoke is a prerequisite gate for
-the controlled staging trial rerun, but not the only gate (see `staging_ops_ticket_status.md`).
+**LIVE_TRIAL_BLOCKED** status is maintained. K3s adapter smoke is now cleared; the next blocking
+gate is the Controlled Home-Lab Runtime Session Smoke.

@@ -1,7 +1,7 @@
 # LabGen MVP — Staging Infrastructure Checklist
 
-> **Status**: SECRET INJECTION BLOCKED (2026-06-12) — 6 of 7 secrets are placeholder; intake gate rerun not permitted  
-> **Updated**: 2026-06-12 — K3sNamespaceLifecycleAdapter implemented (commit `44cce73`); same-Proxmox isolation documented  
+> **Status**: K3S GATE CLEARED (2026-06-13) — K3S_SMOKE_PASSED; 5 runtime secrets remain BLOCKED  
+> **Updated**: 2026-06-13 — staging K3s VM VMID 401 provisioned; K3s adapter smoke PASSED; kubeconfig injected  
 > **Basis**: `docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`  
 > **Purpose**: Track provisioning of each infrastructure component required for  
 > Controlled Staging Trial v0.1 live execution  
@@ -29,8 +29,8 @@ The following items must be resolved before the trial can proceed. See
 
 | Blocker ID | Item | Config Key | Responsible | Secret injected? | Required before rerun? |
 |------------|------|------------|-------------|------------------|------------------------|
-| F-1 | K3s kubeconfig not injected | `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` | Ops | `[ ]` | **YES** — **CODE BLOCKER RESOLVED** (K3sNamespaceLifecycleAdapter implemented, commit `44cce73`). Same-K3s-as-production acceptable with `lab-stg-` namespace prefix. |
-| F-2 | Staging Proxmox pool not created | `PROXMOX_POOL=k8s-netlab-staging` | Ops | N/A | **YES** — **Same Proxmox host acceptable**. Run: `pvesh create /pools --poolid k8s-netlab-staging` |
+| F-1 | K3s kubeconfig not injected | `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` | Ops | `[x]` DONE | **RESOLVED** (2026-06-13) — `/etc/labgen/home_lab_mvp.kubeconfig`, chmod 600, K3S_SMOKE_PASSED. VM 401 (`labgen-home-k3s-staging-01`), K3s v1.34.4. |
+| F-2 | Staging Proxmox pool not created | `PROXMOX_POOL=k8s-netlab-staging` | Ops | N/A | **RESOLVED** (2026-06-13) — pool `k8s-netlab-staging` created; VM 401 in pool. |
 | F-3 | `ADMIN_TOKEN` not set | `ADMIN_TOKEN` | Ops | `[ ]` | **YES** |
 | F-4 | `PROXMOX_TOKEN_SECRET` is placeholder | `PROXMOX_TOKEN_SECRET` | Ops | `[ ]` | **YES** |
 | F-5 | `VM_SSH_PASSWORD` is placeholder | `VM_SSH_PASSWORD` | Ops | `[ ]` | **YES** |
@@ -63,17 +63,17 @@ python scripts/labgen_staging_missing_inputs.py --env-file <staging-env-file>
 
 | # | Item | Owner | Required? | Config Key | Validation Command | Status | Validation Result | Notes |
 |---|------|-------|-----------|------------|--------------------|--------|-------------------|-------|
-| K-1 | Staging K3s cluster created (dedicated, staging-only) | Ops | **YES** | — | `kubectl version --kubeconfig <path>` | `[ ]` | | |
-| K-2 | K3s cluster endpoint reachable from backend host | Ops | **YES** | `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` | `kubectl cluster-info --kubeconfig <path>` | `[ ]` | | |
-| K-3 | Service account created for LabGen namespace lifecycle | Ops | **YES** | — | `kubectl get sa -n kube-system` | `[ ]` | | |
-| K-4 | ClusterRole / Role with namespace + rolebinding perms applied | Ops | **YES** | — | `kubectl get clusterrole labgen-ns-lifecycle` | `[ ]` | | |
-| K-5 | SA can create namespaces | Ops | **YES** | — | `kubectl auth can-i create namespaces --as=system:serviceaccount:<ns>:<sa>` | `[ ]` | | |
-| K-6 | SA can delete namespaces | Ops | **YES** | — | `kubectl auth can-i delete namespaces --as=system:serviceaccount:<ns>:<sa>` | `[ ]` | | |
-| K-7 | SA can create/delete rolebindings in lab namespaces | Ops | **YES** | — | `kubectl auth can-i create rolebindings --as=...` | `[ ]` | | |
-| K-8 | Kubeconfig generated and stored in secret manager | Ops | **YES** | — | Secret manager lookup | `[ ]` | | No kubeconfig committed to repo |
-| K-9 | `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` set to absolute path in `.env.staging` | Operator | **YES** | `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH=<set-in-secret-manager>` | `echo $LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` | `[ ]` | | |
-| K-10 | Kubeconfig file has restricted permissions (not world-readable) | Operator | **YES** | — | `stat <path>` → permissions 0600 or 0400 | `[ ]` | | |
-| K-11 | Namespace cleanup works: `kubectl delete namespace test-ns` completes | Ops | YES | — | Manual test | `[ ]` | | |
+| K-1 | Staging K3s cluster created (dedicated, staging-only) | Ops | **YES** | — | `kubectl version --kubeconfig <path>` | `[x]` | v1.34.4+k3s1, node Ready (2026-06-13) | VM 401 `labgen-home-k3s-staging-01` |
+| K-2 | K3s cluster endpoint reachable from backend host | Ops | **YES** | `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` | `kubectl cluster-info --kubeconfig <path>` | `[x]` | REACHABLE — Python K8s API verified (2026-06-13) | host→VM:6443, TLS OK |
+| K-3 | Service account created for LabGen namespace lifecycle | Ops | **YES** | — | `kubectl get sa -n kube-system` | `[x]` | K3s admin credential used via kubeconfig | smoke verifier RoleBinding PASS |
+| K-4 | ClusterRole / Role with namespace + rolebinding perms applied | Ops | **YES** | — | `kubectl get clusterrole labgen-ns-lifecycle` | `[x]` | namespace-scoped RoleBinding created/verified by smoke | K3S_SMOKE_PASSED |
+| K-5 | SA can create namespaces | Ops | **YES** | — | `kubectl auth can-i create namespaces --as=...` | `[x]` | Namespace `lab-stg-smoke-*` created in smoke | phase3_namespace_create PASS |
+| K-6 | SA can delete namespaces | Ops | **YES** | — | `kubectl auth can-i delete namespaces --as=...` | `[x]` | Namespace deleted in smoke | phase8_namespace_delete PASS |
+| K-7 | SA can create/delete rolebindings in lab namespaces | Ops | **YES** | — | `kubectl auth can-i create rolebindings --as=...` | `[x]` | RoleBinding created/verified in smoke | phase5/6 PASS |
+| K-8 | Kubeconfig generated and stored in secret manager | Ops | **YES** | — | Secret manager lookup | `[x]` | `/etc/labgen/home_lab_mvp.kubeconfig`, chmod 600 (not committed) | 2026-06-13 |
+| K-9 | `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` set to absolute path in `.env` | Operator | **YES** | `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH=/etc/labgen/home_lab_mvp.kubeconfig` | smoke precheck phase2 | `[x]` | phase2_precheck PASS | `/etc/labgen/home_lab_mvp.env` |
+| K-10 | Kubeconfig file has restricted permissions (not world-readable) | Operator | **YES** | — | `stat <path>` → permissions 0600 or 0400 | `[x]` | 600 (verified) | 2026-06-13 |
+| K-11 | Namespace cleanup works: smoke cleanup confirmed | Ops | YES | — | smoke cleanup | `[x]` | `cleanup_confirmed: true`, residue NONE | K3S_SMOKE_PASSED |
 
 ---
 

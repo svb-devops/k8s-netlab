@@ -1,8 +1,8 @@
 # LabGen MVP — Staging Ops Ticket Status Tracker
 
 > **Purpose**: Track completion status of each ops provisioning ticket.  
-> **Updated**: 2026-06-12 (K3s adapter implemented; same-Proxmox path documented)  
-> **Current state**: All tickets BLOCKED_WITH_EVIDENCE — no real staging env exists; ops has not injected staging secrets.  
+> **Updated**: 2026-06-13 — OPS-K3S-001 VERIFIED (K3S_SMOKE_PASSED); staging K3s VM VMID 401 provisioned  
+> **Current state**: OPS-K3S-001 VERIFIED; 5 remaining tickets BLOCKED_WITH_EVIDENCE (runtime secrets not injected)  
 > **Code blocker resolved**: `K3sNamespaceLifecycleAdapter` is fully implemented (commit `44cce73`). Remaining blockers are ops-side only.  
 > **Ticket pack**: `docs/labgen/OPS_PROVISIONING_TICKET_PACK_v0.1.md`  
 > **Execution result**: `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md`  
@@ -26,7 +26,7 @@
 
 | Ticket ID | Title | Owner | Status | Env Key | Evidence Path | Last Verification Command | Last Decision | Notes |
 |-----------|-------|-------|--------|---------|---------------|--------------------------|---------------|-------|
-| OPS-K3S-001 | Provision staging K3s kubeconfig / SA | Infra / K8s Ops | BLOCKED_WITH_EVIDENCE | `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` | `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md` | `python scripts/labgen_ops_ticket_verify.py --env-file deploy/labgen/.env.staging.example --ticket OPS-K3S-001 --json` | BLOCKED | **CODE BLOCKER RESOLVED** (commit 44cce73). Remaining: inject real kubeconfig. Same-K3s-as-production acceptable with staging namespace prefix `lab-stg-`. |
+| OPS-K3S-001 | Provision staging K3s kubeconfig / SA | Infra / K8s Ops | **VERIFIED** | `LABGEN_K8S_PLATFORM_KUBECONFIG_PATH` | `docs/labgen/CONTROLLED_K3S_ADAPTER_SMOKE_RESULT_v0.1.md` | smoke: `python scripts/labgen_controlled_k3s_adapter_smoke.py --env-file /etc/labgen/home_lab_mvp.env --allow-k8s-write --json` | **K3S_SMOKE_PASSED** (2026-06-13) | VM 401 (`labgen-home-k3s-staging-01`) provisioned; kubeconfig at `/etc/labgen/home_lab_mvp.kubeconfig` (chmod 600, not committed). K3s v1.34.4, node Ready. |
 | OPS-AUTH-001 | Inject staging ADMIN_TOKEN | Security / Ops | BLOCKED_WITH_EVIDENCE | `ADMIN_TOKEN` | `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md` | `python scripts/labgen_ops_ticket_verify.py --env-file deploy/labgen/.env.staging.example --ticket OPS-AUTH-001 --json` | BLOCKED | No real `.env.staging`; ADMIN_TOKEN is commented-out placeholder |
 | OPS-PROXMOX-001 | Configure staging PROXMOX_HOST | Infra / Proxmox Ops | BLOCKED_WITH_EVIDENCE | `PROXMOX_HOST` | `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md` | `python scripts/labgen_ops_ticket_verify.py --env-file deploy/labgen/.env.staging.example --ticket OPS-PROXMOX-001 --json` | BLOCKED | No real `.env.staging`. **Same-Proxmox host acceptable** if staging pool `k8s-netlab-staging` is created. Set `PROXMOX_HOST` to production host IP. |
 | OPS-PROXMOX-002 | Inject staging PROXMOX_TOKEN_SECRET | Security / Proxmox Ops | BLOCKED_WITH_EVIDENCE | `PROXMOX_TOKEN_SECRET` | `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md` | `python scripts/labgen_ops_ticket_verify.py --env-file deploy/labgen/.env.staging.example --ticket OPS-PROXMOX-002 --json` | BLOCKED | No real `.env.staging`; PROXMOX_TOKEN_SECRET is commented-out placeholder |
@@ -78,7 +78,7 @@ python scripts/labgen_ops_staging_intake_verify.py \
 | All 6 tickets VERIFIED | `[ ]` NOT READY — 6/6 BLOCKED_WITH_EVIDENCE | `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md` |
 | Secret injection: SECRET_INJECTION_READY | `[ ]` NOT READY | `docs/labgen/OPS_SECRET_INJECTION_VERIFICATION_RESULT_v0.1.md` — currently BLOCKED |
 | Intake gate: READY_TO_RERUN | `[ ]` NOT READY | `docs/labgen/OPS_STAGING_INTAKE_VERIFICATION_RESULT_v0.1.md` — currently BLOCKED |
-| **K3S Adapter Smoke: K3S_SMOKE_PASSED or K3S_SMOKE_PASSED_WITH_NOTES** | `[ ]` NOT READY — **K3S_SMOKE_BLOCKED_BY_MISSING_KUBECONFIG** (2026-06-12) | `docs/labgen/CONTROLLED_K3S_ADAPTER_SMOKE_RESULT_v0.1.md` — ops search done, no K3s accessible; staging VM provisioning required |
+| **K3S Adapter Smoke: K3S_SMOKE_PASSED** | `[x]` **READY — K3S_SMOKE_PASSED** (2026-06-13) | `docs/labgen/CONTROLLED_K3S_ADAPTER_SMOKE_RESULT_v0.1.md` — VM 401 provisioned, all 11 phases PASS, cleanup_confirmed=true |
 | Controlled Trial rerun: LIVE_TRIAL_PASSED | `[ ]` NOT READY | To be recorded after rerun |
 
 **None of the above may be declared passed until the corresponding verification script outputs the READY/PASSED decision.**
