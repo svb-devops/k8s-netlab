@@ -1,8 +1,8 @@
 # LabGen MVP — Staging Ops Ticket Status Tracker
 
 > **Purpose**: Track completion status of each ops provisioning ticket.  
-> **Updated**: 2026-06-13 — ALL 6 tickets VERIFIED; Controlled Home-Lab Runtime Session Smoke PASSED_WITH_NOTES  
-> **Current state**: ALL 6 ops tickets VERIFIED; Controlled Runtime Session Smoke PASSED_WITH_NOTES (see `docs/labgen/CONTROLLED_HOME_LAB_RUNTIME_SESSION_SMOKE_RESULT_v0.1.md`)  
+> **Updated**: 2026-06-13 — ALL 6 tickets VERIFIED; Runtime Session Smoke PASSED_WITH_NOTES; Pilot Gate READY_WITH_NOTES  
+> **Current state**: ALL 6 ops tickets VERIFIED; PILOT_GATE_READY_WITH_NOTES (see `docs/labgen/HOME_LAB_MVP_PILOT_GATE_RESULT_v0.1.md`)  
 > **Code blocker resolved**: `K3sNamespaceLifecycleAdapter` is fully implemented (commit `44cce73`). Remaining blockers are ops-side only.  
 > **Ticket pack**: `docs/labgen/OPS_PROVISIONING_TICKET_PACK_v0.1.md`  
 > **Execution result**: `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md`  
@@ -74,12 +74,13 @@ python scripts/labgen_ops_staging_intake_verify.py \
 
 | Gate | Status | Evidence |
 |------|--------|----------|
-| Staging infra bootstrap | `[ ]` NOT READY — STAGING_INFRA_BOOTSTRAP_BLOCKED | `docs/labgen/STAGING_INFRA_BOOTSTRAP_EXECUTION_RESULT_v0.1.md` |
-| All 6 tickets VERIFIED | `[ ]` NOT READY — 6/6 BLOCKED_WITH_EVIDENCE | `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md` |
-| Secret injection: SECRET_INJECTION_READY | `[ ]` NOT READY | `docs/labgen/OPS_SECRET_INJECTION_VERIFICATION_RESULT_v0.1.md` — currently BLOCKED |
-| Intake gate: READY_TO_RERUN | `[ ]` NOT READY | `docs/labgen/OPS_STAGING_INTAKE_VERIFICATION_RESULT_v0.1.md` — currently BLOCKED |
-| **K3S Adapter Smoke: K3S_SMOKE_PASSED** | `[x]` **READY — K3S_SMOKE_PASSED** (2026-06-13) | `docs/labgen/CONTROLLED_K3S_ADAPTER_SMOKE_RESULT_v0.1.md` — VM 401 provisioned, all 11 phases PASS, cleanup_confirmed=true |
-| Controlled Trial rerun: LIVE_TRIAL_PASSED | `[ ]` NOT READY | To be recorded after rerun |
+| Staging infra bootstrap | `[x]` VERIFIED — home_lab_mvp profile | `docs/labgen/STAGING_INFRA_BOOTSTRAP_EXECUTION_RESULT_v0.1.md` |
+| All 6 tickets VERIFIED | `[x]` **VERIFIED** (2026-06-13) | `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md` |
+| Secret injection: SECRET_INJECTION_READY | `[x]` **SECRET_INJECTION_READY** (2026-06-13) | `docs/labgen/OPS_SECRET_INJECTION_VERIFICATION_RESULT_v0.1.md` |
+| Intake gate: READY_TO_RERUN | `[x]` **READY** (2026-06-13) | `docs/labgen/OPS_STAGING_INTAKE_VERIFICATION_RESULT_v0.1.md` |
+| **K3S Adapter Smoke: K3S_SMOKE_PASSED** | `[x]` **K3S_SMOKE_PASSED** (2026-06-13) | `docs/labgen/CONTROLLED_K3S_ADAPTER_SMOKE_RESULT_v0.1.md` — VM 401 provisioned, all 11 phases PASS, cleanup_confirmed=true |
+| **Runtime Session Smoke: PASSED_WITH_NOTES** | `[x]` **RUNTIME_SESSION_SMOKE_PASSED_WITH_NOTES** (2026-06-13) | `docs/labgen/CONTROLLED_HOME_LAB_RUNTIME_SESSION_SMOKE_RESULT_v0.1.md` |
+| **Pilot Gate: READY_WITH_NOTES** | `[x]` **PILOT_GATE_READY_WITH_NOTES** (2026-06-13) | `docs/labgen/HOME_LAB_MVP_PILOT_GATE_RESULT_v0.1.md` — VM 400 cleaned; all residuals clear; pre-pilot actions required |
 
 **None of the above may be declared passed until the corresponding verification script outputs the READY/PASSED decision.**
 
