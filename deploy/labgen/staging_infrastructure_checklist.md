@@ -193,7 +193,8 @@ python scripts/labgen_ops_staging_intake_verify.py \
 | G-6 | Rollback plan reviewed (Section F of `CONTROLLED_STAGING_TRIAL_v0.1.md`) | `[ ]` |
 | G-7 | STAGING_USER_SESSION available (for Phase 4 runtime start) | `[ ]` |
 | G-8 | Published staging lab draft available in lab catalog | `[ ]` |
-| G-9 | **K3s Adapter Smoke: K3S_SMOKE_PASSED or K3S_SMOKE_PASSED_WITH_NOTES** | `[ ]` — **K3S_SMOKE_BLOCKED_BY_MISSING_KUBECONFIG** (2026-06-12); ops search done; staging K3s VM provisioning required |
+| G-9 | **K3s Adapter Smoke: K3S_SMOKE_PASSED or K3S_SMOKE_PASSED_WITH_NOTES** | `[x]` — **K3S_SMOKE_PASSED** (2026-06-13); VM 401 K3s v1.34.4; see `docs/labgen/CONTROLLED_K3S_ADAPTER_SMOKE_RESULT_v0.1.md` |
+| G-10 | **Runtime Session Smoke: RUNTIME_SESSION_SMOKE_PASSED or PASSED_WITH_NOTES** | `[x]` — **RUNTIME_SESSION_SMOKE_PASSED_WITH_NOTES** (2026-06-13); full create→step-check→complete→cleanup cycle; LAB_CLOSED+cleanup_verified=true; see `docs/labgen/CONTROLLED_HOME_LAB_RUNTIME_SESSION_SMOKE_RESULT_v0.1.md` |
 
 **If G-0a is `[ ]` (intake gate not READY): trial is BLOCKED. Do not run Phase 3+.**  
 **If any other gate is `[ ]`: trial is BLOCKED. Do not proceed with Phase 3+ of the trial runbook.**
