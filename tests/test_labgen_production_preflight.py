@@ -161,6 +161,11 @@ class TestInvalidRuntimeModeFails:
         check = _check(report, "runtime_mode_valid")
         assert check.severity == pf._SEV_BLOCK
 
+    def test_home_lab_mvp_is_valid_runtime_mode(self) -> None:
+        report = _run({"LABGEN_RUNTIME_MODE": "home_lab_mvp"})
+        check = _check(report, "runtime_mode_valid")
+        assert check.severity == pf._SEV_PASS
+
     def test_invalid_adapter_is_blocking(self) -> None:
         report = _run({"LABGEN_NAMESPACE_ADAPTER": "fake"})
         check = _check(report, "namespace_adapter_valid")

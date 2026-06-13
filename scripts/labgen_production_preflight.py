@@ -75,7 +75,7 @@ class PreflightReport:
 # Individual checks
 # ---------------------------------------------------------------------------
 
-_SAFE_RUNTIME_MODES = {"test", "dev", "demo", "production"}
+_SAFE_RUNTIME_MODES = {"test", "dev", "demo", "production", "home_lab_mvp"}
 _SAFE_ADAPTER_KINDS = {"stub", "k8s"}
 _SAFE_LLM_MODES = {"disabled", "fake_only", "dry_run", "live_disabled", "live_enabled"}
 _UNSAFE_CREDENTIAL_ROOTS = {"", ".", "/", "/tmp", "/var/tmp", "/root"}

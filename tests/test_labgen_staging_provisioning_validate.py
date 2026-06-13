@@ -541,6 +541,33 @@ class TestSecretKeysNotActive:
         _check_secret_keys_not_active(active, r)
         assert r.blocking_issues
 
+    def test_home_lab_mvp_admin_token_in_file_is_warning_not_blocking(self) -> None:
+        active = {
+            "ADMIN_TOKEN": "thisis-a-real-admin-token-that-is-long-enough-yes",
+            "LABGEN_RUNTIME_MODE": "home_lab_mvp",
+        }
+        r = ProvisioningResult()
+        _check_secret_keys_not_active(active, r)
+        assert not r.blocking_issues
+
+    def test_home_lab_mvp_proxmox_secret_in_file_is_warning_not_blocking(self) -> None:
+        active = {
+            "PROXMOX_TOKEN_SECRET": "not-a-placeholder-value-here",
+            "LABGEN_RUNTIME_MODE": "home_lab_mvp",
+        }
+        r = ProvisioningResult()
+        _check_secret_keys_not_active(active, r)
+        assert not r.blocking_issues
+
+    def test_non_home_lab_mvp_real_secret_still_blocks(self) -> None:
+        active = {
+            "ADMIN_TOKEN": "thisis-a-real-admin-token-that-is-long-enough-yes",
+            "LABGEN_RUNTIME_MODE": "production",
+        }
+        r = ProvisioningResult()
+        _check_secret_keys_not_active(active, r)
+        assert r.blocking_issues
+
 
 # ---------------------------------------------------------------------------
 # Real secret pattern checks

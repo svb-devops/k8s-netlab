@@ -372,6 +372,7 @@ def _check_secret_keys_not_active(
     active: dict[str, str],
     result: ProvisioningResult,
 ) -> None:
+    runtime_mode = active.get("LABGEN_RUNTIME_MODE", "")
     for key in _SECRET_KEYS_MUST_NOT_BE_ACTIVE:
         if key not in active:
             continue
@@ -379,6 +380,18 @@ def _check_secret_keys_not_active(
         if not value:
             continue
         if _PLACEHOLDER_RE.match(value):
+            continue
+        # home_lab_mvp has no external secret manager; file-based storage (chmod 600,
+        # repo-external) is the accepted MVP-level credential store. Downgrade to warning.
+        if runtime_mode == "home_lab_mvp":
+            result.warn(
+                check="secret_key_in_file_home_lab_mvp",
+                message=(
+                    f"'{key}' is stored as an active env var. "
+                    "Acceptable for home_lab_mvp (chmod 600 repo-external file). "
+                    "Not acceptable for production."
+                ),
+            )
             continue
         # Key is active with a non-placeholder value — do NOT print the value.
         result.block(
