@@ -1,8 +1,8 @@
 # LabGen MVP — Staging Ops Ticket Status Tracker
 
 > **Purpose**: Track completion status of each ops provisioning ticket.  
-> **Updated**: 2026-06-14 — ALL 6 tickets VERIFIED; Runtime Session Smoke PASSED_WITH_NOTES; Pilot Gate READY_WITH_NOTES; First Pilot Lab RELEASED; First Pilot User ONBOARDED_WITH_NOTES; Pilot Feedback TRIAGED; Frontend Learner Smoke PASSED_WITH_NOTES; Second Pilot User ONBOARDED; Ops Runbook HARDENED; **Third Pilot User ONBOARDED**  
-> **Current state**: ALL 6 ops tickets VERIFIED; PILOT_GATE_READY_WITH_NOTES; FIRST_PILOT_USER_ONBOARDED_WITH_NOTES; PILOT_FEEDBACK_TRIAGED; FRONTEND_LEARNER_SMOKE_PASSED_WITH_NOTES; SECOND_PILOT_USER_ONBOARDED; OPS_RUNBOOK_HARDENED; **THIRD_PILOT_USER_ONBOARDED** — pilot-user-03 completed full lab via real frontend (19/19 PASS); first completion path validation; VM 401 rebuild (Runbook D.5) confirmed reliable; see `docs/labgen/THIRD_PILOT_USER_ONBOARDING_RESULT_v0.1.md`  
+> **Updated**: 2026-06-14 — ALL 6 tickets VERIFIED; Runtime Session Smoke PASSED_WITH_NOTES; Pilot Gate READY_WITH_NOTES; First Pilot Lab RELEASED; First Pilot User ONBOARDED_WITH_NOTES; Pilot Feedback TRIAGED; Frontend Learner Smoke PASSED_WITH_NOTES; Second Pilot User ONBOARDED; Ops Runbook HARDENED; Third Pilot User ONBOARDED; **Second Pilot Lab READY**  
+> **Current state**: ALL 6 ops tickets VERIFIED; PILOT_GATE_READY_WITH_NOTES; FIRST_PILOT_USER_ONBOARDED_WITH_NOTES; PILOT_FEEDBACK_TRIAGED; FRONTEND_LEARNER_SMOKE_PASSED_WITH_NOTES; SECOND_PILOT_USER_ONBOARDED; OPS_RUNBOOK_HARDENED; THIRD_PILOT_USER_ONBOARDED; **SECOND_PILOT_LAB_READY** — ConfigMap Basics lab published; 31/31 frontend rehearsal PASS; configmap_exists verifier validated; VM 401 rebuild (Runbook D.5) reliable; see `docs/labgen/SECOND_PILOT_LAB_DESIGN_RESULT_v0.1.md`  
 > **Code blocker resolved**: `K3sNamespaceLifecycleAdapter` is fully implemented (commit `44cce73`). Remaining blockers are ops-side only.  
 > **Ticket pack**: `docs/labgen/OPS_PROVISIONING_TICKET_PACK_v0.1.md`  
 > **Execution result**: `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md`  

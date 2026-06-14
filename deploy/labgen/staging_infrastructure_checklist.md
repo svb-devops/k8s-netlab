@@ -1,7 +1,7 @@
 # LabGen MVP — Staging Infrastructure Checklist
 
-> **Status**: THIRD_PILOT_USER_ONBOARDED (2026-06-14) — K3S_SMOKE_PASSED; RUNTIME_SESSION_SMOKE_PASSED_WITH_NOTES; First Pilot Lab RELEASED; First Pilot User ONBOARDED_WITH_NOTES; Pilot Feedback TRIAGED; Frontend Learner Smoke PASSED_WITH_NOTES; Second Pilot User ONBOARDED; Ops Runbook HARDENED; **Third Pilot User ONBOARDED**  
-> **Updated**: 2026-06-14 — Third Trusted Pilot User Gate v0.1 completed; pilot-user-03 completed full lab via real frontend (19/19 PASS); VM 401 rebuilt per Runbook D.5; all residuals clean; see `docs/labgen/THIRD_PILOT_USER_ONBOARDING_RESULT_v0.1.md`  
+> **Status**: SECOND_PILOT_LAB_READY (2026-06-14) — K3S_SMOKE_PASSED; RUNTIME_SESSION_SMOKE_PASSED_WITH_NOTES; First Pilot Lab RELEASED; First Pilot User ONBOARDED_WITH_NOTES; Pilot Feedback TRIAGED; Frontend Learner Smoke PASSED_WITH_NOTES; Second Pilot User ONBOARDED; Ops Runbook HARDENED; Third Pilot User ONBOARDED; **Second Pilot Lab READY**  
+> **Updated**: 2026-06-14 — Second Pilot Lab Design Gate v0.1 completed; ConfigMap Basics lab published; 31/31 frontend rehearsal PASS; configmap_exists verifier validated end-to-end; VM 401 rebuilt per Runbook D.5; all residuals clean; see `docs/labgen/SECOND_PILOT_LAB_DESIGN_RESULT_v0.1.md`  
 > **Basis**: `docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`  
 > **Purpose**: Track provisioning of each infrastructure component required for  
 > Controlled Staging Trial v0.1 live execution  
