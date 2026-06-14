@@ -322,3 +322,12 @@ Reasoning:
 - Cloud portability preserved (no new ClusterRoleBinding, no cluster-scoped reads)
 
 Next gate: **Sixth Trusted Pilot User on Third Lab v0.1**
+
+---
+
+## R. Follow-up: Sixth Trusted Pilot User on Third Lab v0.1
+
+**Status**: SIXTH_PILOT_USER_THIRD_LAB_ONBOARDED (2026-06-14)  
+**Evidence**: `docs/labgen/SIXTH_PILOT_USER_THIRD_LAB_RESULT_v0.1.md`
+
+The RBAC fix (secrets: list+watch only, no get) was confirmed working in the real user path (no 403). Secret feedback safety 11/11 PASS. cleanup_verified=True. Next: Seventh User OR Deployment Lab Design Gate.
