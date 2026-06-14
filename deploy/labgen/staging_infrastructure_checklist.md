@@ -1,7 +1,7 @@
 # LabGen MVP — Staging Infrastructure Checklist
 
-> **Status**: SECOND_LAB_FEEDBACK_TRIAGED_WITH_ITERATION (2026-06-14) — K3S_SMOKE_PASSED; RUNTIME_SESSION_SMOKE_PASSED_WITH_NOTES; First Pilot Lab RELEASED; First Pilot User ONBOARDED_WITH_NOTES; Pilot Feedback TRIAGED; Frontend Learner Smoke PASSED_WITH_NOTES; Second Pilot User ONBOARDED; Ops Runbook HARDENED; Third Pilot User ONBOARDED; Second Pilot Lab READY; Fourth Pilot User Second Lab ONBOARDED; **Second Lab Feedback Triage TRIAGED_WITH_ITERATION**  
-> **Updated**: 2026-06-14 — Second Lab Feedback Triage completed; verifier detail messages added (6 verify types); 11 new tests; internal rehearsal PASS; 3181 tests; 93.13% coverage; 5th user + 3rd lab design unlocked; see `docs/labgen/SECOND_LAB_FEEDBACK_TRIAGE_v0.1.md`  
+> **Status**: FIFTH_PILOT_USER_SECOND_LAB_ONBOARDED (2026-06-14) — K3S_SMOKE_PASSED; RUNTIME_SESSION_SMOKE_PASSED_WITH_NOTES; First Pilot Lab RELEASED; First Pilot User ONBOARDED_WITH_NOTES; Pilot Feedback TRIAGED; Frontend Learner Smoke PASSED_WITH_NOTES; Second Pilot User ONBOARDED; Ops Runbook HARDENED; Third Pilot User ONBOARDED; Second Pilot Lab READY; Fourth Pilot User Second Lab ONBOARDED; Second Lab Feedback Triage TRIAGED_WITH_ITERATION; **Fifth Pilot User Second Lab ONBOARDED**  
+> **Updated**: 2026-06-14 — Fifth Pilot User completed ConfigMap Basics; improved verifier feedback validated (detail visible, no leaks); cleanup_verified=True; Third Lab Design Gate unlocked; see `docs/labgen/FIFTH_PILOT_USER_SECOND_LAB_RESULT_v0.1.md`  
 > **Basis**: `docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`  
 > **Purpose**: Track provisioning of each infrastructure component required for  
 > Controlled Staging Trial v0.1 live execution  
