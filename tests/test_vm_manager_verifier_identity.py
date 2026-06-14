@@ -120,6 +120,23 @@ class TestKubectlApplyCmd:
         assert "lab-verifier-namespace-readonly" in cmd[2]
         assert "ClusterRole" in cmd[2]
 
+    def test_clusterrole_manifest_includes_secrets(self):
+        # secret_exists verifier type requires list permission on secrets.
+        # This regression test prevents removing secrets from the ClusterRole.
+        assert "secrets" in _CLUSTER_ROLE_MANIFEST
+
+    def test_clusterrole_manifest_secrets_no_get_verb(self):
+        # Principle of least privilege: secrets rule must not grant get verb.
+        # get allows reading .data; list (for existence check) is sufficient.
+        lines = _CLUSTER_ROLE_MANIFEST.splitlines()
+        in_secrets_rule = False
+        for line in lines:
+            if "secrets" in line and "resources" in line:
+                in_secrets_rule = True
+            if in_secrets_rule and "verbs" in line:
+                assert "get" not in line, f"secrets rule must not grant get: {line}"
+                break
+
 
 # ---------------------------------------------------------------------------
 # _build_kubeconfig

@@ -222,9 +222,11 @@ class VerifierService:
             )
         if vtype == VerifyType.SECRET_EXISTS:
             return (
-                f'Secret "{name}" was found in your namespace.'
+                f'Secret "{name}" was found in your isolated namespace. '
+                "The verifier confirmed the Secret object exists without reading its value."
                 if passed
-                else f'Secret "{name}" was not found. Check the name and namespace.'
+                else f'Secret "{name}" was not found. '
+                f'Check that the name is exactly "{name}" and that it was created in your lab namespace.'
             )
         if vtype == VerifyType.POD_RUNNING:
             return (

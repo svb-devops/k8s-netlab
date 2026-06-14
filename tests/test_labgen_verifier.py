@@ -555,6 +555,15 @@ class TestMakeDetail:
         result = svc.check(session.session_id, tmpl)
         assert result.passed is True
         assert "my-secret" in result.detail
+        assert "without reading its value" in result.detail
+
+    def test_secret_exists_fail_detail(self, tmp_path: Path) -> None:
+        svc, session = self._svc(tmp_path, default_pass=False)
+        tmpl = _make_template(vtype=VerifyType.SECRET_EXISTS, name="my-secret")
+        result = svc.check(session.session_id, tmpl)
+        assert result.passed is False
+        assert "my-secret" in result.detail
+        assert result.detail != ""
 
     def test_pod_running_pass_detail(self, tmp_path: Path) -> None:
         svc, session = self._svc(tmp_path, default_pass=True)

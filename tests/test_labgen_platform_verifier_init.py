@@ -209,6 +209,28 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         with pytest.raises(RuntimeError, match="empty token"):
             init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
 
+    def test_cluster_role_includes_secrets_resource(self, store: VerifierCredentialStore) -> None:
+        # secret_exists verifier requires list permission on secrets.
+        # Regression: ClusterRole was missing secrets — caused 403 on secret_exists check.
+        init, factory = self._make(store)
+        init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
+        factory.rbac.create_cluster_role.assert_called_once()
+        cr_arg = factory.rbac.create_cluster_role.call_args[0][0]
+        all_resources = [r for rule in cr_arg.rules for r in (rule.resources or [])]
+        assert "secrets" in all_resources
+
+    def test_cluster_role_secrets_has_no_get_verb(self, store: VerifierCredentialStore) -> None:
+        # Principle of least privilege: secret_exists uses list_namespaced_secret only.
+        # The secrets rule must not grant get (which would allow reading .data).
+        init, factory = self._make(store)
+        init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
+        cr_arg = factory.rbac.create_cluster_role.call_args[0][0]
+        secrets_rule = next(
+            (r for r in cr_arg.rules if "secrets" in (r.resources or [])), None
+        )
+        assert secrets_rule is not None
+        assert "get" not in (secrets_rule.verbs or [])
+
     def test_sa_create_called_with_kube_system(self, store: VerifierCredentialStore) -> None:
         init, factory = self._make(store)
         init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
