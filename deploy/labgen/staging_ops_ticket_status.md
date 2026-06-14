@@ -1,8 +1,8 @@
 # LabGen MVP — Staging Ops Ticket Status Tracker
 
 > **Purpose**: Track completion status of each ops provisioning ticket.  
-> **Updated**: 2026-06-14 — ALL 6 tickets VERIFIED; Runtime Session Smoke PASSED_WITH_NOTES; Pilot Gate READY_WITH_NOTES; First Pilot Lab RELEASED; First Pilot User ONBOARDED_WITH_NOTES; Pilot Feedback TRIAGED; **Frontend Learner Smoke PASSED_WITH_NOTES**  
-> **Current state**: ALL 6 ops tickets VERIFIED; PILOT_GATE_READY_WITH_NOTES; FIRST_PILOT_USER_ONBOARDED_WITH_NOTES; PILOT_FEEDBACK_TRIAGED; **FRONTEND_LEARNER_SMOKE_PASSED_WITH_NOTES** — 16 PASS 0 FAIL; 12 bugs fixed (CSP + 11 field-name mismatches); second pilot user unblocked; see `docs/labgen/FRONTEND_LEARNER_PILOT_SMOKE_RESULT_v0.1.md`  
+> **Updated**: 2026-06-14 — ALL 6 tickets VERIFIED; Runtime Session Smoke PASSED_WITH_NOTES; Pilot Gate READY_WITH_NOTES; First Pilot Lab RELEASED; First Pilot User ONBOARDED_WITH_NOTES; Pilot Feedback TRIAGED; Frontend Learner Smoke PASSED_WITH_NOTES; **Second Pilot User ONBOARDED**  
+> **Current state**: ALL 6 ops tickets VERIFIED; PILOT_GATE_READY_WITH_NOTES; FIRST_PILOT_USER_ONBOARDED_WITH_NOTES; PILOT_FEEDBACK_TRIAGED; FRONTEND_LEARNER_SMOKE_PASSED_WITH_NOTES; **SECOND_PILOT_USER_ONBOARDED** — 23 PASS 0 FAIL; pilot-user-02 completed full learner frontend path; cleanup_verified=True; see `docs/labgen/SECOND_PILOT_USER_ONBOARDING_RESULT_v0.1.md`  
 > **Code blocker resolved**: `K3sNamespaceLifecycleAdapter` is fully implemented (commit `44cce73`). Remaining blockers are ops-side only.  
 > **Ticket pack**: `docs/labgen/OPS_PROVISIONING_TICKET_PACK_v0.1.md`  
 > **Execution result**: `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md`  
@@ -84,6 +84,7 @@ python scripts/labgen_ops_staging_intake_verify.py \
 | **First Pilot User Onboarding: ONBOARDED_WITH_NOTES** | `[x]` **FIRST_PILOT_USER_ONBOARDED_WITH_NOTES** (2026-06-14) | `docs/labgen/FIRST_PILOT_USER_ONBOARDING_RESULT_v0.1.md` — pilot-user-01 completed; LAB_CLOSED; cleanup_verified=True; 3 bugs fixed in-session; 3137 tests pass, 93.12% coverage |
 | **Pilot Feedback Triage: PILOT_FEEDBACK_TRIAGED** | `[x]` **PILOT_FEEDBACK_TRIAGED** (2026-06-14) | `docs/labgen/PILOT_FEEDBACK_TRIAGE_v0.1.md` — 0 BLOCKER/HIGH; 3 MEDIUM fixed; 2 LOW open; 5 NOTE open; second pilot user allowed after frontend smoke test |
 | **Frontend Learner Pilot Smoke: PASSED_WITH_NOTES** | `[x]` **FRONTEND_LEARNER_SMOKE_PASSED_WITH_NOTES** (2026-06-14) | `docs/labgen/FRONTEND_LEARNER_PILOT_SMOKE_RESULT_v0.1.md` — 16 PASS 0 FAIL; 12 bugs fixed (CSP + 11 field mismatches); vm_id auto-discovery; cleanup_verified=True; 3139 tests; 93.13% |
+| **Second Trusted Pilot User: ONBOARDED** | `[x]` **SECOND_PILOT_USER_ONBOARDED** (2026-06-14) | `docs/labgen/SECOND_PILOT_USER_ONBOARDING_RESULT_v0.1.md` — 23 PASS 0 FAIL 0 NOTE; pilot-user-02 via real frontend; cleanup_verified=True; ops gap documented (host-side verifier init); third user allowed; 3139 tests; 93.13% |
 
 **None of the above may be declared passed until the corresponding verification script outputs the READY/PASSED decision.**
 
