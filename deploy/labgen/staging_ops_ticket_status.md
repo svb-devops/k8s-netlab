@@ -1,8 +1,8 @@
 # LabGen MVP — Staging Ops Ticket Status Tracker
 
 > **Purpose**: Track completion status of each ops provisioning ticket.  
-> **Updated**: 2026-06-13 — ALL 6 tickets VERIFIED; Runtime Session Smoke PASSED_WITH_NOTES; Pilot Gate READY_WITH_NOTES; Verifier Client Path Smoke PASSED; **First Pilot Lab RELEASED**  
-> **Current state**: ALL 6 ops tickets VERIFIED; PILOT_GATE_READY_WITH_NOTES; Verifier Client Path Smoke PASSED; **PILOT_LAB_READY_WITH_NOTES** — First pilot lab published and internal rehearsal passed (see `docs/labgen/FIRST_PILOT_LAB_RELEASE_RESULT_v0.1.md`)  
+> **Updated**: 2026-06-14 — ALL 6 tickets VERIFIED; Runtime Session Smoke PASSED_WITH_NOTES; Pilot Gate READY_WITH_NOTES; First Pilot Lab RELEASED; **First Pilot User ONBOARDED_WITH_NOTES**  
+> **Current state**: ALL 6 ops tickets VERIFIED; PILOT_GATE_READY_WITH_NOTES; **FIRST_PILOT_USER_ONBOARDED_WITH_NOTES** — pilot-user-01 completed full lab flow (LAB_CLOSED, cleanup_verified=True); 3 bugs discovered and fixed in-session (see `docs/labgen/FIRST_PILOT_USER_ONBOARDING_RESULT_v0.1.md`)  
 > **Code blocker resolved**: `K3sNamespaceLifecycleAdapter` is fully implemented (commit `44cce73`). Remaining blockers are ops-side only.  
 > **Ticket pack**: `docs/labgen/OPS_PROVISIONING_TICKET_PACK_v0.1.md`  
 > **Execution result**: `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md`  
@@ -81,6 +81,7 @@ python scripts/labgen_ops_staging_intake_verify.py \
 | **K3S Adapter Smoke: K3S_SMOKE_PASSED** | `[x]` **K3S_SMOKE_PASSED** (2026-06-13) | `docs/labgen/CONTROLLED_K3S_ADAPTER_SMOKE_RESULT_v0.1.md` — VM 401 provisioned, all 11 phases PASS, cleanup_confirmed=true |
 | **Runtime Session Smoke: PASSED_WITH_NOTES** | `[x]` **RUNTIME_SESSION_SMOKE_PASSED_WITH_NOTES** (2026-06-13) | `docs/labgen/CONTROLLED_HOME_LAB_RUNTIME_SESSION_SMOKE_RESULT_v0.1.md` |
 | **Pilot Gate: READY_WITH_NOTES** | `[x]` **PILOT_GATE_READY_WITH_NOTES** (2026-06-13) | `docs/labgen/HOME_LAB_MVP_PILOT_GATE_RESULT_v0.1.md` — VM 400 cleaned; all residuals clear; pre-pilot actions required |
+| **First Pilot User Onboarding: ONBOARDED_WITH_NOTES** | `[x]` **FIRST_PILOT_USER_ONBOARDED_WITH_NOTES** (2026-06-14) | `docs/labgen/FIRST_PILOT_USER_ONBOARDING_RESULT_v0.1.md` — pilot-user-01 completed; LAB_CLOSED; cleanup_verified=True; 3 bugs fixed in-session; 3137 tests pass, 93.12% coverage |
 
 **None of the above may be declared passed until the corresponding verification script outputs the READY/PASSED decision.**
 

@@ -104,23 +104,44 @@ class TestStructural:
 # ---------------------------------------------------------------------------
 
 
+def _api_403() -> ApiException:
+    return ApiException(status=403, reason="Forbidden")
+
+
 class TestNamespaceExists:
     def test_returns_true_when_namespace_found(self) -> None:
         core = MagicMock()
-        core.read_namespace.return_value = MagicMock()
+        core.list_namespaced_config_map.return_value = MagicMock()
         adapter = _adapter(core, MagicMock())
         assert adapter.namespace_exists("lab-test") is True
-        core.read_namespace.assert_called_once_with("lab-test")
+        core.list_namespaced_config_map.assert_called_once_with("lab-test", limit=1)
+
+    def test_does_not_use_read_namespace(self) -> None:
+        """namespace_exists must use namespace-scoped list, not read_namespace (needs ClusterRoleBinding)."""
+        core = MagicMock()
+        core.list_namespaced_config_map.return_value = MagicMock()
+        adapter = _adapter(core, MagicMock())
+        adapter.namespace_exists("lab-test")
+        core.read_namespace.assert_not_called()
 
     def test_returns_false_on_404(self) -> None:
         core = MagicMock()
-        core.read_namespace.side_effect = _api_404()
+        core.list_namespaced_config_map.side_effect = _api_404()
         adapter = _adapter(core, MagicMock())
         assert adapter.namespace_exists("lab-missing") is False
 
+    def test_propagates_403_forbidden(self) -> None:
+        """403 means namespace exists but verifier lacks RoleBinding — must not return False."""
+        core = MagicMock()
+        core.list_namespaced_config_map.side_effect = _api_403()
+        adapter = _adapter(core, MagicMock())
+        with pytest.raises(ApiException) as exc_info:
+            adapter.namespace_exists("lab-test")
+        assert exc_info.value.status == 403
+
     def test_propagates_non_404_exception(self) -> None:
         core = MagicMock()
-        core.read_namespace.side_effect = _api_500()
+        core.list_namespaced_config_map.side_effect = _api_500()
         adapter = _adapter(core, MagicMock())
         with pytest.raises(ApiException) as exc_info:
             adapter.namespace_exists("lab-test")

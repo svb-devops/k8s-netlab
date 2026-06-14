@@ -1,7 +1,7 @@
 # LabGen MVP — Staging Infrastructure Checklist
 
-> **Status**: PILOT_LAB_READY_WITH_NOTES (2026-06-13) — K3S_SMOKE_PASSED; RUNTIME_SESSION_SMOKE_PASSED_WITH_NOTES; Verifier Client Path Smoke PASSED; First Pilot Lab Published and Rehearsal PASSED  
-> **Updated**: 2026-06-13 — First Pilot Lab Release gate completed; see `docs/labgen/FIRST_PILOT_LAB_RELEASE_RESULT_v0.1.md`  
+> **Status**: FIRST_PILOT_USER_ONBOARDED_WITH_NOTES (2026-06-14) — K3S_SMOKE_PASSED; RUNTIME_SESSION_SMOKE_PASSED_WITH_NOTES; First Pilot Lab RELEASED; First Pilot User ONBOARDED_WITH_NOTES  
+> **Updated**: 2026-06-14 — First Pilot User Onboarding v0.1 completed; see `docs/labgen/FIRST_PILOT_USER_ONBOARDING_RESULT_v0.1.md`  
 > **Basis**: `docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`  
 > **Purpose**: Track provisioning of each infrastructure component required for  
 > Controlled Staging Trial v0.1 live execution  
@@ -196,6 +196,7 @@ python scripts/labgen_ops_staging_intake_verify.py \
 | G-9 | **K3s Adapter Smoke: K3S_SMOKE_PASSED or K3S_SMOKE_PASSED_WITH_NOTES** | `[x]` — **K3S_SMOKE_PASSED** (2026-06-13); VM 401 K3s v1.34.4; see `docs/labgen/CONTROLLED_K3S_ADAPTER_SMOKE_RESULT_v0.1.md` |
 | G-10 | **Runtime Session Smoke: RUNTIME_SESSION_SMOKE_PASSED or PASSED_WITH_NOTES** | `[x]` — **RUNTIME_SESSION_SMOKE_PASSED_WITH_NOTES** (2026-06-13); full create→step-check→complete→cleanup cycle; LAB_CLOSED+cleanup_verified=true; see `docs/labgen/CONTROLLED_HOME_LAB_RUNTIME_SESSION_SMOKE_RESULT_v0.1.md` |
 | G-11 | **Pilot Gate: PILOT_GATE_READY or PILOT_GATE_READY_WITH_NOTES** | `[x]` — **PILOT_GATE_READY_WITH_NOTES** (2026-06-13); VM 400 cleaned; all residuals clear; verifier client not exercised (note); 0 published labs (pre-pilot action required); see `docs/labgen/HOME_LAB_MVP_PILOT_GATE_RESULT_v0.1.md` |
+| G-12 | **First Pilot User Onboarding: FIRST_PILOT_USER_ONBOARDED or FIRST_PILOT_USER_ONBOARDED_WITH_NOTES** | `[x]` — **FIRST_PILOT_USER_ONBOARDED_WITH_NOTES** (2026-06-14); pilot-user-01 completed full lab flow; LAB_CLOSED; cleanup_verified=True; 3 bugs discovered and fixed; 3137 tests pass, 93.12% coverage; see `docs/labgen/FIRST_PILOT_USER_ONBOARDING_RESULT_v0.1.md` |
 
 **If G-0a is `[ ]` (intake gate not READY): trial is BLOCKED. Do not run Phase 3+.**  
 **If any other gate is `[ ]`: trial is BLOCKED. Do not proceed with Phase 3+ of the trial runbook.**

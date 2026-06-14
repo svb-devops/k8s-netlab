@@ -276,6 +276,15 @@ if LABGEN_LAB_SESSION_TTL_MINUTES < 1:
         f"LABGEN_LAB_SESSION_TTL_MINUTES must be ≥ 1, got {LABGEN_LAB_SESSION_TTL_MINUTES}"
     )
 
+# Namespace deletion retry config for LabSessionService._do_cleanup().
+# K3s namespace deletion is async: the namespace enters Terminating before being gone.
+# home_lab_mvp requires ≥30s total (15×2s) to handle the async window; stub adapters
+# return True immediately so the larger defaults are harmless for tests.
+LABGEN_NS_DELETE_MAX_RETRIES: int = _get_env_int("LABGEN_NS_DELETE_MAX_RETRIES", 15)
+LABGEN_NS_DELETE_POLL_INTERVAL_S: float = float(
+    os.getenv("LABGEN_NS_DELETE_POLL_INTERVAL_S", "2.0")
+)
+
 # --- LabGen LLM Provider Configuration ---
 # Controls the provider boundary for LabGen draft generation.
 # Default: fake_only — no real LLM, no API keys, no network calls.

@@ -475,3 +475,36 @@ class TestCompletionAPIEndpoints:
         r = client.post(f"/api/lab-sessions/{session.session_id}/complete")
         assert r.status_code == 200
         assert r.json()["lab_session_status"] == "LAB_CLEANUP_FAILED"
+
+
+class TestSessionServiceRetryConfig:
+    """Regression: HTTP route must pass config-controlled retry values to LabSessionService.
+
+    Previously get_session_service() used LabSessionService defaults (5×1s = 5s total),
+    which is insufficient for K3s async namespace deletion (may take 10-30s).
+    Fix: routes.py now reads LABGEN_NS_DELETE_MAX_RETRIES/LABGEN_NS_DELETE_POLL_INTERVAL_S
+    from config and passes them explicitly.
+    """
+
+    def test_config_has_k3s_appropriate_defaults(self) -> None:
+        from backend import config
+        assert config.LABGEN_NS_DELETE_MAX_RETRIES >= 10, (
+            "LABGEN_NS_DELETE_MAX_RETRIES must be ≥10 to handle K3s async deletion; "
+            f"got {config.LABGEN_NS_DELETE_MAX_RETRIES}"
+        )
+        assert config.LABGEN_NS_DELETE_POLL_INTERVAL_S >= 1.0, (
+            "LABGEN_NS_DELETE_POLL_INTERVAL_S must be ≥1.0s for K3s; "
+            f"got {config.LABGEN_NS_DELETE_POLL_INTERVAL_S}"
+        )
+
+    def test_session_service_uses_config_retry_values(self) -> None:
+        """get_session_service() must wire LABGEN_NS_DELETE_* config into LabSessionService."""
+        import inspect
+        from backend.labgen import routes as _routes
+        src = inspect.getsource(_routes.get_session_service)
+        assert "LABGEN_NS_DELETE_MAX_RETRIES" in src, (
+            "get_session_service() does not pass LABGEN_NS_DELETE_MAX_RETRIES to LabSessionService"
+        )
+        assert "LABGEN_NS_DELETE_POLL_INTERVAL_S" in src, (
+            "get_session_service() does not pass LABGEN_NS_DELETE_POLL_INTERVAL_S to LabSessionService"
+        )

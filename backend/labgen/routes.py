@@ -169,6 +169,8 @@ def get_session_service() -> LabSessionService:
                 session_repo=session_repo,
                 draft_repo=draft_repo,
             ),
+            ns_delete_max_retries=config.LABGEN_NS_DELETE_MAX_RETRIES,
+            ns_delete_poll_interval=config.LABGEN_NS_DELETE_POLL_INTERVAL_S,
         )
     return _session_svc
 

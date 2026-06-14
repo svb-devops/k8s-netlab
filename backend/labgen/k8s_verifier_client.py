@@ -75,9 +75,14 @@ class K8sVerifierClientAdapter(K8sVerifierClientPort):
     # ------------------------------------------------------------------
 
     def namespace_exists(self, namespace: str) -> bool:
-        """Return True if the namespace exists (uses ClusterRole namespaces/get)."""
+        """Return True if the namespace exists.
+
+        Uses list_namespaced_config_map (namespace-scoped, limit=1) so only
+        the per-session RoleBinding is required — not a ClusterRoleBinding.
+        404 → namespace is gone; other errors propagate to the caller.
+        """
         try:
-            self._core.read_namespace(namespace)
+            self._core.list_namespaced_config_map(namespace, limit=1)
             return True
         except ApiException as exc:
             if exc.status == 404:
