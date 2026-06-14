@@ -496,7 +496,112 @@ class TestVerifierServiceResultFields:
         svc = _make_service({s.session_id: s}, self._store)
         result = svc.check(s.session_id, _make_template())
         assert result.error_code is None
-        assert result.detail == ""
+        # detail is populated with a learner-facing message on dispatch-path success
+        assert result.detail != ""
+
+
+# ===========================================================================
+# _make_detail — learner-facing messages
+# ===========================================================================
+
+
+class TestMakeDetail:
+    """VerifierService._make_detail produces learner-facing messages for dispatch results.
+
+    Security invariant: must never include session.namespace (tested separately
+    in TestVerifierDetailSafetyRC in test_labgen_production_readiness_rc.py).
+    """
+
+    def _svc(self, tmp_path, default_pass: bool = True) -> tuple:
+        store = _make_store(tmp_path)
+        session = _active_session()
+        fake = FakeK8sVerifierClient(default=default_pass)
+        svc = _make_service({session.session_id: session}, store, fake)
+        return svc, session
+
+    def test_namespace_exists_pass_detail(self, tmp_path: Path) -> None:
+        svc, session = self._svc(tmp_path, default_pass=True)
+        result = svc.check(session.session_id, _make_template(vtype=VerifyType.NAMESPACE_EXISTS))
+        assert result.passed is True
+        assert "namespace" in result.detail.lower()
+        assert result.detail != ""
+
+    def test_namespace_exists_fail_detail(self, tmp_path: Path) -> None:
+        svc, session = self._svc(tmp_path, default_pass=False)
+        result = svc.check(session.session_id, _make_template(vtype=VerifyType.NAMESPACE_EXISTS))
+        assert result.passed is False
+        assert result.detail != ""
+        assert result.error_code is None  # dispatch failure, not a security failure
+
+    def test_configmap_exists_pass_detail(self, tmp_path: Path) -> None:
+        svc, session = self._svc(tmp_path, default_pass=True)
+        tmpl = _make_template(vtype=VerifyType.CONFIGMAP_EXISTS, name="my-app-config")
+        result = svc.check(session.session_id, tmpl)
+        assert result.passed is True
+        assert "my-app-config" in result.detail
+        assert "found" in result.detail.lower()
+
+    def test_configmap_exists_fail_detail_contains_hint(self, tmp_path: Path) -> None:
+        svc, session = self._svc(tmp_path, default_pass=False)
+        tmpl = _make_template(vtype=VerifyType.CONFIGMAP_EXISTS, name="my-app-config")
+        result = svc.check(session.session_id, tmpl)
+        assert result.passed is False
+        assert "my-app-config" in result.detail
+        assert result.detail != ""
+
+    def test_secret_exists_pass_detail(self, tmp_path: Path) -> None:
+        svc, session = self._svc(tmp_path, default_pass=True)
+        tmpl = _make_template(vtype=VerifyType.SECRET_EXISTS, name="my-secret")
+        result = svc.check(session.session_id, tmpl)
+        assert result.passed is True
+        assert "my-secret" in result.detail
+
+    def test_pod_running_pass_detail(self, tmp_path: Path) -> None:
+        svc, session = self._svc(tmp_path, default_pass=True)
+        tmpl = _make_template(vtype=VerifyType.POD_RUNNING, name="my-pod")
+        result = svc.check(session.session_id, tmpl)
+        assert result.passed is True
+        assert "my-pod" in result.detail
+
+    def test_deployment_ready_pass_detail(self, tmp_path: Path) -> None:
+        svc, session = self._svc(tmp_path, default_pass=True)
+        tmpl = _make_template(vtype=VerifyType.DEPLOYMENT_READY, name="my-deploy")
+        result = svc.check(session.session_id, tmpl)
+        assert result.passed is True
+        assert "my-deploy" in result.detail
+
+    def test_service_exists_pass_detail(self, tmp_path: Path) -> None:
+        svc, session = self._svc(tmp_path, default_pass=True)
+        tmpl = _make_template(vtype=VerifyType.SERVICE_EXISTS, name="my-svc")
+        result = svc.check(session.session_id, tmpl)
+        assert result.passed is True
+        assert "my-svc" in result.detail
+
+    def test_security_fail_paths_no_detail(self, tmp_path: Path) -> None:
+        """_fail() paths (session_not_found, not_active, etc.) must keep detail=""."""
+        store = _make_store(tmp_path)
+        svc = _make_service({}, store)  # empty sessions → not_found
+
+        result = svc.check("nonexistent-session", _make_template())
+        assert result.passed is False
+        assert result.detail == ""  # _fail() path stays empty
+
+    def test_security_fail_cluster_scope_no_detail(self, tmp_path: Path) -> None:
+        store = _make_store(tmp_path)
+        session = _active_session()
+        svc = _make_service({session.session_id: session}, store)
+        tmpl = _make_template(cluster_scope=True)
+        result = svc.check(session.session_id, tmpl)
+        assert result.passed is False
+        assert result.detail == ""  # cluster_scope rejection stays empty
+
+    def test_detail_never_contains_resolved_namespace(self, tmp_path: Path) -> None:
+        """Regression: detail must not expose session.namespace."""
+        store = _make_store(tmp_path)
+        session = _active_session(namespace="lab-private-ns-xyz")
+        svc = _make_service({session.session_id: session}, store)
+        result = svc.check(session.session_id, _make_template(vtype=VerifyType.NAMESPACE_EXISTS))
+        assert "lab-private-ns-xyz" not in result.detail
 
 
 # ===========================================================================

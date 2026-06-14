@@ -189,13 +189,62 @@ class VerifierService:
         kubeconfig, _ = self._credential_store.load(session.vm_id)
         client = self._k8s_client_factory(kubeconfig)
         passed = self._dispatch(client, resolved_ns, template)
+        detail = self._make_detail(template.type, template.name or "", passed)
 
         return VerifyResult(
             session_id=session_id,
             verify_id=template.verify_id,
             verify_type=template.type.value,
             passed=passed,
+            detail=detail,
         )
+
+    @staticmethod
+    def _make_detail(vtype: "VerifyType", name: str, passed: bool) -> str:
+        """Return a learner-facing message for dispatch-path results.
+
+        Must never include session.namespace or any credential value.
+        Returns "" for unknown types so new types are safe by default.
+        """
+        if vtype == VerifyType.NAMESPACE_EXISTS:
+            return (
+                "Your isolated namespace is active on the cluster."
+                if passed
+                else "Your namespace was not found. Try clicking Check Step again in a moment."
+            )
+        if vtype == VerifyType.CONFIGMAP_EXISTS:
+            return (
+                f'ConfigMap "{name}" was found in your isolated namespace. '
+                "Your Kubernetes resource was created successfully."
+                if passed
+                else f'ConfigMap "{name}" was not found. '
+                f'Check that the name is exactly "{name}" and that it was created in your lab namespace.'
+            )
+        if vtype == VerifyType.SECRET_EXISTS:
+            return (
+                f'Secret "{name}" was found in your namespace.'
+                if passed
+                else f'Secret "{name}" was not found. Check the name and namespace.'
+            )
+        if vtype == VerifyType.POD_RUNNING:
+            return (
+                f'Pod "{name}" is running in your namespace.'
+                if passed
+                else f'Pod "{name}" is not running yet. Check the pod status with: kubectl get pods'
+            )
+        if vtype == VerifyType.DEPLOYMENT_READY:
+            return (
+                f'Deployment "{name}" is ready in your namespace.'
+                if passed
+                else f'Deployment "{name}" is not ready yet. Check with: kubectl get deployments'
+            )
+        if vtype == VerifyType.SERVICE_EXISTS:
+            return (
+                f'Service "{name}" exists in your namespace.'
+                if passed
+                else f'Service "{name}" was not found. Check the service name and namespace.'
+            )
+        return ""
 
     @staticmethod
     def _dispatch(
