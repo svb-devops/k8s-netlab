@@ -1,8 +1,8 @@
 # LabGen MVP — Staging Ops Ticket Status Tracker
 
 > **Purpose**: Track completion status of each ops provisioning ticket.  
-> **Updated**: 2026-06-13 — ALL 6 tickets VERIFIED; Runtime Session Smoke PASSED_WITH_NOTES; Pilot Gate READY_WITH_NOTES  
-> **Current state**: ALL 6 ops tickets VERIFIED; PILOT_GATE_READY_WITH_NOTES (see `docs/labgen/HOME_LAB_MVP_PILOT_GATE_RESULT_v0.1.md`)  
+> **Updated**: 2026-06-13 — ALL 6 tickets VERIFIED; Runtime Session Smoke PASSED_WITH_NOTES; Pilot Gate READY_WITH_NOTES; Verifier Client Path Smoke PASSED; **First Pilot Lab RELEASED**  
+> **Current state**: ALL 6 ops tickets VERIFIED; PILOT_GATE_READY_WITH_NOTES; Verifier Client Path Smoke PASSED; **PILOT_LAB_READY_WITH_NOTES** — First pilot lab published and internal rehearsal passed (see `docs/labgen/FIRST_PILOT_LAB_RELEASE_RESULT_v0.1.md`)  
 > **Code blocker resolved**: `K3sNamespaceLifecycleAdapter` is fully implemented (commit `44cce73`). Remaining blockers are ops-side only.  
 > **Ticket pack**: `docs/labgen/OPS_PROVISIONING_TICKET_PACK_v0.1.md`  
 > **Execution result**: `docs/labgen/STAGING_OPS_TICKET_EXECUTION_RESULT_v0.1.md`  

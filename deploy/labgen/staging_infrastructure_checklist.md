@@ -1,7 +1,7 @@
 # LabGen MVP — Staging Infrastructure Checklist
 
-> **Status**: PILOT_GATE_READY_WITH_NOTES (2026-06-13) — K3S_SMOKE_PASSED; RUNTIME_SESSION_SMOKE_PASSED_WITH_NOTES; VM 400 cleaned; all residuals cleared  
-> **Updated**: 2026-06-13 — Pilot Gate completed; see `docs/labgen/HOME_LAB_MVP_PILOT_GATE_RESULT_v0.1.md`  
+> **Status**: PILOT_LAB_READY_WITH_NOTES (2026-06-13) — K3S_SMOKE_PASSED; RUNTIME_SESSION_SMOKE_PASSED_WITH_NOTES; Verifier Client Path Smoke PASSED; First Pilot Lab Published and Rehearsal PASSED  
+> **Updated**: 2026-06-13 — First Pilot Lab Release gate completed; see `docs/labgen/FIRST_PILOT_LAB_RELEASE_RESULT_v0.1.md`  
 > **Basis**: `docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`  
 > **Purpose**: Track provisioning of each infrastructure component required for  
 > Controlled Staging Trial v0.1 live execution  
