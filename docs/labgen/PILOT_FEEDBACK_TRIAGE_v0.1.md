@@ -125,6 +125,7 @@ The pilot was conducted as an operator-controlled API simulation. No real human 
 | NOTE-03 | NOTE | Verifier correctness | Only `namespace_exists` verifier type proven end-to-end; `pod_running`, `secret_exists`, `configmap_exists`, `service_exists` untested in real session | OPEN — track for second pilot lab |
 | NOTE-04 | NOTE | Ops burden | env file → config.py drift risk: no startup validation of env file SA names against code defaults | OPEN — consider config validation check at startup |
 | NOTE-05 | NOTE | Portability | home_lab_mvp profile — cloud portability unproven (T430/Proxmox only) | ACCEPTED_MVP_RISK — documented |
+| OPS-INIT-001 | ~~MEDIUM~~ **DOCUMENTED** | home_lab_mvp verifier must use `initialize_verifier_for_vm_host_side`, not QEMU-agent path | **RESOLVED — Ops Runbook Hardening v0.1 (2026-06-14)** — `docs/labgen/HOME_LAB_MVP_OPS_RUNBOOK_v0.1.md` Section C |
 
 **Summary by severity:**
 

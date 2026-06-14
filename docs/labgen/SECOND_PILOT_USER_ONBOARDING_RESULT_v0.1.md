@@ -183,12 +183,12 @@ Since this is a staging pilot run by Claude Code acting as operator, feedback re
 
 ## K. Open Issues After This Run
 
-| ID | Severity | Description | Owner |
-|----|----------|-------------|-------|
-| OPS-INIT-001 | MEDIUM | `initialize_verifier_for_vm` (QEMU agent) vs `initialize_verifier_for_vm_host_side` (platform kubeconfig): ops runbook must specify which to call for home_lab_mvp | Dev |
-| UX-NOTE-001 | LOW | Step check returns `credential_missing` on first run if verifier not re-initialized after VM reprovision | Known ops dependency |
-| UX-NOTE-002 | LOW | Abort shows `confirm()` dialog — valid UX safety gate, but requires special handling in headless test scripts | Testing/UX |
-| CLEANUP-NOTE-001 | LOW | Cleanup latency ~0-8s after abort click — acceptable for MVP | Known |
+| ID | Severity | Description | Owner | Status |
+|----|----------|-------------|-------|--------|
+| OPS-INIT-001 | ~~MEDIUM~~ **DOCUMENTED** | `initialize_verifier_for_vm` (QEMU agent) must NOT be used for home_lab_mvp. Use `initialize_verifier_for_vm_host_side(vm_id, platform_kubeconfig_path)`. Runbook: `docs/labgen/HOME_LAB_MVP_OPS_RUNBOOK_v0.1.md` Section C. | Dev | **RESOLVED — Ops Runbook Hardening v0.1 (2026-06-14)** |
+| UX-NOTE-001 | LOW | Step check returns `credential_missing` on first run if verifier not re-initialized after VM reprovision | Known ops dependency | OPEN |
+| UX-NOTE-002 | LOW | Abort shows `confirm()` dialog — valid UX safety gate, but requires special handling in headless test scripts | Testing/UX | OPEN |
+| CLEANUP-NOTE-001 | LOW | Cleanup latency ~0-8s after abort click — acceptable for MVP | Known | OPEN |
 
 ---
 

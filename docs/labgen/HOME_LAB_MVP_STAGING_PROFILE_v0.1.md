@@ -328,6 +328,20 @@ The above static checks verify that:
 
 ---
 
+## I-A. Ops Runbook
+
+For operational procedures (verifier initialization, VM recovery, pilot session management,
+emergency stop, cloud portability), see:
+
+> **`docs/labgen/HOME_LAB_MVP_OPS_RUNBOOK_v0.1.md`** (Ops Runbook Hardening v0.1, 2026-06-14)
+
+Key ops constraint captured in runbook:
+- For home_lab_mvp, verifier initialization MUST use `initialize_verifier_for_vm_host_side`.
+- The QEMU-agent path (`initialize_verifier_for_vm`) creates kubeconfig with `127.0.0.1:6443`
+  (VM-local, unreachable from Proxmox host) and is **forbidden** for this profile.
+
+---
+
 ## J. Unblock Path (concrete next actions for ops)
 
 Current state: LIVE_TRIAL_BLOCKED (no real `.env.staging`; no real staging secrets).
