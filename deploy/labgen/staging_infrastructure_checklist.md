@@ -1,7 +1,7 @@
 # LabGen MVP — Staging Infrastructure Checklist
 
-> **Status**: PILOT_FEEDBACK_TRIAGED (2026-06-14) — K3S_SMOKE_PASSED; RUNTIME_SESSION_SMOKE_PASSED_WITH_NOTES; First Pilot Lab RELEASED; First Pilot User ONBOARDED_WITH_NOTES; **Pilot Feedback TRIAGED**  
-> **Updated**: 2026-06-14 — Pilot Feedback Triage v0.1 completed; 0 BLOCKER/HIGH; 3 MEDIUM bugs fixed; second pilot user allowed (frontend smoke test required first); see `docs/labgen/PILOT_FEEDBACK_TRIAGE_v0.1.md`  
+> **Status**: FRONTEND_LEARNER_SMOKE_PASSED_WITH_NOTES (2026-06-14) — K3S_SMOKE_PASSED; RUNTIME_SESSION_SMOKE_PASSED_WITH_NOTES; First Pilot Lab RELEASED; First Pilot User ONBOARDED_WITH_NOTES; Pilot Feedback TRIAGED; **Frontend Learner Smoke PASSED_WITH_NOTES**  
+> **Updated**: 2026-06-14 — Frontend Learner Pilot Smoke v0.1 completed; 16 PASS 0 FAIL; 12 bugs fixed (CSP + field mismatches); second pilot user now unblocked; see `docs/labgen/FRONTEND_LEARNER_PILOT_SMOKE_RESULT_v0.1.md`  
 > **Basis**: `docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`  
 > **Purpose**: Track provisioning of each infrastructure component required for  
 > Controlled Staging Trial v0.1 live execution  
@@ -198,6 +198,7 @@ python scripts/labgen_ops_staging_intake_verify.py \
 | G-11 | **Pilot Gate: PILOT_GATE_READY or PILOT_GATE_READY_WITH_NOTES** | `[x]` — **PILOT_GATE_READY_WITH_NOTES** (2026-06-13); VM 400 cleaned; all residuals clear; verifier client not exercised (note); 0 published labs (pre-pilot action required); see `docs/labgen/HOME_LAB_MVP_PILOT_GATE_RESULT_v0.1.md` |
 | G-12 | **First Pilot User Onboarding: FIRST_PILOT_USER_ONBOARDED or FIRST_PILOT_USER_ONBOARDED_WITH_NOTES** | `[x]` — **FIRST_PILOT_USER_ONBOARDED_WITH_NOTES** (2026-06-14); pilot-user-01 completed full lab flow; LAB_CLOSED; cleanup_verified=True; 3 bugs discovered and fixed; 3137 tests pass, 93.12% coverage; see `docs/labgen/FIRST_PILOT_USER_ONBOARDING_RESULT_v0.1.md` |
 | G-13 | **Pilot Feedback Triage: PILOT_FEEDBACK_TRIAGED or PILOT_FEEDBACK_TRIAGED_WITH_BLOCKERS** | `[x]` — **PILOT_FEEDBACK_TRIAGED** (2026-06-14); 0 BLOCKER, 0 HIGH; 3 MEDIUM bugs resolved with regression tests; 2 LOW (sync cleanup latency, orphan tracker entry); 5 NOTE (frontend untested, feedback insufficient, single verifier type, env drift risk, portability); second pilot user allowed (precondition: frontend smoke test); see `docs/labgen/PILOT_FEEDBACK_TRIAGE_v0.1.md` |
+| G-14 | **Frontend Learner Pilot Smoke: FRONTEND_LEARNER_SMOKE_PASSED or FRONTEND_LEARNER_SMOKE_PASSED_WITH_NOTES** | `[x]` — **FRONTEND_LEARNER_SMOKE_PASSED_WITH_NOTES** (2026-06-14); 16 PASS 0 FAIL; 12 bugs fixed; vm_id auto-discovery; cleanup_verified=True; 3139 tests, 93.13%; second pilot user unblocked; see `docs/labgen/FRONTEND_LEARNER_PILOT_SMOKE_RESULT_v0.1.md` |
 
 **If G-0a is `[ ]` (intake gate not READY): trial is BLOCKED. Do not run Phase 3+.**  
 **If any other gate is `[ ]`: trial is BLOCKED. Do not proceed with Phase 3+ of the trial runbook.**

@@ -131,26 +131,38 @@ test('catalog: XSS in title is escaped', () => {
 
 test('lab detail: eligible shows start button enabled', () => {
     const lab = { title: 'Pod Networking', objectives: ['obj1'], steps: [{ step_id: 's1', title: 'Step 1' }] };
-    const elig = { is_eligible: true, runtime_checks_deferred: false, reasons: [] };
+    // Backend returns is_startable (not is_eligible) + issues array
+    const elig = { is_startable: true, issues: [], checked_at: '2026-06-14T00:00:00Z' };
     const html = renderLabDetail({ lab, eligibility: elig });
     assert.ok(hasAttr(html, 'data-startable', 'true'));
-    assert.ok(!hasDisabled(html, 'start-lab'), 'Start button must not be disabled when eligible');
+    assert.ok(!hasDisabled(html, 'start-lab'), 'Start button must not be disabled when is_startable=true');
 });
 
 test('lab detail: not eligible shows start button disabled', () => {
     const lab = { title: 'Pod Networking', objectives: [], steps: [] };
-    const elig = { is_eligible: false, runtime_checks_deferred: false, reasons: [{ message: 'No VM assigned' }] };
+    // Backend: is_startable=false with error issues
+    const elig = { is_startable: false, issues: [{ code: 'NO_VM', message: 'No VM assigned', severity: 'error', source: 'session' }], checked_at: '2026-06-14T00:00:00Z' };
     const html = renderLabDetail({ lab, eligibility: elig });
     assert.ok(hasAttr(html, 'data-startable', 'false'));
-    assert.ok(hasDisabled(html, 'start-lab'), 'Start button must be disabled when not eligible');
+    assert.ok(hasDisabled(html, 'start-lab'), 'Start button must be disabled when is_startable=false');
     assert.ok(html.includes('No VM assigned'), 'Ineligible reason not shown');
+});
+
+test('lab detail: is_startable=true (not is_eligible) enables Start button', () => {
+    const lab = { title: 'Pod Networking', objectives: [], steps: [] };
+    // Regression: old code checked is_eligible which does not exist in API
+    const elig = { is_startable: true, issues: [], checked_at: '2026-06-14T00:00:00Z' };
+    const html = renderLabDetail({ lab, eligibility: elig });
+    assert.ok(!hasDisabled(html, 'start-lab'), 'is_startable=true must enable Start (not is_eligible)');
 });
 
 test('lab detail: runtime_checks_deferred shows warning', () => {
     const lab = { title: 'Test Lab', objectives: [], steps: [] };
-    const elig = { is_eligible: true, runtime_checks_deferred: true, reasons: [] };
+    // Regression: old code checked top-level runtime_checks_deferred which does not exist in API
+    // The RUNTIME_CHECKS_DEFERRED code comes inside the issues array
+    const elig = { is_startable: true, issues: [{ code: 'RUNTIME_CHECKS_DEFERRED', message: 'checks deferred', severity: 'warning', source: 'runtime' }], checked_at: '2026-06-14T00:00:00Z' };
     const html = renderLabDetail({ lab, eligibility: elig });
-    assert.ok(html.includes('RUNTIME_CHECKS_DEFERRED') || html.includes('deferred'), 'Missing deferred warning');
+    assert.ok(html.includes('deferred'), 'Missing deferred warning');
 });
 
 test('lab detail: 404 does not reveal unpublished details', () => {
@@ -162,78 +174,153 @@ test('lab detail: 404 does not reveal unpublished details', () => {
 });
 
 // ── renderSessionView ─────────────────────────────────────────────────────────
+//
+// Mock snapshots match the backend LearnerSessionSnapshot model exactly:
+//   session_state (not state), title (not lab_title),
+//   runtime_summary.ready_to_complete (not top-level ready_to_complete),
+//   runtime_summary.failure_reason (not top-level failure_reason),
+//   action_availability.can_check_current_step (not can_check_step),
+//   step.status === 'passed' (not completed_step_ids),
+//   step.is_current (not step_id === current_step_id),
+//   step.check_summary (not last_verify_results at snapshot level).
+
+function makeStep(stepId, title, { status = 'locked', isCurrent = false, checkSummary = null } = {}) {
+    return { step_id: stepId, title, learner_goal: '', status, is_current: isCurrent, check_summary: checkSummary };
+}
 
 const ACTIVE_SNAPSHOT = {
     session_id: 'sess-abc',
-    state: 'LAB_ACTIVE',
-    lab_title: 'Pod Networking',
+    lab_id: 'lab-xyz',
+    session_state: 'LAB_ACTIVE',
+    title: 'Pod Networking',
     current_step_id: 'step-1',
-    completed_step_ids: [],
-    ready_to_complete: false,
     steps: [
-        { step_id: 'step-1', title: 'Create a pod' },
-        { step_id: 'step-2', title: 'Check connectivity' },
+        makeStep('step-1', 'Create a pod', { status: 'available', isCurrent: true }),
+        makeStep('step-2', 'Check connectivity'),
     ],
-    action_availability: { can_check_step: true, can_complete: false, can_abort: true },
-    last_verify_results: [],
-    failure_reason: null,
+    runtime_summary: { ready_to_complete: false, failure_reason: null, vm_status: 'active', cleanup_status: null, tainted: false },
+    action_availability: { can_check_current_step: true, can_complete: false, can_abort: true, disabled_reasons: [] },
+    issues: [],
+    checked_at: '2026-06-14T00:00:00Z',
 };
 
 test('session view: active session shows current step', () => {
     const html = renderSessionView(ACTIVE_SNAPSHOT);
     assert.ok(html.includes('Create a pod'), 'Current step title missing');
     assert.ok(html.includes('Check connectivity'), 'Second step title missing');
-    // current step marker
     assert.ok(html.includes('data-step-status="current"'), 'Current step marker missing');
 });
 
-test('session view: action_availability controls button disabled state', () => {
+test('session view: session_state field used for status badge (not state)', () => {
     const html = renderSessionView(ACTIVE_SNAPSHOT);
-    // can_check_step=true → enabled
-    assert.ok(!hasDisabled(html, 'check-step'), 'Check step should be enabled');
-    // can_complete=false → disabled
-    assert.ok(hasDisabled(html, 'complete'), 'Complete must be disabled');
-    // can_abort=true → enabled
-    assert.ok(!hasDisabled(html, 'abort'), 'Abort should be enabled');
+    assert.ok(html.includes('LAB_ACTIVE'), 'session_state value not rendered in badge');
+    assert.ok(!html.includes('UNKNOWN'), 'UNKNOWN badge must not appear when session_state is set');
 });
 
-test('session view: ready_to_complete=true enables complete button', () => {
+test('session view: title field used for lab title (not lab_title)', () => {
+    const html = renderSessionView(ACTIVE_SNAPSHOT);
+    assert.ok(html.includes('Pod Networking'), 'title field not rendered');
+    // Snapshot with no title should show nothing (not break)
+    const noTitle = { ...ACTIVE_SNAPSHOT, title: '' };
+    const html2 = renderSessionView(noTitle);
+    assert.ok(!html2.includes('undefined'), 'undefined must not appear when title empty');
+});
+
+test('session view: action_availability.can_check_current_step controls Check button', () => {
+    const html = renderSessionView(ACTIVE_SNAPSHOT);
+    assert.ok(!hasDisabled(html, 'check-step'), 'Check step should be enabled (can_check_current_step=true)');
+    assert.ok(hasDisabled(html, 'complete'), 'Complete must be disabled (can_complete=false)');
+    assert.ok(!hasDisabled(html, 'abort'), 'Abort should be enabled (can_abort=true)');
+});
+
+test('session view: can_check_current_step=false disables Check button', () => {
     const snapshot = {
         ...ACTIVE_SNAPSHOT,
-        ready_to_complete: true,
-        action_availability: { can_check_step: false, can_complete: true, can_abort: false },
+        action_availability: { ...ACTIVE_SNAPSHOT.action_availability, can_check_current_step: false },
+    };
+    const html = renderSessionView(snapshot);
+    assert.ok(hasDisabled(html, 'check-step'), 'Check button must be disabled when can_check_current_step=false');
+});
+
+test('session view: runtime_summary.ready_to_complete controls data-ready and Complete button', () => {
+    const snapshot = {
+        ...ACTIVE_SNAPSHOT,
+        runtime_summary: { ...ACTIVE_SNAPSHOT.runtime_summary, ready_to_complete: true },
+        action_availability: { can_check_current_step: false, can_complete: true, can_abort: false, disabled_reasons: [] },
     };
     const html = renderSessionView(snapshot);
     assert.ok(hasAttr(html, 'data-ready', 'true'), 'Missing data-ready=true');
-    assert.ok(!hasDisabled(html, 'complete'), 'Complete should be enabled');
+    assert.ok(!hasDisabled(html, 'complete'), 'Complete should be enabled when ready_to_complete=true');
 });
 
-test('session view: passed step shows status=passed', () => {
+test('session view: step.status=passed marks step as passed (not completed_step_ids)', () => {
     const snapshot = {
         ...ACTIVE_SNAPSHOT,
-        completed_step_ids: ['step-1'],
+        steps: [
+            makeStep('step-1', 'Create a pod', { status: 'passed', isCurrent: false }),
+            makeStep('step-2', 'Check connectivity', { status: 'available', isCurrent: true }),
+        ],
         current_step_id: 'step-2',
     };
     const html = renderSessionView(snapshot);
-    assert.ok(html.includes('data-step-status="passed"'), 'Passed step not marked');
+    assert.ok(html.includes('data-step-status="passed"'), 'Passed step (status=passed) not marked');
+    assert.ok(html.includes('data-step-status="current"'), 'Current step not marked');
 });
 
-test('session view: complete/abort hide buttons after terminal state', () => {
+test('session view: step.is_current marks current step', () => {
+    const snapshot = {
+        ...ACTIVE_SNAPSHOT,
+        steps: [
+            makeStep('step-1', 'Create a pod', { status: 'available', isCurrent: true }),
+            makeStep('step-2', 'Check connectivity', { status: 'locked', isCurrent: false }),
+        ],
+    };
+    const html = renderSessionView(snapshot);
+    assert.ok(html.includes('data-step-status="current"'), 'is_current=true step not marked as current');
+    assert.ok(html.includes('data-step-status="pending"'), 'locked step not marked as pending');
+});
+
+test('session view: step.check_summary rendered under current step (not snapshot.last_verify_results)', () => {
+    const summary = { last_result: 'passed', safe_message: null, failure_reason: null };
+    const snapshot = {
+        ...ACTIVE_SNAPSHOT,
+        steps: [makeStep('step-1', 'Create a pod', { status: 'available', isCurrent: true, checkSummary: summary })],
+    };
+    const html = renderSessionView(snapshot);
+    assert.ok(html.includes('✓'), 'passed check icon missing');
+    assert.ok(html.includes('passed'), 'passed label missing');
+});
+
+test('session view: check_summary failure shows error icon and failure_reason', () => {
+    const summary = { last_result: 'failed', safe_message: null, failure_reason: 'namespace_not_found' };
+    const snapshot = {
+        ...ACTIVE_SNAPSHOT,
+        steps: [makeStep('step-1', 'Create a pod', { status: 'available', isCurrent: true, checkSummary: summary })],
+    };
+    const html = renderSessionView(snapshot);
+    assert.ok(html.includes('✗'), 'fail icon missing');
+    assert.ok(html.includes('namespace_not_found'), 'failure_reason not shown');
+});
+
+test('session view: runtime_summary.failure_reason shown as banner (not snapshot.failure_reason)', () => {
+    const snapshot = {
+        ...ACTIVE_SNAPSHOT,
+        runtime_summary: { ...ACTIVE_SNAPSHOT.runtime_summary, failure_reason: 'namespace_cleanup_failed' },
+    };
+    const html = renderSessionView(snapshot);
+    assert.ok(html.includes('namespace_cleanup_failed'), 'failure_reason banner not shown');
+});
+
+test('session view: complete/abort disabled after terminal state', () => {
     const closed = {
         ...ACTIVE_SNAPSHOT,
-        state: 'LAB_CLOSED',
-        action_availability: { can_check_step: false, can_complete: false, can_abort: false },
+        session_state: 'LAB_CLOSED',
+        action_availability: { can_check_current_step: false, can_complete: false, can_abort: false, disabled_reasons: [] },
     };
     const html = renderSessionView(closed);
     assert.ok(hasDisabled(html, 'check-step'), 'Check step must be disabled in closed state');
     assert.ok(hasDisabled(html, 'complete'), 'Complete must be disabled in closed state');
     assert.ok(hasDisabled(html, 'abort'), 'Abort must be disabled in closed state');
-});
-
-test('session view: failure_reason shown as safe summary', () => {
-    const snapshot = { ...ACTIVE_SNAPSHOT, failure_reason: 'namespace_cleanup_failed' };
-    const html = renderSessionView(snapshot);
-    assert.ok(html.includes('namespace_cleanup_failed'), 'Failure reason not shown');
 });
 
 test('session view: does not expose kubeconfig or vm_id', () => {
@@ -246,8 +333,6 @@ test('session view: does not expose kubeconfig or vm_id', () => {
     const html = renderSessionView(snapshot);
     assert.ok(!html.includes('apiVersion: v1'), 'kubeconfig must not appear');
     assert.ok(!html.includes('vm_id'), 'vm_id field must not appear');
-    // verifier_credential is a JWT-like — assertNoSensitiveDisplayData would catch it
-    // but the render function itself never outputs these undeclared fields
 });
 
 // ── Safety: injected sensitive values must not render ─────────────────────────

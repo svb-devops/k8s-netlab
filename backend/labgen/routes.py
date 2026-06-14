@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, field_validator
 from backend import config
 from backend.auth import auth_manager
 from backend.auth_deps import get_current_user
+from backend.vm_tracker import VMTracker
 from backend.labgen.lab_session_repository import LabSessionRepository
 from backend.labgen.lab_session_service import (
     LabNotReadyToComplete,
@@ -888,7 +889,7 @@ internal_router = APIRouter(prefix="/internal/lab-sessions", tags=["internal"])
 
 class CreateSessionRequest(BaseModel):
     lab_id: str
-    vm_id: str
+    vm_id: Optional[str] = None  # omit to auto-discover student's assigned VM
 
 
 # ---------------------------------------------------------------------------
@@ -915,10 +916,23 @@ async def create_lab_session(
     username: str = Depends(get_current_user),
     svc: LabSessionService = Depends(get_session_service),
 ) -> LabSessionState:
+    vm_id = body.vm_id
+    if vm_id is None:
+        owned = VMTracker().get_user_vms(username)
+        if not owned:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "precheck_failures": [
+                        {"code": "no_vm_assigned", "message": "No VM is assigned to your account. Contact your instructor."}
+                    ]
+                },
+            )
+        vm_id = str(owned[0])
     try:
         return svc.create_session(
             lab_id=body.lab_id,
-            vm_id=body.vm_id,
+            vm_id=vm_id,
             student_username=username,
         )
     except PrecheckFailed as exc:

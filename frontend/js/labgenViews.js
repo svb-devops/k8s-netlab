@@ -220,8 +220,9 @@ export function renderLabCatalog(labs) {
  * @param {object} p.eligibility - LearnerLabEligibility
  */
 export function renderLabDetail({ lab, eligibility }) {
-    const canStart  = eligibility?.is_eligible === true;
-    const deferred  = eligibility?.runtime_checks_deferred === true;
+    const canStart  = eligibility?.is_startable === true;
+    const deferred  = Array.isArray(eligibility?.issues) &&
+        eligibility.issues.some(i => i?.code === 'RUNTIME_CHECKS_DEFERRED');
 
     const objectives = Array.isArray(lab?.objectives)
         ? lab.objectives.map(o => `<li class="text-sm text-gray-700">${_safe(o)}</li>`).join('')
@@ -242,9 +243,10 @@ export function renderLabDetail({ lab, eligibility }) {
            </div>`
         : '';
 
-    const ineligibleReasons = !canStart && Array.isArray(eligibility?.reasons)
+    const ineligibleReasons = !canStart && Array.isArray(eligibility?.issues)
         ? `<ul class="mt-2 list-disc pl-5 text-sm text-red-600">${
-              eligibility.reasons.map(r => `<li>${_safe(r?.message ?? r)}</li>`).join('')
+              eligibility.issues.filter(i => i?.severity === 'error')
+                  .map(i => `<li>${_safe(i?.message ?? i)}</li>`).join('')
           }</ul>`
         : '';
 
@@ -292,20 +294,31 @@ export function renderLabDetail({ lab, eligibility }) {
 
 /**
  * @param {object} snapshot - LearnerSessionSnapshot
+ *
+ * Field mapping (backend model → this function):
+ *   snapshot.session_state           → status badge
+ *   snapshot.title                   → lab title
+ *   snapshot.runtime_summary.ready_to_complete → data-ready / Complete button
+ *   snapshot.runtime_summary.failure_reason    → failure banner
+ *   snapshot.action_availability.can_check_current_step → Check button
+ *   step.status === 'passed'         → step marked as passed
+ *   step.is_current                  → step marked as current
+ *   step.check_summary               → inline verifier result under current step
  */
 export function renderSessionView(snapshot) {
     if (!snapshot) return renderErrorState('Session not found');
 
-    const actions   = snapshot?.action_availability ?? {};
-    const canCheck  = actions?.can_check_step   === true;
-    const canComplete = actions?.can_complete   === true;
-    const canAbort  = actions?.can_abort        === true;
-    const readyToComplete = snapshot?.ready_to_complete === true;
+    const actions        = snapshot?.action_availability ?? {};
+    const canCheck       = actions?.can_check_current_step === true;
+    const canComplete    = actions?.can_complete           === true;
+    const canAbort       = actions?.can_abort              === true;
+    const runtimeSummary = snapshot?.runtime_summary ?? {};
+    const readyToComplete = runtimeSummary?.ready_to_complete === true;
 
     const steps = Array.isArray(snapshot?.steps)
         ? snapshot.steps.map((s, idx) => {
-            const isCurrent  = s?.step_id === snapshot?.current_step_id;
-            const isPassed   = snapshot?.completed_step_ids?.includes(s?.step_id);
+            const isCurrent  = s?.is_current === true;
+            const isPassed   = s?.status === 'passed';
             const border     = isCurrent ? 'border-blue-400' : isPassed ? 'border-green-300' : 'border-gray-200';
             const icon       = isPassed ? '✓' : isCurrent ? '→' : String(idx + 1);
             const statusText = isPassed ? 'passed' : isCurrent ? 'current' : 'pending';
@@ -314,15 +327,16 @@ export function renderSessionView(snapshot) {
                 <span class="text-sm font-bold w-6 text-center ${isPassed ? 'text-green-600' : isCurrent ? 'text-blue-600' : 'text-gray-400'}">${_safe(icon)}</span>
                 <div class="flex-1">
                     <p class="text-sm font-medium text-gray-800">${_safe(s?.title ?? s?.step_id ?? '')}</p>
-                    ${isCurrent && Array.isArray(snapshot?.last_verify_results) ? _renderVerifyResults(snapshot.last_verify_results) : ''}
+                    ${isCurrent ? _renderCheckSummary(s?.check_summary) : ''}
                 </div>
             </div>`;
           }).join('')
         : '';
 
-    const failureReason = snapshot?.failure_reason
+    const failureReasonValue = runtimeSummary?.failure_reason;
+    const failureReason = failureReasonValue
         ? `<div class="bg-orange-50 border border-orange-200 rounded p-3 text-orange-800 text-sm">
-               <strong>Failure reason:</strong> ${_safe(snapshot.failure_reason)}
+               <strong>Failure reason:</strong> ${_safe(failureReasonValue)}
            </div>`
         : '';
 
@@ -330,10 +344,10 @@ export function renderSessionView(snapshot) {
     <div class="space-y-5">
         <div class="flex items-center justify-between">
             <h2 class="text-xl font-semibold text-gray-900">Lab Session</h2>
-            ${_statusBadge(snapshot?.state ?? 'UNKNOWN')}
+            ${_statusBadge(snapshot?.session_state ?? 'UNKNOWN')}
         </div>
 
-        ${snapshot?.lab_title ? `<p class="text-gray-600 font-medium">${_safe(snapshot.lab_title)}</p>` : ''}
+        ${snapshot?.title ? `<p class="text-gray-600 font-medium">${_safe(snapshot.title)}</p>` : ''}
 
         ${failureReason}
 
@@ -366,17 +380,26 @@ export function renderSessionView(snapshot) {
     </div>`;
 }
 
-function _renderVerifyResults(results) {
-    if (!Array.isArray(results) || results.length === 0) return '';
-    const items = results.map(r => {
-        const passed = r?.passed === true;
-        return `<div class="flex items-center gap-2 text-xs mt-1 ${passed ? 'text-green-600' : 'text-red-500'}">
-            <span>${passed ? '✓' : '✗'}</span>
-            <span>${_safe(r?.check_name ?? r?.check_id ?? 'check')}</span>
-            ${!passed && r?.failure_reason ? `<span class="text-gray-400">— ${_safe(r.failure_reason)}</span>` : ''}
-        </div>`;
-    }).join('');
-    return `<div class="mt-2">${items}</div>`;
+function _renderCheckSummary(summary) {
+    if (!summary) return '';
+    const result = summary?.last_result;
+    if (!result || result === 'not_checked') return '';
+    const passed  = result === 'passed';
+    const failed  = result === 'failed';
+    const color   = passed ? 'text-green-600' : failed ? 'text-red-500' : 'text-gray-400';
+    const icon    = passed ? '✓' : failed ? '✗' : '?';
+    const label   = passed ? 'passed' : failed ? 'failed' : _safe(result);
+    const reason  = !passed && summary?.failure_reason
+        ? `<span class="text-gray-400 ml-1">— ${_safe(summary.failure_reason)}</span>`
+        : '';
+    const msg     = !passed && summary?.safe_message
+        ? `<span class="text-gray-400 ml-1">${_safe(summary.safe_message)}</span>`
+        : '';
+    return `<div class="flex items-center gap-2 text-xs mt-1 ${color}">
+        <span>${icon}</span>
+        <span>${label}</span>
+        ${reason}${msg}
+    </div>`;
 }
 
 // ─── Dev: Contract Pack viewer ────────────────────────────────────────────────

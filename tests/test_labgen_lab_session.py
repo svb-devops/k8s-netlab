@@ -558,6 +558,31 @@ class TestCreateSessionEndpoint:
         r = c.post("/api/lab-sessions", json={"lab_id": "lab-1", "vm_id": "vm-500"})
         assert r.status_code in (401, 403)
 
+    def test_create_without_vm_id_returns_422_when_no_vm_assigned(self, student_client):
+        """Regression: POST /api/lab-sessions without vm_id → 422 when student has no VM."""
+        import unittest.mock as mock
+        client, lab_id = student_client
+        with mock.patch("backend.labgen.routes.VMTracker") as MockTracker:
+            instance = MockTracker.return_value
+            instance.get_user_vms.return_value = []
+            r = client.post("/api/lab-sessions", json={"lab_id": lab_id})
+        assert r.status_code == 422
+        detail = r.json()["detail"]
+        assert "precheck_failures" in detail
+        codes = [f["code"] for f in detail["precheck_failures"]]
+        assert "no_vm_assigned" in codes
+
+    def test_create_without_vm_id_auto_discovers_student_vm(self, student_client):
+        """Regression: POST /api/lab-sessions without vm_id uses student's first tracked VM."""
+        import unittest.mock as mock
+        client, lab_id = student_client
+        with mock.patch("backend.labgen.routes.VMTracker") as MockTracker:
+            instance = MockTracker.return_value
+            instance.get_user_vms.return_value = [500]
+            r = client.post("/api/lab-sessions", json={"lab_id": lab_id})
+        assert r.status_code == 201
+        assert r.json()["vm_id"] == "500"
+
 
 class TestGetSessionEndpoint:
     def test_owner_can_get_session(self, student_client, mem_session_repo):
