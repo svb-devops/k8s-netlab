@@ -511,6 +511,48 @@ commit `2da3136`, verifier re-initialized with host-side path, gen=2, smoke pass
 
 ---
 
+## I. RBAC-DRIFT-001 Resolution Record (2026-06-15)
+
+**Issue**: ClusterRole `lab-verifier-namespace-readonly` on K3s contained stale rules after
+multiple code commits had narrowed the intended RBAC. The live ClusterRole still had:
+- `get` verb granted on pods, services, configmaps, namespaces, endpoints
+- `namespaces` and `endpoints` resources (not used by any verifier method)
+- `daemonsets`, `statefulsets`, `replicasets` in the apps group (not used)
+
+**Root cause**: `PlatformVerifierInitializer.ensure_verifier_identity` used a create+409-skip
+pattern. When `create_cluster_role` returned 409 AlreadyExists, the exception was silently
+discarded. Re-running `ensure_verifier_identity` never updated the live ClusterRole — code
+fixes narrowed the manifest, but the K3s live rules were never applied.
+
+**Fix** (commit `b48a9a2`):
+- `ensure_verifier_identity` now calls `replace_cluster_role` (PUT semantics) first.
+  If K3s returns 404 (ClusterRole does not exist), it falls back to `create_cluster_role`.
+- Re-running `ensure_verifier_identity` always applies the current manifest rules.
+- `_CLUSTER_ROLE_MANIFEST` and `V1ClusterRole` SDK object now contain:
+  - Core: pods, services, configmaps — list, watch only (no get)
+  - Secrets: secrets — list, watch only
+  - Apps: deployments only — list, watch only
+  - No namespaces, no endpoints, no get on any resource
+
+**Operator behavior after this fix**:
+Running `initialize_verifier_for_vm_host_side(401, platform_kubeconfig)` (Section C)
+will call `ensure_verifier_identity` which REPLACES the live ClusterRole with the current
+manifest. No manual kubectl intervention is needed. This is idempotent: re-running it
+is safe and always converges to the correct least-privilege state.
+
+**Precheck guardrail** (add to Section E.1 mental model):
+After `initialize_verifier_for_vm_host_side`, you can confirm the live ClusterRole via:
+```bash
+kubectl --kubeconfig /etc/labgen/home_lab_mvp.kubeconfig \
+  get clusterrole lab-verifier-namespace-readonly -o yaml | grep -A3 "verbs:"
+# Expected: only "list" and "watch" — no "get" on any rule
+```
+
+**Evidence**: `docs/labgen/SEVENTH_PILOT_USER_DEPLOYMENT_LAB_RESULT_v0.1.md` Section D,
+commit `b48a9a2`, 12 regression tests added (guardrail + parity + replace semantics).
+
+---
+
 *Not HA. Not production-grade. Not for general availability.*  
 *home_lab_mvp is a controlled pilot profile on single-node Proxmox (T430).*  
 *No real secrets appear in this document.*  

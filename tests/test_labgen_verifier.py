@@ -578,6 +578,19 @@ class TestMakeDetail:
         result = svc.check(session.session_id, tmpl)
         assert result.passed is True
         assert "my-deploy" in result.detail
+        assert "available" in result.detail
+        assert "replica" in result.detail
+        assert "Pod" in result.detail
+
+    def test_deployment_ready_fail_detail(self, tmp_path: Path) -> None:
+        svc, session = self._svc(tmp_path, default_pass=False)
+        tmpl = _make_template(vtype=VerifyType.DEPLOYMENT_READY, name="my-deploy")
+        result = svc.check(session.session_id, tmpl)
+        assert result.passed is False
+        assert "my-deploy" in result.detail
+        assert "not ready" in result.detail
+        assert "approved image" in result.detail
+        assert "short time" in result.detail
 
     def test_service_exists_pass_detail(self, tmp_path: Path) -> None:
         svc, session = self._svc(tmp_path, default_pass=True)

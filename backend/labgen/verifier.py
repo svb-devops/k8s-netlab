@@ -236,9 +236,12 @@ class VerifierService:
             )
         if vtype == VerifyType.DEPLOYMENT_READY:
             return (
-                f'Deployment "{name}" is ready in your namespace.'
+                f'Deployment "{name}" is available with 1 ready replica in your isolated namespace. '
+                "Kubernetes has created a Pod for this workload."
                 if passed
-                else f'Deployment "{name}" is not ready yet. Check with: kubectl get deployments'
+                else f'Deployment "{name}" is not ready yet. '
+                f'Check that the Deployment is named "{name}", uses 1 replica, and uses the approved image. '
+                "It may take a short time for the Pod to become ready."
             )
         if vtype == VerifyType.SERVICE_EXISTS:
             return (
