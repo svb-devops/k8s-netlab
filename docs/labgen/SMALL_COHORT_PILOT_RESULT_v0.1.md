@@ -404,3 +404,15 @@ No BLOCKER, HIGH issues.
 *home_lab_mvp is a controlled pilot profile on single-node Proxmox (T430).*  
 *No real secrets appear in this document.*  
 *Production VMID range 500–599 was not touched during this cohort pilot.*
+
+---
+
+## M. Triage Follow-up (2026-06-15)
+
+Small Cohort Feedback Triage & Product Decision v0.1 completed on 2026-06-15:
+- Decision: **SMALL_COHORT_TRIAGED_NEEDS_ITERATION**
+- Core finding: all cohort sessions were operator-executed; no real human learner responses
+- Feedback status: **FEEDBACK_INSUFFICIENT_FOR_CUSTOMER_PILOT_DECISION**
+- Next step: recruit 1–2 real human learners, run sessions with filled feedback template (Sections 3–10), then re-triage
+- All expansion options (customer pilot prep, fifth lab, LLM gate, cloud staging) deferred pending real feedback
+- See `docs/labgen/SMALL_COHORT_FEEDBACK_TRIAGE_AND_PRODUCT_DECISION_v0.1.md` for full triage

@@ -417,6 +417,11 @@ required before each lab session (not only each user). Runbook J.2 step 8 update
 
 **Full result**: `docs/labgen/SMALL_COHORT_PILOT_RESULT_v0.1.md`
 
+**Triage result**: SMALL_COHORT_TRIAGED_NEEDS_ITERATION — FEEDBACK_INSUFFICIENT_FOR_CUSTOMER_PILOT_DECISION.  
+All cohort sessions were operator-executed; no real human learner feedback collected.  
+Next step: real human pilot session with filled feedback template.  
+See `docs/labgen/SMALL_COHORT_FEEDBACK_TRIAGE_AND_PRODUCT_DECISION_v0.1.md`.
+
 ---
 
 *Not HA. Not production-grade. Not for general availability.*  
