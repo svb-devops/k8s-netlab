@@ -95,20 +95,22 @@ class K8sVerifierClientAdapter(K8sVerifierClientPort):
         """Return True if at least one Running pod matches the criteria.
 
         When label_selector is provided, lists pods by label and checks phase.
-        Without label_selector, reads the pod by name and checks phase.
+        Without label_selector, lists pods by field_selector — does not require 'get' RBAC.
+        The verifier SA requires only 'list' on pods (not 'get').
         """
         try:
             if label_selector:
                 pods = self._core.list_namespaced_pod(
                     namespace, label_selector=label_selector
                 )
-                return any(
-                    p.status is not None and p.status.phase == "Running"
-                    for p in pods.items
-                )
             else:
-                pod = self._core.read_namespaced_pod(name, namespace)
-                return pod.status is not None and pod.status.phase == "Running"
+                pods = self._core.list_namespaced_pod(
+                    namespace, field_selector=f"metadata.name={name}"
+                )
+            return any(
+                p.status is not None and p.status.phase == "Running"
+                for p in pods.items
+            )
         except ApiException as exc:
             if exc.status == 404:
                 return False
@@ -144,18 +146,30 @@ class K8sVerifierClientAdapter(K8sVerifierClientPort):
             raise
 
     def service_exists(self, namespace: str, name: str) -> bool:
+        """Return True if a service with this name exists.
+
+        Uses list_namespaced_service with field_selector — does not require 'get' RBAC.
+        """
         try:
-            self._core.read_namespaced_service(name, namespace)
-            return True
+            result = self._core.list_namespaced_service(
+                namespace, field_selector=f"metadata.name={name}"
+            )
+            return len(result.items) > 0
         except ApiException as exc:
             if exc.status == 404:
                 return False
             raise
 
     def configmap_exists(self, namespace: str, name: str) -> bool:
+        """Return True if a configmap with this name exists.
+
+        Uses list_namespaced_config_map with field_selector — does not require 'get' RBAC.
+        """
         try:
-            self._core.read_namespaced_config_map(name, namespace)
-            return True
+            result = self._core.list_namespaced_config_map(
+                namespace, field_selector=f"metadata.name={name}"
+            )
+            return len(result.items) > 0
         except ApiException as exc:
             if exc.status == 404:
                 return False

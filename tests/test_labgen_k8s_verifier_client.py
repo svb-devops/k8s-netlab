@@ -160,46 +160,57 @@ def _mock_pod(phase: str) -> MagicMock:
     return pod
 
 
+def _mock_pod_list(*phases: str) -> MagicMock:
+    pod_list = MagicMock()
+    pod_list.items = [_mock_pod(p) for p in phases]
+    return pod_list
+
+
 class TestPodRunning:
     def test_returns_true_when_pod_is_running_by_name(self) -> None:
         core = MagicMock()
-        core.read_namespaced_pod.return_value = _mock_pod("Running")
+        core.list_namespaced_pod.return_value = _mock_pod_list("Running")
         adapter = _adapter(core, MagicMock())
         assert adapter.pod_running("lab-ns", "my-pod") is True
-        core.read_namespaced_pod.assert_called_once_with("my-pod", "lab-ns")
+        core.list_namespaced_pod.assert_called_once_with(
+            "lab-ns", field_selector="metadata.name=my-pod"
+        )
+
+    def test_does_not_call_read_namespaced_pod(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_pod.return_value = _mock_pod_list("Running")
+        _adapter(core, MagicMock()).pod_running("lab-ns", "my-pod")
+        core.read_namespaced_pod.assert_not_called()
 
     def test_returns_false_when_pod_is_pending(self) -> None:
         core = MagicMock()
-        core.read_namespaced_pod.return_value = _mock_pod("Pending")
+        core.list_namespaced_pod.return_value = _mock_pod_list("Pending")
         assert _adapter(core, MagicMock()).pod_running("lab-ns", "my-pod") is False
 
     def test_returns_false_when_pod_is_failed(self) -> None:
         core = MagicMock()
-        core.read_namespaced_pod.return_value = _mock_pod("Failed")
+        core.list_namespaced_pod.return_value = _mock_pod_list("Failed")
         assert _adapter(core, MagicMock()).pod_running("lab-ns", "my-pod") is False
 
-    def test_returns_false_on_404_by_name(self) -> None:
+    def test_returns_false_on_empty_list_by_name(self) -> None:
         core = MagicMock()
-        core.read_namespaced_pod.side_effect = _api_404()
+        core.list_namespaced_pod.return_value = _mock_pod_list()
         assert _adapter(core, MagicMock()).pod_running("lab-ns", "no-pod") is False
 
     def test_propagates_non_404_by_name(self) -> None:
         core = MagicMock()
-        core.read_namespaced_pod.side_effect = _api_500()
+        core.list_namespaced_pod.side_effect = _api_500()
         with pytest.raises(ApiException):
             _adapter(core, MagicMock()).pod_running("lab-ns", "my-pod")
 
-    def test_uses_list_when_label_selector_provided(self) -> None:
+    def test_uses_label_selector_when_provided(self) -> None:
         core = MagicMock()
-        pod_list = MagicMock()
-        pod_list.items = [_mock_pod("Running")]
-        core.list_namespaced_pod.return_value = pod_list
+        core.list_namespaced_pod.return_value = _mock_pod_list("Running")
         adapter = _adapter(core, MagicMock())
         assert adapter.pod_running("lab-ns", "ignored", label_selector="app=nginx") is True
         core.list_namespaced_pod.assert_called_once_with(
             "lab-ns", label_selector="app=nginx"
         )
-        core.read_namespaced_pod.assert_not_called()
 
     def test_label_selector_returns_false_when_no_running_pods(self) -> None:
         core = MagicMock()
@@ -318,21 +329,35 @@ class TestDeploymentReady:
 # ---------------------------------------------------------------------------
 
 
+def _mock_svc_list(count: int) -> MagicMock:
+    svc_list = MagicMock()
+    svc_list.items = [MagicMock() for _ in range(count)]
+    return svc_list
+
+
 class TestServiceExists:
     def test_returns_true_when_service_found(self) -> None:
         core = MagicMock()
-        core.read_namespaced_service.return_value = MagicMock()
+        core.list_namespaced_service.return_value = _mock_svc_list(1)
         assert _adapter(core, MagicMock()).service_exists("lab-ns", "nginx-svc") is True
-        core.read_namespaced_service.assert_called_once_with("nginx-svc", "lab-ns")
+        core.list_namespaced_service.assert_called_once_with(
+            "lab-ns", field_selector="metadata.name=nginx-svc"
+        )
 
-    def test_returns_false_on_404(self) -> None:
+    def test_returns_false_when_list_is_empty(self) -> None:
         core = MagicMock()
-        core.read_namespaced_service.side_effect = _api_404()
+        core.list_namespaced_service.return_value = _mock_svc_list(0)
         assert _adapter(core, MagicMock()).service_exists("lab-ns", "missing") is False
+
+    def test_does_not_call_read_namespaced_service(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_service.return_value = _mock_svc_list(1)
+        _adapter(core, MagicMock()).service_exists("lab-ns", "nginx-svc")
+        core.read_namespaced_service.assert_not_called()
 
     def test_propagates_non_404(self) -> None:
         core = MagicMock()
-        core.read_namespaced_service.side_effect = _api_500()
+        core.list_namespaced_service.side_effect = _api_500()
         with pytest.raises(ApiException):
             _adapter(core, MagicMock()).service_exists("lab-ns", "nginx-svc")
 
@@ -342,21 +367,35 @@ class TestServiceExists:
 # ---------------------------------------------------------------------------
 
 
+def _mock_cm_list(count: int) -> MagicMock:
+    cm_list = MagicMock()
+    cm_list.items = [MagicMock() for _ in range(count)]
+    return cm_list
+
+
 class TestConfigmapExists:
     def test_returns_true_when_configmap_found(self) -> None:
         core = MagicMock()
-        core.read_namespaced_config_map.return_value = MagicMock()
+        core.list_namespaced_config_map.return_value = _mock_cm_list(1)
         assert _adapter(core, MagicMock()).configmap_exists("lab-ns", "app-config") is True
-        core.read_namespaced_config_map.assert_called_once_with("app-config", "lab-ns")
+        core.list_namespaced_config_map.assert_called_once_with(
+            "lab-ns", field_selector="metadata.name=app-config"
+        )
 
-    def test_returns_false_on_404(self) -> None:
+    def test_returns_false_when_list_is_empty(self) -> None:
         core = MagicMock()
-        core.read_namespaced_config_map.side_effect = _api_404()
+        core.list_namespaced_config_map.return_value = _mock_cm_list(0)
         assert _adapter(core, MagicMock()).configmap_exists("lab-ns", "missing") is False
+
+    def test_does_not_call_read_namespaced_config_map(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_config_map.return_value = _mock_cm_list(1)
+        _adapter(core, MagicMock()).configmap_exists("lab-ns", "app-config")
+        core.read_namespaced_config_map.assert_not_called()
 
     def test_propagates_non_404(self) -> None:
         core = MagicMock()
-        core.read_namespaced_config_map.side_effect = _api_500()
+        core.list_namespaced_config_map.side_effect = _api_500()
         with pytest.raises(ApiException):
             _adapter(core, MagicMock()).configmap_exists("lab-ns", "app-config")
 
