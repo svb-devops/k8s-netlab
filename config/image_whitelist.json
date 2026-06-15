@@ -1,10 +1,10 @@
 {
   "nginx": {
-    "default": "172.16.100.1:5000/nginx:1.25-alpine",
+    "default": "172.16.100.1:5000/library/nginx:1.25-alpine",
     "aliases": ["nginx", "web-server"]
   },
   "busybox": {
-    "default": "172.16.100.1:5000/busybox:1.36",
+    "default": "172.16.100.1:5000/library/busybox:1.36",
     "aliases": ["shell", "debug", "toolbox"]
   },
   "alpine": {

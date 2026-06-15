@@ -212,7 +212,7 @@ class TestResolveImageWhitelist:
         r = _resolver()
         result = r.resolve_image("nginx:1.25")
         assert result.image_status == ImageStatus.RESOLVED
-        assert result.resolved_image == "172.16.100.1:5000/nginx:1.25-alpine"
+        assert result.resolved_image == "172.16.100.1:5000/library/nginx:1.25-alpine"
         assert result.existence_check_passed is None  # not checked yet
 
     def test_busybox_resolved(self):
@@ -517,3 +517,70 @@ class TestIntegration:
         assert checked[1].existence_check_passed is True   # resolved + exists
         assert checked[2].existence_check_passed is None   # blocked, skipped
         assert checked[3].existence_check_passed is None   # unresolved, skipped
+
+
+# ---------------------------------------------------------------------------
+# OCI Accept header regression (prevents false-negative existence checks)
+# ---------------------------------------------------------------------------
+
+
+class TestOCIAcceptHeader:
+    """Regression tests: existence check must send OCI-compatible Accept headers.
+
+    Without them, multi-arch OCI index images return 404 from registry v2 even
+    when the image exists — causing false-negative publish gates.
+    """
+
+    def test_default_http_get_sends_oci_accept_header(self):
+        captured_headers: list[dict] = []
+
+        class FakeResponse:
+            status_code = 200
+
+        import httpx
+        from unittest.mock import patch as _patch
+
+        def fake_get(url: str, **kwargs):
+            captured_headers.append(kwargs.get("headers", {}))
+            return FakeResponse()
+
+        from backend.labgen.image_resolver import _default_http_get
+        with _patch("httpx.get", side_effect=fake_get):
+            _default_http_get(f"{_REG_BASE}/v2/library/nginx/manifests/1.25-alpine")
+
+        assert len(captured_headers) == 1
+        accept = captured_headers[0].get("Accept", "")
+        assert "application/vnd.oci.image.index.v1+json" in accept
+        assert "application/vnd.docker.distribution.manifest.list.v2+json" in accept
+
+    def test_whitelist_nginx_maps_to_library_prefix(self):
+        """nginx intent must resolve to library/nginx path for OCI index registry compat."""
+        seen_urls: list[str] = []
+
+        r = ImageResolver(
+            whitelist_path=WHITELIST_PATH,
+            _http_get=lambda url: (seen_urls.append(url), 200)[1],
+        )
+        res = r.resolve_image("nginx:1.25-alpine", image_intent="nginx")
+        assert res.image_status == ImageStatus.RESOLVED
+        assert "library/nginx" in (res.resolved_image or "")
+
+        r.check_registry_existence(res)
+        assert len(seen_urls) == 1
+        assert "library/nginx" in seen_urls[0]
+
+    def test_whitelist_busybox_maps_to_library_prefix(self):
+        """busybox intent must resolve to library/busybox path for OCI index registry compat."""
+        seen_urls: list[str] = []
+
+        r = ImageResolver(
+            whitelist_path=WHITELIST_PATH,
+            _http_get=lambda url: (seen_urls.append(url), 200)[1],
+        )
+        res = r.resolve_image("busybox:1.36", image_intent="busybox")
+        assert res.image_status == ImageStatus.RESOLVED
+        assert "library/busybox" in (res.resolved_image or "")
+
+        r.check_registry_existence(res)
+        assert len(seen_urls) == 1
+        assert "library/busybox" in seen_urls[0]

@@ -155,11 +155,18 @@ def _lookup_whitelist(whitelist: dict, key: str) -> Optional[str]:
 # ---------------------------------------------------------------------------
 
 
+_OCI_ACCEPT = (
+    "application/vnd.oci.image.index.v1+json,"
+    "application/vnd.docker.distribution.manifest.list.v2+json,"
+    "application/vnd.docker.distribution.manifest.v2+json"
+)
+
+
 def _default_http_get(url: str) -> int:
-    """GET url, return HTTP status code or 0 on any network error."""
+    """GET url with OCI-compatible Accept headers, return HTTP status code or 0 on network error."""
     try:
         import httpx
-        r = httpx.get(url, timeout=5.0, verify=False)
+        r = httpx.get(url, timeout=5.0, verify=False, headers={"Accept": _OCI_ACCEPT})
         return r.status_code
     except Exception as exc:
         logger.debug("Registry HTTP check failed for %s: %s", url, exc)
