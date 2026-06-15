@@ -521,11 +521,19 @@ Minor ops-documentation improvement (allowed, docs-only):
 | LLM calls | 0 |
 | Artifact | `docs/labgen/REAL_HUMAN_LEARNER_VALIDATION_RESULT_v0.1.md` |
 
-**Interpretation**: The fail-closed rule was correctly applied. An AI operator cannot recruit real humans, verify independent frontend operation, or collect authentic self-reported feedback. The platform remains technically ready; the gap is a process gap — human operator must recruit learners out-of-band.
+**Interpretation**: The fail-closed rule was correctly applied in v1. Human operator then recruited a real learner (learner-H1) and validation completed.
 
-**Unresolved from Section J** (unchanged):
-- FEEDBACK-001: No learner-reported step clarity data — still OPEN
-- FEEDBACK-002: No learner-reported concept comprehension data — still OPEN
+**Final validation result**: REAL_HUMAN_LEARNER_VALIDATED_WITH_NOTES (2026-06-15)  
+See full artifact: `docs/labgen/REAL_HUMAN_LEARNER_VALIDATION_RESULT_v0.1.md`
+
+**From Section J — resolved**:
+- FEEDBACK-001: Step clarity — RESOLVED: learner confirmed Lab 1 steps were clear; understood namespace concept as "沙箱" (sandbox)
+- FEEDBACK-002: Concept comprehension — RESOLVED: learner understood namespace isolation, cleanup behavior, and ConfigMap purpose from descriptions
+
+**New HIGH finding (UX-H1)**:
+- No kubectl terminal in LabGen → Labs 2–4 blocked for all learners
+- Learner feedback: understood what to do, blocked only by infrastructure gap
+- Recommended fix: integrate xterm.js kubectl terminal in session page
 
 ---
 
