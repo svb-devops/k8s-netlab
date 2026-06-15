@@ -509,6 +509,26 @@ Minor ops-documentation improvement (allowed, docs-only):
 
 ---
 
+## N. Real Human Learner Validation Follow-up (2026-06-15)
+
+| Field | Value |
+|-------|-------|
+| Validation result | REAL_HUMAN_LEARNER_BLOCKED |
+| Blocker | NO_REAL_HUMAN_LEARNER_RECRUITED |
+| Operator | Claude Code (AI) — cannot physically recruit human learners |
+| Platform technical gate | PASS — all checks green (see REAL_HUMAN_LEARNER_VALIDATION_RESULT_v0.1.md §F) |
+| Runtime sessions | 0 |
+| LLM calls | 0 |
+| Artifact | `docs/labgen/REAL_HUMAN_LEARNER_VALIDATION_RESULT_v0.1.md` |
+
+**Interpretation**: The fail-closed rule was correctly applied. An AI operator cannot recruit real humans, verify independent frontend operation, or collect authentic self-reported feedback. The platform remains technically ready; the gap is a process gap — human operator must recruit learners out-of-band.
+
+**Unresolved from Section J** (unchanged):
+- FEEDBACK-001: No learner-reported step clarity data — still OPEN
+- FEEDBACK-002: No learner-reported concept comprehension data — still OPEN
+
+---
+
 *Not HA. Not production-grade. Not for general availability.*  
 *home_lab_mvp is a controlled pilot profile on single-node Proxmox (T430).*  
 *No real secrets appear in this document.*  
