@@ -133,6 +133,8 @@ class TestValidateCommandOverrideBlocking:
         "kubectl get pods --kubeconfig=/etc/kubernetes/admin.conf",
         "kubectl get pods -n default",
         "kubectl get pods --namespace kube-system",
+        # no-space form: -nkube-system (pre-existing gap now tested)
+        "kubectl get pods -nkube-system",
     ])
     def test_blocked_override(self, cmd):
         allowed, reason = validate_command(cmd)

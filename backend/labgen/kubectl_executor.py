@@ -58,7 +58,7 @@ _BLOCKED_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\bapply\b.*https?://"),
     # Override kubeconfig or namespace (would break sandboxing)
     re.compile(r"\s--kubeconfig\b"),
-    re.compile(r"\s-n\s+\S"),        # explicit -n <ns> override
+    re.compile(r"\s-n\s*\S"),        # explicit -n <ns> override (both -n ns and -nns forms)
     re.compile(r"\s--namespace\s"),  # explicit --namespace override
 ]
 

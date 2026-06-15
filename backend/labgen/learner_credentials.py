@@ -127,7 +127,7 @@ def _ensure_rolebinding(rbac_v1: k8s_client.RbacAuthorizationV1Api, namespace: s
             name=_ROLE_NAME,
         ),
         subjects=[
-            k8s_client.V1Subject(
+            k8s_client.RbacV1Subject(
                 kind="ServiceAccount",
                 name=_SA_NAME,
                 namespace=namespace,
