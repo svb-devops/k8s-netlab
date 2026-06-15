@@ -338,3 +338,21 @@ home_lab_mvp constraints remain: no HA, no SLA, no LLM, single VM 401, max 1 act
 *Not HA. Not production-grade. Not for general availability.*  
 *Production VMID range 500–599 was not touched during this triage.*  
 *No real secrets appear in this document.*
+
+---
+
+## N. Eighth Pilot User Confirmation (2026-06-15)
+
+Eighth pilot user (pilot-user-08, session `c225c518`) confirmed all triage items validated
+end-to-end in the real learner frontend:
+
+| Triage item | Eighth pilot result |
+|-------------|---------------------|
+| RBAC drift fix stable | PASS — no 403, list_namespaced_deployment worked |
+| New detail message visible | PASS — "available with 1 ready replica ... Pod for this workload" |
+| Snapshot safe_message populated | PASS — Step 2 check_summary.safe_message confirmed |
+| Frontend renders PASS safe_message | PASS — `!passed &&` guard removed, detail displayed |
+| cleanup_verified | True |
+| 0 residuals | PASS — namespace/Deployment/Pod/tainted_vm all 0 |
+
+All triage items confirmed. Decision remains **DEPLOYMENT_FEEDBACK_TRIAGED_WITH_ITERATION**.

@@ -513,3 +513,14 @@ home_lab_mvp constraints remain: no HA, no SLA, no LLM, single VM 401, max 1 act
 *Not HA. Not production-grade. Not for general availability.*  
 *Production VMID range 500–599 was not touched during this gate.*  
 *No real secrets appear in this document.*
+
+---
+
+## U. Follow-up (2026-06-15)
+
+Eighth Pilot User gate (session `c225c518`, pilot-user-08) confirmed RBAC drift fix from this
+gate remains stable — no 403, no get verb, list_namespaced_deployment working correctly.
+Additionally, the snapshot PASS detail visibility fix (commit `0aa90e3`) was confirmed
+end-to-end: safe_message "available with 1 ready replica in your isolated namespace.
+Kubernetes has created a Pod for this workload." visible to real user. 3213 tests 93.13%.
+See `docs/labgen/EIGHTH_PILOT_USER_DEPLOYMENT_LAB_RESULT_v0.1.md`.
