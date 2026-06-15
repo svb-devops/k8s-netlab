@@ -60,8 +60,9 @@ _SA_MANIFEST = (
     "  namespace: kube-system\n"
 )
 
-# ClusterRole grants read-only access to namespaces and common resources.
+# ClusterRole grants list+watch only on pods/services/configmaps/secrets (no get).
 # No ClusterRoleBinding is created here — binding is done per-lab at session start.
+# All verifier methods use list+field_selector, never read/get on individual resources.
 _CLUSTER_ROLE_MANIFEST = (
     "apiVersion: rbac.authorization.k8s.io/v1\n"
     "kind: ClusterRole\n"
@@ -69,8 +70,8 @@ _CLUSTER_ROLE_MANIFEST = (
     "  name: lab-verifier-namespace-readonly\n"
     "rules:\n"
     "- apiGroups: [\"\"]\n"
-    "  resources: [\"namespaces\", \"pods\", \"services\", \"configmaps\", \"endpoints\"]\n"
-    "  verbs: [\"get\", \"list\", \"watch\"]\n"
+    "  resources: [\"pods\", \"services\", \"configmaps\"]\n"
+    "  verbs: [\"list\", \"watch\"]\n"
     "- apiGroups: [\"\"]\n"
     "  resources: [\"secrets\"]\n"
     "  verbs: [\"list\", \"watch\"]\n"
@@ -584,14 +585,15 @@ class PlatformVerifierInitializer:
                     f"Failed to apply lab-verifier ServiceAccount: status={exc.status}"
                 ) from exc
 
-        # Apply ClusterRole (idempotent via 409 skip)
+        # Apply ClusterRole — list+watch only, no get on any resource.
+        # Use replace (not create+409-skip) so that re-runs update the live rules.
         cluster_role = _k8s.V1ClusterRole(
             metadata=_k8s.V1ObjectMeta(name="lab-verifier-namespace-readonly"),
             rules=[
                 _k8s.V1PolicyRule(
                     api_groups=[""],
-                    resources=["namespaces", "pods", "services", "configmaps", "endpoints"],
-                    verbs=["get", "list", "watch"],
+                    resources=["pods", "services", "configmaps"],
+                    verbs=["list", "watch"],
                 ),
                 _k8s.V1PolicyRule(
                     api_groups=[""],
@@ -606,11 +608,18 @@ class PlatformVerifierInitializer:
             ],
         )
         try:
-            rbac_api.create_cluster_role(cluster_role)
+            rbac_api.replace_cluster_role("lab-verifier-namespace-readonly", cluster_role)
         except ApiException as exc:
-            if exc.status != 409:
+            if exc.status == 404:
+                try:
+                    rbac_api.create_cluster_role(cluster_role)
+                except ApiException as exc2:
+                    raise RuntimeError(
+                        f"Failed to create lab-verifier-namespace-readonly ClusterRole: status={exc2.status}"
+                    ) from exc2
+            else:
                 raise RuntimeError(
-                    f"Failed to apply lab-verifier-namespace-readonly ClusterRole: status={exc.status}"
+                    f"Failed to update lab-verifier-namespace-readonly ClusterRole: status={exc.status}"
                 ) from exc
 
         # Create token via TokenRequest API (1-year duration)

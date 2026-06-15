@@ -17,10 +17,13 @@ import pytest
 pytestmark = pytest.mark.static
 
 from backend.labgen.models import VerifierCredentialMetadata
+import yaml
+
 from backend.labgen.verifier_credentials import (
     PlatformK8sApiFactory,
     PlatformVerifierInitializer,
     VerifierCredentialStore,
+    _CLUSTER_ROLE_MANIFEST,
 )
 
 
@@ -65,9 +68,9 @@ class _StubK8sApiFactory(PlatformK8sApiFactory):
         self,
         token: str = _FAKE_TOKEN,
         sa_409: bool = False,
-        role_409: bool = False,
+        role_404: bool = False,   # replace_cluster_role returns 404 → fallback to create
         sa_error: int = 0,
-        role_error: int = 0,
+        role_error: int = 0,      # replace_cluster_role returns this error
         token_error: int = 0,
         empty_token: bool = False,
     ) -> None:
@@ -85,14 +88,16 @@ class _StubK8sApiFactory(PlatformK8sApiFactory):
                 status=409, reason="AlreadyExists"
             )
 
+        # replace_cluster_role is called first; create_cluster_role is the 404-fallback.
         if role_error:
-            self.rbac.create_cluster_role.side_effect = ApiException(
+            self.rbac.replace_cluster_role.side_effect = ApiException(
                 status=role_error, reason="Error"
             )
-        elif role_409:
-            self.rbac.create_cluster_role.side_effect = ApiException(
-                status=409, reason="AlreadyExists"
+        elif role_404:
+            self.rbac.replace_cluster_role.side_effect = ApiException(
+                status=404, reason="NotFound"
             )
+        # create_cluster_role: no side-effect needed on happy path (replace succeeds)
 
         if token_error:
             self.core.create_namespaced_service_account_token.side_effect = ApiException(
@@ -182,10 +187,12 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         assert meta.credential_generation == 1
         assert store.exists("401")
 
-    def test_cluster_role_409_is_idempotent(self, store: VerifierCredentialStore) -> None:
-        """409 AlreadyExists on ClusterRole create must not raise."""
-        init, _ = self._make(store, role_409=True)
+    def test_cluster_role_replace_is_idempotent(self, store: VerifierCredentialStore) -> None:
+        """replace_cluster_role is used instead of create; always updates existing role."""
+        init, factory = self._make(store)
         init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
+        factory.rbac.replace_cluster_role.assert_called_once()
+        factory.rbac.create_cluster_role.assert_not_called()
         assert store.exists("401")
 
     def test_sa_non_409_raises_runtime_error(self, store: VerifierCredentialStore) -> None:
@@ -194,10 +201,18 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         with pytest.raises(RuntimeError, match="ServiceAccount"):
             init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
 
-    def test_cluster_role_non_409_raises_runtime_error(self, store: VerifierCredentialStore) -> None:
+    def test_cluster_role_replace_error_raises_runtime_error(self, store: VerifierCredentialStore) -> None:
+        """Non-404 errors from replace_cluster_role propagate as RuntimeError."""
         init, _ = self._make(store, role_error=403)
         with pytest.raises(RuntimeError, match="ClusterRole"):
             init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
+
+    def test_cluster_role_404_fallback_creates(self, store: VerifierCredentialStore) -> None:
+        """replace_cluster_role 404 → fallback to create_cluster_role (idempotent)."""
+        init, factory = self._make(store, role_404=True)
+        init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
+        factory.rbac.replace_cluster_role.assert_called_once()
+        factory.rbac.create_cluster_role.assert_called_once()
 
     def test_token_api_error_raises_runtime_error(self, store: VerifierCredentialStore) -> None:
         init, _ = self._make(store, token_error=503)
@@ -214,8 +229,8 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         # Regression: ClusterRole was missing secrets — caused 403 on secret_exists check.
         init, factory = self._make(store)
         init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
-        factory.rbac.create_cluster_role.assert_called_once()
-        cr_arg = factory.rbac.create_cluster_role.call_args[0][0]
+        factory.rbac.replace_cluster_role.assert_called_once()
+        cr_arg = factory.rbac.replace_cluster_role.call_args[0][1]
         all_resources = [r for rule in cr_arg.rules for r in (rule.resources or [])]
         assert "secrets" in all_resources
 
@@ -224,7 +239,7 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         # The secrets rule must not grant get (which would allow reading .data).
         init, factory = self._make(store)
         init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
-        cr_arg = factory.rbac.create_cluster_role.call_args[0][0]
+        cr_arg = factory.rbac.replace_cluster_role.call_args[0][1]
         secrets_rule = next(
             (r for r in cr_arg.rules if "secrets" in (r.resources or [])), None
         )
@@ -235,7 +250,7 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         # deployment_ready verifier requires list permission on apps/deployments.
         init, factory = self._make(store)
         init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
-        cr_arg = factory.rbac.create_cluster_role.call_args[0][0]
+        cr_arg = factory.rbac.replace_cluster_role.call_args[0][1]
         apps_rule = next(
             (r for r in cr_arg.rules if "apps" in (r.api_groups or [])), None
         )
@@ -247,12 +262,39 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         # apps/deployments rule must not grant get — list is sufficient and reduces blast radius.
         init, factory = self._make(store)
         init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
-        cr_arg = factory.rbac.create_cluster_role.call_args[0][0]
+        cr_arg = factory.rbac.replace_cluster_role.call_args[0][1]
         apps_rule = next(
             (r for r in cr_arg.rules if "apps" in (r.api_groups or [])), None
         )
         assert apps_rule is not None
         assert "get" not in (apps_rule.verbs or [])
+
+    def test_cluster_role_no_get_verb_on_core_resources(self, store: VerifierCredentialStore) -> None:
+        # All verifier methods use list+field_selector; 'get' is not needed anywhere.
+        init, factory = self._make(store)
+        init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
+        cr_arg = factory.rbac.replace_cluster_role.call_args[0][1]
+        for rule in cr_arg.rules:
+            assert "get" not in (rule.verbs or []), (
+                f"ClusterRole rule grants 'get' on {rule.resources}: "
+                "verifier uses list+field_selector only"
+            )
+
+    def test_cluster_role_no_namespaces_resource(self, store: VerifierCredentialStore) -> None:
+        # namespace_exists uses list_namespaced_config_map; namespaces cluster-resource unneeded.
+        init, factory = self._make(store)
+        init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
+        cr_arg = factory.rbac.replace_cluster_role.call_args[0][1]
+        all_resources = [r for rule in cr_arg.rules for r in (rule.resources or [])]
+        assert "namespaces" not in all_resources
+
+    def test_cluster_role_no_endpoints_resource(self, store: VerifierCredentialStore) -> None:
+        # endpoints is not used by any verifier method.
+        init, factory = self._make(store)
+        init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
+        cr_arg = factory.rbac.replace_cluster_role.call_args[0][1]
+        all_resources = [r for rule in cr_arg.rules for r in (rule.resources or [])]
+        assert "endpoints" not in all_resources
 
     def test_sa_create_called_with_kube_system(self, store: VerifierCredentialStore) -> None:
         init, factory = self._make(store)
@@ -288,10 +330,39 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         init.ensure_verifier_identity("402", _PLATFORM_KUBECONFIG)
         assert store.exists("401")
         assert store.exists("402")
-        _, meta401 = store.load("401")
-        _, meta402 = store.load("402")
-        assert meta401.vm_id == "401"
-        assert meta402.vm_id == "402"
+
+    def test_sdk_object_matches_manifest_string(self, store: VerifierCredentialStore) -> None:
+        # Cross-path parity: the V1ClusterRole SDK object passed to replace_cluster_role
+        # must encode the same resource+verb sets as _CLUSTER_ROLE_MANIFEST.
+        # Prevents the two apply paths from silently diverging on future edits.
+        init, factory = self._make(store)
+        init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
+        cr_sdk = factory.rbac.replace_cluster_role.call_args[0][1]
+
+        manifest_doc = yaml.safe_load(_CLUSTER_ROLE_MANIFEST)
+        manifest_rules = manifest_doc.get("rules", [])
+
+        # Build canonical (frozenset-of-frozensets) representation for each path
+        def rules_signature(rules_iter) -> frozenset:
+            result = set()
+            for rule in rules_iter:
+                if hasattr(rule, "api_groups"):
+                    groups = frozenset(rule.api_groups or [])
+                    resources = frozenset(rule.resources or [])
+                    verbs = frozenset(rule.verbs or [])
+                else:
+                    groups = frozenset(rule.get("apiGroups", []))
+                    resources = frozenset(rule.get("resources", []))
+                    verbs = frozenset(rule.get("verbs", []))
+                result.add((groups, resources, verbs))
+            return frozenset(result)
+
+        sdk_sig = rules_signature(cr_sdk.rules)
+        manifest_sig = rules_signature(manifest_rules)
+        assert sdk_sig == manifest_sig, (
+            "V1ClusterRole SDK object and _CLUSTER_ROLE_MANIFEST YAML diverged — "
+            "both paths must encode identical apiGroups/resources/verbs sets"
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@
 
 import os
 import stat
+import yaml
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from backend.labgen.verifier_credentials import (
     VerifierIdentityManager,
     VerifierSmokeTestResult,
     VMCommandExecutorPort,
+    _CLUSTER_ROLE_MANIFEST,
 )
 
 
@@ -305,3 +307,85 @@ class TestVerifierIdentityManagerWiring:
         mgr = VerifierIdentityManager(store=store, executor=executor)
         assert mgr._store is store
         assert mgr._executor is executor
+
+
+# ---------------------------------------------------------------------------
+# ClusterRole RBAC guardrail — prevents get-verb regression
+# Verifier uses list+field_selector only; 'get' on any resource is unnecessary
+# and violates least-privilege. If these tests fail, the verifier likely
+# regressed to using read/get K8s calls.
+# ---------------------------------------------------------------------------
+
+
+def _parse_cluster_role_rules(manifest: str) -> list[dict]:
+    doc = yaml.safe_load(manifest)
+    return doc.get("rules", [])
+
+
+class TestClusterRoleManifestGuardrail:
+    """Regression guard: _CLUSTER_ROLE_MANIFEST must never grant 'get'."""
+
+    def test_no_get_verb_in_any_rule(self):
+        rules = _parse_cluster_role_rules(_CLUSTER_ROLE_MANIFEST)
+        for rule in rules:
+            assert "get" not in rule.get("verbs", []), (
+                f"ClusterRole rule grants 'get' on {rule.get('resources')}: "
+                "verifier uses list+field_selector only — 'get' is unnecessary "
+                "and violates least-privilege"
+            )
+
+    def test_namespaces_not_in_core_rule(self):
+        rules = _parse_cluster_role_rules(_CLUSTER_ROLE_MANIFEST)
+        core_rules = [r for r in rules if "" in r.get("apiGroups", [])]
+        all_core_resources: list[str] = []
+        for r in core_rules:
+            all_core_resources.extend(r.get("resources", []))
+        assert "namespaces" not in all_core_resources, (
+            "namespaces is a cluster-scoped resource; verifier does not call "
+            "get_namespace or list_namespace — remove from ClusterRole"
+        )
+
+    def test_endpoints_not_in_core_rule(self):
+        rules = _parse_cluster_role_rules(_CLUSTER_ROLE_MANIFEST)
+        core_rules = [r for r in rules if "" in r.get("apiGroups", [])]
+        all_core_resources: list[str] = []
+        for r in core_rules:
+            all_core_resources.extend(r.get("resources", []))
+        assert "endpoints" not in all_core_resources, (
+            "endpoints is not used by any verifier method — remove from ClusterRole"
+        )
+
+    def test_secrets_has_list_watch_only(self):
+        rules = _parse_cluster_role_rules(_CLUSTER_ROLE_MANIFEST)
+        for rule in rules:
+            if "secrets" in rule.get("resources", []):
+                verbs = set(rule.get("verbs", []))
+                assert "get" not in verbs, "secrets must not grant 'get'"
+                assert "list" in verbs, "secrets must grant 'list'"
+
+    def test_deployments_has_list_watch_only(self):
+        rules = _parse_cluster_role_rules(_CLUSTER_ROLE_MANIFEST)
+        for rule in rules:
+            if "deployments" in rule.get("resources", []):
+                verbs = set(rule.get("verbs", []))
+                assert "get" not in verbs, "deployments must not grant 'get'"
+                assert "list" in verbs, "deployments must grant 'list'"
+
+    def test_deployments_in_apps_group(self):
+        rules = _parse_cluster_role_rules(_CLUSTER_ROLE_MANIFEST)
+        apps_rules = [r for r in rules if "apps" in r.get("apiGroups", [])]
+        apps_resources: list[str] = []
+        for r in apps_rules:
+            apps_resources.extend(r.get("resources", []))
+        assert "deployments" in apps_resources, "deployments must be in apps apiGroup"
+
+    def test_pods_services_configmaps_have_list_watch_only(self):
+        rules = _parse_cluster_role_rules(_CLUSTER_ROLE_MANIFEST)
+        for rule in rules:
+            resources = rule.get("resources", [])
+            verbs = rule.get("verbs", [])
+            for res in ["pods", "services", "configmaps"]:
+                if res in resources:
+                    assert "get" not in verbs, (
+                        f"{res} must not grant 'get' — verifier uses list+field_selector"
+                    )
