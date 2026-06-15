@@ -553,6 +553,217 @@ commit `b48a9a2`, 12 regression tests added (guardrail + parity + replace semant
 
 ---
 
+## J. Small Cohort Pilot Procedure (2026-06-15)
+
+**Basis**: Small Cohort Readiness Gate v0.1 — SMALL_COHORT_READY_WITH_NOTES
+
+### J.1 Cohort boundaries (unconditional)
+
+| Boundary | Value |
+|----------|-------|
+| Cohort size | 3–5 trusted users |
+| Concurrency | 1 active session only (backend-enforced) |
+| Scheduling | One user at a time; operator approves each before starting |
+| Access | Private invite only — no public URL sharing |
+| Labs | Current 4 published labs only |
+| No fifth lab | Not during cohort |
+| No LLM | `LABGEN_LLM_PROVIDER_MODE=fake_only` enforced throughout |
+| No production VMID | VMID 500–599 untouched |
+| No SLA | Disclosed to all cohort users before session |
+
+### J.2 Pre-cohort precheck
+
+Run before the first user session and after any gap of >24 hours.
+
+```bash
+# 1. Confirm production VMID 500–599 untouched
+qm list | awk '$1 >= 500 && $1 <= 599 {print}'
+# Expected: only production VMs (do not modify)
+
+# 2. VM 401 running
+qm status 401
+# Expected: status: running
+
+# 3. K3s Ready
+kubectl --kubeconfig /etc/labgen/home_lab_mvp.kubeconfig get nodes
+# Expected: labgen-home-k3s-staging-01   Ready   ...
+
+# 4. 0 lab namespaces
+kubectl --kubeconfig /etc/labgen/home_lab_mvp.kubeconfig get ns | grep "^lab-"
+# Expected: (no output)
+
+# 5. 0 tainted VMs
+cat /root/k8s-netlab/data/tainted_vms.json
+# Expected: {} or []
+
+# 6. 0 active sessions
+python3 -c "
+import json
+with open('/root/k8s-netlab/data/lab_sessions.json') as f: d=json.load(f)
+active=[s for s in d.values() if s.get('lab_session_status') not in ('LAB_CLOSED','LAB_ABORTED','LAB_CLEANUP_FAILED')]
+print('active:', len(active))
+"
+# Expected: active: 0
+
+# 7. Verifier credentials present
+ls /var/lib/labgen-staging/verifier-credentials/vm_creds/401/
+# Expected: kubeconfig.yaml present
+
+# 8. Re-initialize verifier (do this before every cohort session)
+source /root/k8s-netlab/venv/bin/activate
+python3 - <<'EOF'
+from backend.vm_manager import initialize_verifier_for_vm_host_side
+result = initialize_verifier_for_vm_host_side(401, "/etc/labgen/home_lab_mvp.kubeconfig")
+print("success:", result["success"])
+if not result["success"]:
+    print("ERROR:", result["error"])
+    raise SystemExit(1)
+EOF
+# Expected: success: True
+
+# 9. Backend healthy
+curl -sf http://localhost:8000/api/health
+# Expected: {"status":"healthy"}
+
+# 10. LLM disabled
+grep LABGEN_LLM_PROVIDER_MODE /etc/labgen/home_lab_mvp.env
+# Expected: LABGEN_LLM_PROVIDER_MODE=fake_only
+```
+
+All 10 checks must pass before admitting the first cohort user.
+
+### J.3 Per-user start checklist
+
+Before each user session (in addition to J.2 if >24h since last check):
+
+| Check | Command | Expected |
+|-------|---------|----------|
+| VM 401 running | `qm status 401` | `status: running` |
+| 0 active sessions | check `data/lab_sessions.json` | 0 active |
+| 0 lab namespaces | `kubectl --kubeconfig ... get ns \| grep '^lab-'` | No output |
+| 0 tainted VMs | `cat data/tainted_vms.json` | `{}` |
+| Backend healthy | `curl -sf http://localhost:8000/api/health` | `{"status":"healthy"}` |
+
+Send user brief (template in SMALL_COHORT_READINESS_GATE_v0.1.md Section G) before their session.
+
+### J.4 During-session monitoring
+
+```bash
+# Watch session status
+watch -n 5 'python3 -c "
+import json
+with open(\"/root/k8s-netlab/data/lab_sessions.json\") as f: d=json.load(f)
+[print(k[:8], v.get(\"lab_session_status\")) for k,v in list(d.items())[-5:]]
+"'
+
+# Watch K3s namespaces
+watch -n 10 'kubectl --kubeconfig /etc/labgen/home_lab_mvp.kubeconfig get ns | grep "^lab-"'
+
+# Watch backend logs
+journalctl -u k8s-netlab -f --no-pager
+```
+
+### J.5 Per-user complete checklist
+
+After each user session (before approving next user):
+
+| Check | Command | Expected |
+|-------|---------|----------|
+| Session status | Check `data/lab_sessions.json` | `LAB_CLOSED` or `LAB_ABORTED` |
+| cleanup_verified | Check `data/lab_sessions.json` | `true` |
+| 0 lab namespaces | `kubectl --kubeconfig ... get ns \| grep '^lab-'` | No output |
+| 0 RoleBindings | `kubectl --kubeconfig ... get rolebinding -A \| grep lab-verifier` | No output |
+| 0 tainted VMs | `cat data/tainted_vms.json` | `{}` |
+| Backend errors | `journalctl -u k8s-netlab -p err --since "15 minutes ago"` | No new errors |
+| Feedback captured | Fill `SMALL_COHORT_FEEDBACK_TEMPLATE_v0.1.md` | Done |
+
+If all checks pass: **approve next user**.  
+If any check fails: **hold next user** until resolved.
+
+### J.6 Residual check procedure
+
+Run after each session:
+
+```bash
+# 1. Lab namespaces
+kubectl --kubeconfig /etc/labgen/home_lab_mvp.kubeconfig get ns | grep "^lab-"
+# Expected: (no output)
+
+# 2. RoleBindings
+kubectl --kubeconfig /etc/labgen/home_lab_mvp.kubeconfig get rolebinding -A | grep "lab-verifier"
+# Expected: (no output)
+
+# 3. Tainted VMs
+cat /root/k8s-netlab/data/tainted_vms.json
+# Expected: {}
+
+# 4. Active sessions
+python3 -c "
+import json
+with open('/root/k8s-netlab/data/lab_sessions.json') as f: d=json.load(f)
+active=[s for s in d.values() if s.get('lab_session_status') not in ('LAB_CLOSED','LAB_ABORTED','LAB_CLEANUP_FAILED')]
+print('active:', len(active), '— OK' if not active else '— HOLD: resolve before next user')
+"
+```
+
+### J.7 Emergency stop during cohort
+
+See Section F for full emergency stop procedure.
+
+Quick reference:
+
+```bash
+# Step 1: Stop accepting new sessions (set MAX_TOTAL_VMS=0 in env, restart service)
+# Step 2: Abort in-flight sessions
+# Step 3: Verify 0 lab namespaces
+# Step 4: Preserve audit logs
+# Step 5: Record incident doc
+```
+
+After emergency stop: do NOT resume cohort until root cause is identified and resolved.
+Run Section J.2 pre-cohort precheck before next user.
+
+### J.8 How to pause and resume cohort
+
+**Pause**:
+- Stop approving new users (no action required in backend — just don't send invites).
+- Record pause reason in `docs/labgen/SMALL_COHORT_FEEDBACK_cohort-user-NN_YYYYMMDD.md`.
+
+**Resume**:
+- Resolve the issue that caused the pause.
+- Run Section J.2 pre-cohort precheck.
+- All 10 checks must pass before resuming.
+
+### J.9 Maximum allowed cohort size
+
+- Minimum: 3 users (sufficient for initial cohort feedback).
+- Maximum: 5 users (home_lab_mvp constraint; do not increase without explicit gate).
+- Extending to 6+ users requires a new Cohort Expansion Gate — do not proceed without it.
+
+### J.10 How to record notes between sessions
+
+Create `docs/labgen/SMALL_COHORT_OPS_LOG_YYYYMMDD.md` with:
+- Session number (e.g., "Cohort session 2 of 3")
+- User identifier (sanitized)
+- Lab attempted
+- Final result
+- Cleanup: cleanup_verified=True / False
+- Issues observed
+- Next user: APPROVED / HOLD
+
+### J.11 No concurrency increase
+
+Do NOT:
+- Raise `MAX_TOTAL_VMS` beyond 3.
+- Raise `MAX_ACTIVE_SESSIONS` beyond 1.
+- Start a second session while one is active.
+- Enable LLM (`LABGEN_LLM_PROVIDER_MODE=fake_only` is fixed for cohort).
+- Use production VMID 500–599.
+- Publish a fifth lab during the cohort.
+- Announce public access.
+
+---
+
 *Not HA. Not production-grade. Not for general availability.*  
 *home_lab_mvp is a controlled pilot profile on single-node Proxmox (T430).*  
 *No real secrets appear in this document.*  

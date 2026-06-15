@@ -270,3 +270,17 @@ The following actions must be completed before pilot can actually start:
 | 不启动新 runtime session | PASS — no new session started in this gate |
 | 不接生产流量 | PASS |
 | 不修改 production VM / pool / registry | PASS |
+
+
+---
+
+## L. Follow-up (2026-06-15)
+
+Small Cohort Readiness Gate v0.1 completed: **SMALL_COHORT_READY_WITH_NOTES**
+
+- 8 trusted pilot users across 4 labs; all sessions LAB_CLOSED cleanup_verified=True
+- All verifier types (namespace_exists, configmap_exists, secret_exists, deployment_ready) real-user validated
+- RBAC: list+watch only, no get, stable across all sessions
+- 0 BLOCKER / HIGH / MEDIUM open issues
+- Runbook Section J (Small Cohort Pilot Procedure) added
+- See `docs/labgen/SMALL_COHORT_READINESS_GATE_v0.1.md` for full gate result

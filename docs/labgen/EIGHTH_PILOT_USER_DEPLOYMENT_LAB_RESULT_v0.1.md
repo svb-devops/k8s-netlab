@@ -444,6 +444,19 @@ remains stable — no 403 during session.
 
 ---
 
+## V. Follow-up (2026-06-15)
+
+Small Cohort Readiness Gate v0.1 completed on 2026-06-15:
+- Decision: **SMALL_COHORT_READY_WITH_NOTES**
+- All GO conditions satisfied; 0 BLOCKER/HIGH/MEDIUM open
+- Runbook Section J (Small Cohort Pilot Procedure) added
+- Feedback template created: `docs/labgen/SMALL_COHORT_FEEDBACK_TEMPLATE_v0.1.md`
+- Next step: Small Cohort Pilot v0.1 (3–5 trusted users, sequential, max 1 active session)
+
+See `docs/labgen/SMALL_COHORT_READINESS_GATE_v0.1.md` for full gate result.
+
+---
+
 ## U. Recommendation
 
 **Platform is ready for Small Cohort Readiness Gate or Fifth Lab Design Gate.**

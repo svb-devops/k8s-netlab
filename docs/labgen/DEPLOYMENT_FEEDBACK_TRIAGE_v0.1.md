@@ -341,6 +341,26 @@ home_lab_mvp constraints remain: no HA, no SLA, no LLM, single VM 401, max 1 act
 
 ---
 
+## O. Small Cohort Readiness Gate Confirmation (2026-06-15)
+
+Small Cohort Readiness Gate v0.1 completed 2026-06-15: **SMALL_COHORT_READY_WITH_NOTES**
+
+All triage items from this document confirmed resolved before cohort entry:
+
+| Triage item | Small cohort gate check |
+|-------------|------------------------|
+| RBAC drift (MEDIUM, resolved) | PASS — replace_cluster_role stable; 12 regression tests; confirmed stable across 7th+8th pilot |
+| PASS detail quality (LOW, resolved) | PASS — 8th pilot confirmed safe_message visible with "1 ready replica + Pod" |
+| FAIL detail quality (LOW, resolved) | PASS — actionable guidance confirmed in verifier.py + learner sessions |
+| Lab step 2 instructions (LOW, resolved) | PASS — "Do not change the replica count or image" + retry hint present |
+| SDK/manifest cross-path parity (LOW, resolved) | PASS — test_sdk_object_matches_manifest_string covers this |
+| Verifier re-init ops burden (NOTE, accepted) | PASS — documented in Runbook Section C; Section J requires re-init before every session |
+| Cloud portability gap (NOTE, accepted) | PASS — not a cohort stop condition; tracked post-cohort |
+
+See `docs/labgen/SMALL_COHORT_READINESS_GATE_v0.1.md` for full gate result.
+
+---
+
 ## N. Eighth Pilot User Confirmation (2026-06-15)
 
 Eighth pilot user (pilot-user-08, session `c225c518`) confirmed all triage items validated
