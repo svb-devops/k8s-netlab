@@ -231,6 +231,29 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         assert secrets_rule is not None
         assert "get" not in (secrets_rule.verbs or [])
 
+    def test_cluster_role_includes_deployments_resource(self, store: VerifierCredentialStore) -> None:
+        # deployment_ready verifier requires list permission on apps/deployments.
+        init, factory = self._make(store)
+        init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
+        cr_arg = factory.rbac.create_cluster_role.call_args[0][0]
+        apps_rule = next(
+            (r for r in cr_arg.rules if "apps" in (r.api_groups or [])), None
+        )
+        assert apps_rule is not None
+        assert "deployments" in (apps_rule.resources or [])
+
+    def test_cluster_role_deployments_has_no_get_verb(self, store: VerifierCredentialStore) -> None:
+        # deployment_ready uses list_namespaced_deployment, not read_namespaced_deployment.
+        # apps/deployments rule must not grant get — list is sufficient and reduces blast radius.
+        init, factory = self._make(store)
+        init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
+        cr_arg = factory.rbac.create_cluster_role.call_args[0][0]
+        apps_rule = next(
+            (r for r in cr_arg.rules if "apps" in (r.api_groups or [])), None
+        )
+        assert apps_rule is not None
+        assert "get" not in (apps_rule.verbs or [])
+
     def test_sa_create_called_with_kube_system(self, store: VerifierCredentialStore) -> None:
         init, factory = self._make(store)
         init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)

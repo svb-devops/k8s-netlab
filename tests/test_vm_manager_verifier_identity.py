@@ -137,6 +137,22 @@ class TestKubectlApplyCmd:
                 assert "get" not in line, f"secrets rule must not grant get: {line}"
                 break
 
+    def test_clusterrole_manifest_includes_deployments(self):
+        # deployment_ready verifier requires list permission on apps/deployments.
+        assert "deployments" in _CLUSTER_ROLE_MANIFEST
+
+    def test_clusterrole_manifest_deployments_no_get_verb(self):
+        # deployment_ready uses list_namespaced_deployment (not get).
+        # apps/deployments rule must not grant get — list+watch is sufficient.
+        lines = _CLUSTER_ROLE_MANIFEST.splitlines()
+        in_apps_rule = False
+        for line in lines:
+            if "apps" in line and "apiGroups" in line:
+                in_apps_rule = True
+            if in_apps_rule and "verbs" in line:
+                assert "get" not in line, f"apps rule must not grant get: {line}"
+                break
+
 
 # ---------------------------------------------------------------------------
 # _build_kubeconfig

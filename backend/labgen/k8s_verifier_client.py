@@ -115,9 +115,18 @@ class K8sVerifierClientAdapter(K8sVerifierClientPort):
             raise
 
     def deployment_ready(self, namespace: str, name: str) -> bool:
-        """Return True if all desired replicas are ready (ready_replicas >= spec.replicas > 0)."""
+        """Return True if all desired replicas are ready (ready_replicas >= spec.replicas > 0).
+
+        Uses list_namespaced_deployment with field_selector — does not require 'get' RBAC.
+        The verifier SA requires only 'list' on apps/deployments (not 'get').
+        """
         try:
-            dep = self._apps.read_namespaced_deployment(name, namespace)
+            result = self._apps.list_namespaced_deployment(
+                namespace, field_selector=f"metadata.name={name}"
+            )
+            if not result.items:
+                return False
+            dep = result.items[0]
             desired = (
                 dep.spec.replicas
                 if dep.spec and dep.spec.replicas is not None

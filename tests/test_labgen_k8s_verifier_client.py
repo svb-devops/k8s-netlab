@@ -251,43 +251,66 @@ def _mock_deployment(desired: Optional[int], ready: Optional[int]) -> MagicMock:
     return dep
 
 
+def _mock_list(*deps: MagicMock) -> MagicMock:
+    """Return a mock list result with given items."""
+    result = MagicMock()
+    result.items = list(deps)
+    return result
+
+
 class TestDeploymentReady:
+    """deployment_ready uses list_namespaced_deployment (not get) for least-privilege RBAC."""
+
     def test_returns_true_when_all_replicas_ready(self) -> None:
         apps = MagicMock()
-        apps.read_namespaced_deployment.return_value = _mock_deployment(3, 3)
+        apps.list_namespaced_deployment.return_value = _mock_list(_mock_deployment(3, 3))
         assert _adapter(MagicMock(), apps).deployment_ready("lab-ns", "nginx") is True
-        apps.read_namespaced_deployment.assert_called_once_with("nginx", "lab-ns")
+        apps.list_namespaced_deployment.assert_called_once_with(
+            "lab-ns", field_selector="metadata.name=nginx"
+        )
 
     def test_returns_false_when_partially_ready(self) -> None:
         apps = MagicMock()
-        apps.read_namespaced_deployment.return_value = _mock_deployment(3, 1)
+        apps.list_namespaced_deployment.return_value = _mock_list(_mock_deployment(3, 1))
         assert _adapter(MagicMock(), apps).deployment_ready("lab-ns", "nginx") is False
 
     def test_returns_false_when_ready_is_none(self) -> None:
         apps = MagicMock()
-        apps.read_namespaced_deployment.return_value = _mock_deployment(1, None)
+        apps.list_namespaced_deployment.return_value = _mock_list(_mock_deployment(1, None))
         assert _adapter(MagicMock(), apps).deployment_ready("lab-ns", "nginx") is False
 
     def test_returns_false_when_desired_is_zero(self) -> None:
         apps = MagicMock()
-        apps.read_namespaced_deployment.return_value = _mock_deployment(0, 0)
+        apps.list_namespaced_deployment.return_value = _mock_list(_mock_deployment(0, 0))
         assert _adapter(MagicMock(), apps).deployment_ready("lab-ns", "nginx") is False
 
     def test_returns_false_when_desired_is_none(self) -> None:
         apps = MagicMock()
-        apps.read_namespaced_deployment.return_value = _mock_deployment(None, None)
+        apps.list_namespaced_deployment.return_value = _mock_list(_mock_deployment(None, None))
         assert _adapter(MagicMock(), apps).deployment_ready("lab-ns", "nginx") is False
+
+    def test_returns_false_when_deployment_not_found(self) -> None:
+        apps = MagicMock()
+        apps.list_namespaced_deployment.return_value = _mock_list()  # empty list
+        assert _adapter(MagicMock(), apps).deployment_ready("lab-ns", "missing") is False
 
     def test_returns_false_on_404(self) -> None:
         apps = MagicMock()
-        apps.read_namespaced_deployment.side_effect = _api_404()
+        apps.list_namespaced_deployment.side_effect = _api_404()
         assert _adapter(MagicMock(), apps).deployment_ready("lab-ns", "missing") is False
 
     def test_propagates_non_404(self) -> None:
         apps = MagicMock()
-        apps.read_namespaced_deployment.side_effect = _api_500()
+        apps.list_namespaced_deployment.side_effect = _api_500()
         with pytest.raises(ApiException):
             _adapter(MagicMock(), apps).deployment_ready("lab-ns", "nginx")
+
+    def test_does_not_call_read_namespaced_deployment(self) -> None:
+        """Regression: must use list, not get, to stay within list-only RBAC."""
+        apps = MagicMock()
+        apps.list_namespaced_deployment.return_value = _mock_list(_mock_deployment(1, 1))
+        _adapter(MagicMock(), apps).deployment_ready("lab-ns", "nginx")
+        apps.read_namespaced_deployment.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

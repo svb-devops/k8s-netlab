@@ -75,8 +75,8 @@ _CLUSTER_ROLE_MANIFEST = (
     "  resources: [\"secrets\"]\n"
     "  verbs: [\"list\", \"watch\"]\n"
     "- apiGroups: [\"apps\"]\n"
-    "  resources: [\"deployments\", \"daemonsets\", \"statefulsets\", \"replicasets\"]\n"
-    "  verbs: [\"get\", \"list\", \"watch\"]\n"
+    "  resources: [\"deployments\"]\n"
+    "  verbs: [\"list\", \"watch\"]\n"
 )
 
 
@@ -600,8 +600,8 @@ class PlatformVerifierInitializer:
                 ),
                 _k8s.V1PolicyRule(
                     api_groups=["apps"],
-                    resources=["deployments", "daemonsets", "statefulsets", "replicasets"],
-                    verbs=["get", "list", "watch"],
+                    resources=["deployments"],
+                    verbs=["list", "watch"],
                 ),
             ],
         )
