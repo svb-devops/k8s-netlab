@@ -374,10 +374,16 @@ class TestSessionSnapshotSmoke:
         body = r.json()
         assert "vm_id" not in body
 
-    def test_active_session_does_not_expose_namespace(self, seeded_client):
+    def test_active_session_exposes_namespace_for_terminal_badge(self, seeded_client):
+        # namespace is intentionally exposed so the learner terminal badge can show it.
+        # It is scoped to the session owner's own namespace; not a sensitive field.
         r = seeded_client.get(f"/api/lab-sessions/{DEMO_SESSION_ID_ACTIVE}/snapshot")
         body = r.json()
-        assert "namespace" not in body
+        # namespace key present (may be None for very early states)
+        assert "namespace" in body
+        # Sensitive fields still hidden
+        assert "vm_id" not in body
+        assert "kubeconfig" not in body
 
 
 # ===========================================================================

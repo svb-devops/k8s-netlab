@@ -1,10 +1,13 @@
 import { LabGenClient, LabGenApiError } from '/js/labgenClient.js';
 import { renderSessionView, renderErrorState, renderNotFound, renderLoading } from '/js/labgenViews.js';
+import { LabKubectlTerminal } from '/js/labgen-kubectl-terminal.js';
 
 const root = document.getElementById('root');
 const devInfo = document.getElementById('dev-user-info');
 let _client;
 let _sessionId;
+let _terminal = null;     // LabKubectlTerminal instance
+let _wasActive = false;   // tracks whether terminal was connected
 
 async function init() {
     root.innerHTML = renderLoading();
@@ -31,6 +34,7 @@ async function loadSnapshot() {
         const snapshot = await _client.getSessionSnapshot(_sessionId);
         root.innerHTML = renderSessionView(snapshot);
         attachActions(snapshot);
+        syncTerminal(snapshot);
     } catch (e) {
         if (e instanceof LabGenApiError && e.status === 404) {
             root.innerHTML = renderNotFound('Session');
@@ -39,6 +43,43 @@ async function loadSnapshot() {
                 e instanceof LabGenApiError ? e.message : 'Failed to load session.'
             );
         }
+    }
+}
+
+/**
+ * Show or hide the kubectl terminal panel based on session status.
+ * Connect when LAB_ACTIVE, disconnect when session ends.
+ */
+function syncTerminal(snapshot) {
+    const panel = document.getElementById('kubectl-terminal-panel');
+    const nsBadge = document.getElementById('kubectl-terminal-ns-badge');
+    if (!panel) return;
+
+    const isActive = snapshot?.lab_session_status === 'LAB_ACTIVE';
+
+    if (isActive) {
+        panel.classList.remove('hidden');
+
+        if (!_terminal) {
+            _terminal = new LabKubectlTerminal(_sessionId, 'kubectl-terminal-container');
+            _terminal.connect();
+            _wasActive = true;
+        }
+
+        // Show namespace badge (may arrive after terminal is connected)
+        if (snapshot?.namespace && nsBadge) {
+            nsBadge.textContent = snapshot.namespace;
+            nsBadge.classList.remove('hidden');
+        }
+    } else {
+        // Session ended — disconnect terminal if it was open
+        if (_terminal && _wasActive) {
+            _terminal.disconnect();
+            _terminal = null;
+            _wasActive = false;
+        }
+        panel.classList.add('hidden');
+        if (nsBadge) nsBadge.classList.add('hidden');
     }
 }
 

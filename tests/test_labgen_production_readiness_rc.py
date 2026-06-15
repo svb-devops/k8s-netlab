@@ -681,7 +681,8 @@ class TestSessionLifecycleRC:
             assert r.status_code == 200
             _assert_no_sensitive(r.json(), "session-snapshot")
 
-    def test_snapshot_does_not_contain_vm_id_or_namespace(self):
+    def test_snapshot_does_not_contain_vm_id_but_exposes_namespace(self):
+        # vm_id is hidden; namespace is intentionally exposed for terminal badge.
         with _rc_ctx() as ctx:
             lab_id = self._setup_draft(ctx)
             start = ctx["client"].post("/api/lab-sessions", json={
@@ -690,9 +691,10 @@ class TestSessionLifecycleRC:
             })
             session_id = start.json()["session_id"]
             r = ctx["client"].get(f"/api/lab-sessions/{session_id}/snapshot")
-            body_str = str(r.json())
+            body = r.json()
+            body_str = str(body)
             assert "vm_id" not in body_str
-            assert "namespace" not in body_str
+            assert "namespace" in body   # key present (namespace exposed for terminal badge)
 
     def test_audit_events_no_sensitive_data(self):
         with _rc_ctx() as ctx:

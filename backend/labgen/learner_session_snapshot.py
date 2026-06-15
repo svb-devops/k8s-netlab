@@ -3,7 +3,9 @@ Learner Runtime Session Snapshot — read-only, learner-safe projection of LabSe
 
 Design invariants:
   - Only the session owner and admins may see a session (enforced by route via is_admin flag).
-  - No internal fields: no namespace, no vm_id, no kubeconfig, no credentials.
+  - Sensitive internal fields hidden: no vm_id, no kubeconfig, no credentials.
+  - namespace IS intentionally exposed so the learner kubectl terminal badge can display it.
+    It is scoped to the session owner's own lab namespace and is not a secret.
   - All string fields pass through sanitize_text before being placed in response models.
   - Build and list operations are READ-ONLY: never persist, never start/check/complete/abort/cleanup.
   - failure_reason values use FailureReason stable machine codes (no raw exception text).
@@ -80,6 +82,9 @@ class LearnerSessionStepStatus(BaseModel):
     status: str         # "passed" | "available" | "locked"
     is_current: bool
     check_summary: Optional[LearnerSessionCheckSummary] = None
+    # Populated only for the current step so learners know what to do
+    step_do: Optional[str] = None        # rendered instruction text
+    step_commands: list[str] = Field(default_factory=list)  # example kubectl commands
 
 
 class LearnerSessionRuntimeSummary(BaseModel):
@@ -102,6 +107,7 @@ class LearnerSessionSnapshot(BaseModel):
     lab_id: str
     title: str
     session_state: str                         # LabSessionStatus.value
+    namespace: Optional[str] = None            # active lab namespace (shown in terminal badge)
     current_step_id: Optional[str] = None
     steps: list[LearnerSessionStepStatus] = Field(default_factory=list)
     runtime_summary: LearnerSessionRuntimeSummary
@@ -183,6 +189,13 @@ def _check_summary_for_step(
     )
 
 
+def _substitute_namespace(text: str, namespace: Optional[str]) -> str:
+    """Replace {{lab_namespace}} with the actual namespace value (if known)."""
+    if namespace and "{{lab_namespace}}" in text:
+        return text.replace("{{lab_namespace}}", namespace)
+    return text
+
+
 def _build_step_statuses(
     session: "LabSessionState",
     steps: list["Step"],
@@ -191,6 +204,7 @@ def _build_step_statuses(
     result: list[LearnerSessionStepStatus] = []
     current_idx = session.current_step_index
     current_step_id: Optional[str] = None
+    ns = session.namespace  # may be None for very early session states
 
     for idx, step in enumerate(steps):
         safe_id = _sanitize(step.step_id)
@@ -202,15 +216,25 @@ def _build_step_statuses(
             is_current = False
             # Show PASS detail for the most-recently completed step (verify_ids match last results)
             check_summary = _check_summary_for_step(session, step)
+            step_do = None
+            step_commands: list[str] = []
         elif idx == current_idx:
             st = "available"
             is_current = True
             current_step_id = safe_id
             check_summary = _check_summary_for_step(session, step)
+            # Provide the current step's instructions to the learner
+            step_do = _sanitize(_substitute_namespace(step.do or "", ns))
+            step_commands = [
+                _sanitize(_substitute_namespace(cmd, ns))
+                for cmd in (step.commands or [])
+            ]
         else:
             st = "locked"
             is_current = False
             check_summary = None
+            step_do = None
+            step_commands = []
 
         result.append(LearnerSessionStepStatus(
             step_id=safe_id,
@@ -219,6 +243,8 @@ def _build_step_statuses(
             status=st,
             is_current=is_current,
             check_summary=check_summary,
+            step_do=step_do,
+            step_commands=step_commands,
         ))
 
     return current_step_id, result
@@ -450,6 +476,7 @@ class LearnerSessionSnapshotService:
             lab_id=session.lab_id,
             title=title,
             session_state=session.lab_session_status.value,
+            namespace=session.namespace,
             current_step_id=current_step_id,
             steps=step_statuses,
             runtime_summary=runtime_summary,

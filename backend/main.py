@@ -249,6 +249,23 @@ app.include_router(image_router)           # Image resolve & existence check
 # ============================================================
 
 from backend.websocket import websocket_terminal
+from backend.labgen.lab_kubectl_ws import lab_kubectl_websocket
+from backend.labgen.routes import get_session_repository
+
+
+@app.websocket("/ws/lab-kubectl/{session_id}")
+async def lab_kubectl_endpoint(websocket: WebSocket, session_id: str):
+    """
+    WebSocket kubectl terminal for an active LabGen lab session.
+
+    Security layers:
+    1. Requires session_token cookie (same auth as /ws/terminal).
+    2. Session must exist and be owned by the authenticated user.
+    3. Session must be in LAB_ACTIVE state.
+    4. Commands are validated by kubectl_executor before execution.
+    5. Session state is polled every 10s; connection closes if session ends.
+    """
+    await lab_kubectl_websocket(websocket, session_id, get_session_repository())
 
 
 @app.websocket("/ws/terminal/{vm_id}")

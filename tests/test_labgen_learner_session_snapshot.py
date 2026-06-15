@@ -420,19 +420,23 @@ class TestSnapshotHappyPath:
 
         assert data["action_availability"]["can_complete"] is False
 
-    def test_runtime_summary_not_expose_namespace(self) -> None:
+    def test_snapshot_exposes_namespace_for_terminal_badge(self) -> None:
+        # namespace is exposed to support the learner kubectl terminal badge.
+        # It is the learner's own session namespace; not a secret.
         dr = _MemDraftRepo()
         sr = _MemSessionRepo()
         draft = _make_draft(lab_id="lab-snap-6")
         dr.put(draft)
-        sess = _make_session(draft.lab_id, "alice", namespace="lab-secret-namespace-abc")
+        sess = _make_session(draft.lab_id, "alice", namespace="lab-alice-session-abc")
         sr.put(sess)
 
         with _snapshot_ctx(dr, sr, user="alice") as client:
             data = client.get(f"/api/lab-sessions/{sess.session_id}/snapshot").json()
 
-        payload_str = str(data)
-        assert "lab-secret-namespace-abc" not in payload_str
+        # namespace key present and value matches
+        assert data.get("namespace") == "lab-alice-session-abc"
+        # vm_id still hidden
+        assert "vm_id" not in str(data)
 
 
 # ===========================================================================

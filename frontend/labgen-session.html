@@ -6,6 +6,23 @@
     <title>Lab Session — K8S NetLab</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="/js/tailwind-config.js"></script>
+
+    <!-- xterm.js — same versions/SRI as index.html -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css"
+          integrity="sha384-LJcOxlx9IMbNXDqJ2axpfEQKkAYbFjJfhXexLfiRJhjDU81mzgkiQq8rkV0j6dVh" crossorigin="anonymous" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"
+            integrity="sha384-/nfmYPUzWMS6v2atn8hbljz7NE0EI1iGx34lJaNzyVjWGDzMv+ciUZUeJpKA3Glc" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"
+            integrity="sha384-AQLWHRKAgdTxkolJcLOELg4E9rE89CPE2xMy3tIRFn08NcGKPTsELdvKomqji+DL" crossorigin="anonymous"></script>
+
+    <style>
+        #kubectl-terminal-container .xterm {
+            padding: 8px;
+        }
+        #kubectl-terminal-container .xterm-viewport {
+            border-radius: 0 0 6px 6px;
+        }
+    </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
 
@@ -20,8 +37,32 @@
 </header>
 
 <!-- ── Main ── -->
-<main class="max-w-3xl mx-auto px-6 py-8">
+<main class="max-w-3xl mx-auto px-6 py-8 space-y-6">
     <div id="root"><!-- populated by JS --></div>
+
+    <!-- ── Kubectl Terminal Panel (shown only when LAB_ACTIVE) ── -->
+    <div id="kubectl-terminal-panel" class="hidden">
+        <div class="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
+            <!-- Panel header -->
+            <div class="flex items-center justify-between px-4 py-2 bg-gray-800 text-white">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-mono font-semibold text-green-400">$ kubectl</span>
+                    <span class="text-xs text-gray-400">Lab Terminal</span>
+                </div>
+                <span id="kubectl-terminal-ns-badge"
+                      class="text-xs font-mono text-cyan-300 hidden"></span>
+            </div>
+
+            <!-- xterm.js mount point -->
+            <div id="kubectl-terminal-container"
+                 class="bg-gray-900"
+                 style="min-height: 280px;">
+            </div>
+        </div>
+        <p class="text-xs text-gray-400 mt-1 px-1">
+            Type <code class="font-mono">kubectl</code> commands above. Terminal is scoped to your lab namespace.
+        </p>
+    </div>
 </main>
 
 <script type="module" src="/js/labgen-session-init.js"></script>

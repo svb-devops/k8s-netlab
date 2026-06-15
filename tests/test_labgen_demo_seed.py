@@ -468,11 +468,14 @@ class TestScenarioCorrectness:
         assert "vm_id" not in body
         assert DEMO_VM_ID not in str(body)
 
-    def test_active_session_namespace_absent_from_snapshot(self, admin_client):
+    def test_active_session_namespace_present_in_snapshot_for_terminal_badge(self, admin_client):
+        # namespace is intentionally exposed so the learner kubectl terminal badge can show it.
+        # It is scoped to this session's own namespace and is not a sensitive field.
         admin_client.post("/api/labgen/demo/seed", json={})
         r = admin_client.get(f"/api/lab-sessions/{DEMO_SESSION_ID_ACTIVE}/snapshot")
         body = r.json()
-        assert "namespace" not in body
+        assert "namespace" in body      # key present (value may be None for early states)
+        assert "vm_id" not in body      # vm_id still hidden
 
 
 # ===========================================================================

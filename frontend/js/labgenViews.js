@@ -322,11 +322,24 @@ export function renderSessionView(snapshot) {
             const border     = isCurrent ? 'border-blue-400' : isPassed ? 'border-green-300' : 'border-gray-200';
             const icon       = isPassed ? '✓' : isCurrent ? '→' : String(idx + 1);
             const statusText = isPassed ? 'passed' : isCurrent ? 'current' : 'pending';
+
+            // Show step instructions and commands only for the active step
+            const stepDo = isCurrent && s?.step_do
+                ? `<p class="text-sm text-gray-600 mt-2">${_safe(s.step_do)}</p>`
+                : '';
+            const stepCmds = isCurrent && Array.isArray(s?.step_commands) && s.step_commands.length > 0
+                ? `<div class="mt-2 space-y-1">${
+                      s.step_commands.map(cmd => `<code class="block text-xs bg-gray-900 text-green-300 rounded px-3 py-1.5 font-mono">${_safe(cmd)}</code>`).join('')
+                  }</div>`
+                : '';
+
             return `
             <div class="flex items-start gap-3 border ${border} rounded p-3" data-step-status="${_safe(statusText)}">
                 <span class="text-sm font-bold w-6 text-center ${isPassed ? 'text-green-600' : isCurrent ? 'text-blue-600' : 'text-gray-400'}">${_safe(icon)}</span>
                 <div class="flex-1">
                     <p class="text-sm font-medium text-gray-800">${_safe(s?.title ?? s?.step_id ?? '')}</p>
+                    ${stepDo}
+                    ${stepCmds}
                     ${isCurrent ? _renderCheckSummary(s?.check_summary) : ''}
                 </div>
             </div>`;
