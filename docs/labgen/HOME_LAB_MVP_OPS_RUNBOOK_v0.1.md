@@ -609,7 +609,11 @@ print('active:', len(active))
 ls /var/lib/labgen-staging/verifier-credentials/vm_creds/401/
 # Expected: kubeconfig.yaml present
 
-# 8. Re-initialize verifier (do this before every cohort session)
+# 8. Re-initialize verifier
+# IMPORTANT (confirmed during Small Cohort Pilot 2026-06-15):
+# Verifier credentials are reclaimed after EVERY lab session cleanup, not only between users.
+# Re-init is required before EACH lab session — including when the same user runs multiple labs.
+# Skipping this step causes credential_missing error on the first step check of the next lab.
 source /root/k8s-netlab/venv/bin/activate
 python3 - <<'EOF'
 from backend.vm_manager import initialize_verifier_for_vm_host_side

@@ -94,9 +94,9 @@ class VMTracker:
             try:
                 # Support both old (string) and new (dict) formats
                 if isinstance(vm_data, str):
-                    created_at = datetime.fromisoformat(vm_data)
+                    created_at = datetime.fromisoformat(vm_data).replace(tzinfo=None)
                 else:
-                    created_at = datetime.fromisoformat(vm_data["created_at"])
+                    created_at = datetime.fromisoformat(vm_data["created_at"]).replace(tzinfo=None)
                 result[vm_id] = created_at
             except (ValueError, KeyError) as e:
                 logger.warning(f"Invalid data for VM {vm_id}: {e}")
@@ -173,7 +173,7 @@ class VMTracker:
                 owner = vm_data.get("owner", "unknown")
             try:
                 age_minutes = round(
-                    (now - datetime.fromisoformat(created_at_str)).total_seconds() / 60, 1
+                    (now - datetime.fromisoformat(created_at_str).replace(tzinfo=None)).total_seconds() / 60, 1
                 )
             except (ValueError, TypeError):
                 age_minutes = 0.0
@@ -193,9 +193,9 @@ class VMTracker:
             return 0.0
         try:
             if isinstance(vm_data, str):
-                created_at = datetime.fromisoformat(vm_data)
+                created_at = datetime.fromisoformat(vm_data).replace(tzinfo=None)
             else:
-                created_at = datetime.fromisoformat(vm_data["created_at"])
+                created_at = datetime.fromisoformat(vm_data["created_at"]).replace(tzinfo=None)
             return (datetime.now() - created_at).total_seconds() / 60
         except (ValueError, KeyError):
             return 0.0

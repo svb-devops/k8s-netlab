@@ -198,3 +198,45 @@ class TestCorruptedData:
         assert tracker.get_vm_owner(500) == "alice"
         # Non-digit key must not surface as a VM
         assert tracker.get_vm_owner(0) is None
+
+
+class TestTimezoneAwareDatetime:
+    """回归：get_expired_vms / get_vm_age_minutes / get_all_vms_with_details
+    对存储了 timezone-aware ISO 字符串（如 +00:00）的 created_at 不得抛 TypeError。
+
+    根因：datetime.now()（naive）与 datetime.fromisoformat("...+00:00")（aware）
+    不可直接相减 → TypeError: can't subtract offset-naive and offset-aware datetimes。
+    Fix: 解析后调用 .replace(tzinfo=None) 统一为 naive。
+    """
+
+    def test_get_expired_vms_with_timezone_aware_created_at(self, tracker):
+        """get_expired_vms 对 timezone-aware created_at 不得抛 TypeError（小组 pilot 回归）。"""
+        import json
+        old_aware = "2026-06-14T10:00:00+00:00"
+        tracker.data_file.write_text(json.dumps({
+            "401": {"created_at": old_aware, "owner": "cohort-user-A"}
+        }))
+        expired = tracker.get_expired_vms(max_age_minutes=30)
+        assert 401 in expired
+
+    def test_get_vm_age_minutes_with_timezone_aware_created_at(self, tracker):
+        """get_vm_age_minutes 对 timezone-aware created_at 不得抛 TypeError（小组 pilot 回归）。"""
+        import json
+        old_aware = "2026-06-14T10:00:00+00:00"
+        tracker.data_file.write_text(json.dumps({
+            "401": {"created_at": old_aware, "owner": "cohort-user-A"}
+        }))
+        age = tracker.get_vm_age_minutes(401)
+        assert age > 0
+
+    def test_get_all_vms_with_details_with_timezone_aware_created_at(self, tracker):
+        """get_all_vms_with_details 对 timezone-aware created_at 不得抛 TypeError（小组 pilot 回归）。"""
+        import json
+        old_aware = "2026-06-14T10:00:00+00:00"
+        tracker.data_file.write_text(json.dumps({
+            "401": {"created_at": old_aware, "owner": "cohort-user-B"}
+        }))
+        details = tracker.get_all_vms_with_details()
+        assert len(details) == 1
+        assert details[0]["age_minutes"] > 0
+        assert details[0]["owner"] == "cohort-user-B"

@@ -403,6 +403,22 @@ Self-check: **34/34 PASS**
 
 ---
 
+## P. Follow-up (2026-06-15)
+
+**Small Cohort Pilot v0.1 completed** — SMALL_COHORT_PILOT_COMPLETED_WITH_NOTES
+
+3 cohort users / 6 lab sessions / all 4 published labs covered. All sessions LAB_CLOSED,
+cleanup_verified=True, 0 residuals, 0 emergency stop.
+
+**Ops note confirmed**: Verifier credentials are reclaimed after every lab session cleanup — re-init
+required before each lab session (not only each user). Runbook J.2 step 8 updated with this clarification.
+
+**Bug fixed**: `vm_tracker` datetime offset-naive/aware mismatch in 3 methods — 3 regression tests added.
+
+**Full result**: `docs/labgen/SMALL_COHORT_PILOT_RESULT_v0.1.md`
+
+---
+
 *Not HA. Not production-grade. Not for general availability.*  
 *home_lab_mvp is a controlled pilot profile on single-node Proxmox (T430).*  
 *No real secrets appear in this document.*  
