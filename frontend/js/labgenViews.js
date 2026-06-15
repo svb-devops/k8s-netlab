@@ -392,7 +392,7 @@ function _renderCheckSummary(summary) {
     const reason  = !passed && summary?.failure_reason
         ? `<span class="text-gray-400 ml-1">— ${_safe(summary.failure_reason)}</span>`
         : '';
-    const msg     = !passed && summary?.safe_message
+    const msg     = summary?.safe_message
         ? `<span class="text-gray-400 ml-1">${_safe(summary.safe_message)}</span>`
         : '';
     return `<div class="flex items-center gap-2 text-xs mt-1 ${color}">

@@ -161,14 +161,18 @@ def _check_summary_for_step(
     if not current_ids.intersection(result_ids):
         return LearnerSessionCheckSummary(last_result="not_checked")
 
-    all_passed = all(r.passed for r in results)
+    # Filter to only results belonging to this step's verify templates
+    step_results = [r for r in results if r.verify_id in current_ids]
+    all_passed = all(r.passed for r in step_results)
     if all_passed:
+        first_passed = next((r for r in step_results if r.passed and r.detail), None)
+        pass_msg = first_passed.detail if first_passed else "All checks passed"
         return LearnerSessionCheckSummary(
             last_result="passed",
-            safe_message=_sanitize("All checks passed"),
+            safe_message=_sanitize(pass_msg),
         )
 
-    first_failure = next((r for r in results if not r.passed), None)
+    first_failure = next((r for r in step_results if not r.passed), None)
     failure_reason = None
     if first_failure and first_failure.failure_reason:
         failure_reason = _sanitize(first_failure.failure_reason)
@@ -196,7 +200,8 @@ def _build_step_statuses(
         if safe_id in session.completed_step_ids or step.step_id in session.completed_step_ids:
             st = "passed"
             is_current = False
-            check_summary = None
+            # Show PASS detail for the most-recently completed step (verify_ids match last results)
+            check_summary = _check_summary_for_step(session, step)
         elif idx == current_idx:
             st = "available"
             is_current = True

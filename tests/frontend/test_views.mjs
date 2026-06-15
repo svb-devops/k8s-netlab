@@ -291,6 +291,19 @@ test('session view: step.check_summary rendered under current step (not snapshot
     assert.ok(html.includes('passed'), 'passed label missing');
 });
 
+test('session view: check_summary passed with safe_message shows deployment detail', () => {
+    const detail = 'Deployment "hello-deployment" is available with 1 ready replica in your isolated namespace. Kubernetes has created a Pod for this workload.';
+    const summary = { last_result: 'passed', safe_message: detail, failure_reason: null };
+    const snapshot = {
+        ...ACTIVE_SNAPSHOT,
+        steps: [makeStep('step-1', 'Create a deployment', { status: 'available', isCurrent: true, checkSummary: summary })],
+    };
+    const html = renderSessionView(snapshot);
+    assert.ok(html.includes('✓'), 'passed icon missing');
+    assert.ok(html.includes('1 ready replica'), 'deployment detail not shown for passed step');
+    assert.ok(html.includes('Pod'), 'Pod mention missing from passed detail');
+});
+
 test('session view: check_summary failure shows error icon and failure_reason', () => {
     const summary = { last_result: 'failed', safe_message: null, failure_reason: 'namespace_not_found' };
     const snapshot = {

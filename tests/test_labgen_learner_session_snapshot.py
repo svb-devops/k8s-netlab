@@ -503,6 +503,87 @@ class TestStepProgressionStates:
         step = data["steps"][0]
         assert step["check_summary"]["last_result"] == "passed"
 
+    def test_step_check_passed_safe_message_uses_verify_detail(self) -> None:
+        """After step passes (step in completed_step_ids), check_summary shows VerifyResult.detail."""
+        dr = _MemDraftRepo()
+        sr = _MemSessionRepo()
+        draft = _make_draft(lab_id="lab-snap-detail-1", step_count=2)
+        dr.put(draft)
+        step1 = draft.steps[0]
+        step2 = draft.steps[1]
+        # Simulate: step1 passed, step2 is now current (advanced), last_verify_results = step1 results
+        passed_results = [
+            VerifyResult(
+                session_id="s1",
+                verify_id=step1.verify[0].verify_id,
+                verify_type="deployment_ready",
+                passed=True,
+                detail=(
+                    'Deployment "hello-deployment" is available with 1 ready replica '
+                    "in your isolated namespace. Kubernetes has created a Pod for this workload."
+                ),
+            )
+        ]
+        sess = _make_session(
+            draft.lab_id, "alice",
+            current_step_index=1,           # advanced past step1
+            completed_step_ids=[step1.step_id],  # step1 is completed
+            last_verify_results=passed_results,
+        )
+        sr.put(sess)
+
+        with _snapshot_ctx(dr, sr, user="alice") as client:
+            data = client.get(f"/api/lab-sessions/{sess.session_id}/snapshot").json()
+
+        step1_data = data["steps"][0]
+        summary = step1_data["check_summary"]
+        assert summary is not None, "Completed step should show check_summary with PASS detail"
+        assert summary["last_result"] == "passed"
+        assert summary["safe_message"] is not None
+        assert "1 ready replica" in summary["safe_message"]
+        assert "Pod" in summary["safe_message"]
+        _assert_no_sensitive(summary)
+
+        # step2 (current, not yet checked) must show not_checked — no stale results
+        step2_data = data["steps"][1]
+        cs2 = step2_data["check_summary"]
+        if cs2:
+            assert cs2["last_result"] == "not_checked"
+
+    def test_step_check_passed_safe_message_fallback_when_no_detail(self) -> None:
+        """When VerifyResult.detail is empty on a completed step, fall back to generic message."""
+        dr = _MemDraftRepo()
+        sr = _MemSessionRepo()
+        draft = _make_draft(lab_id="lab-snap-detail-2", step_count=2)
+        dr.put(draft)
+        step1 = draft.steps[0]
+        passed_results = [
+            VerifyResult(
+                session_id="s1",
+                verify_id=step1.verify[0].verify_id,
+                verify_type="pod_running",
+                passed=True,
+                detail="",  # empty detail → should fall back to generic
+            )
+        ]
+        sess = _make_session(
+            draft.lab_id, "alice",
+            current_step_index=1,
+            completed_step_ids=[step1.step_id],
+            last_verify_results=passed_results,
+        )
+        sr.put(sess)
+
+        with _snapshot_ctx(dr, sr, user="alice") as client:
+            data = client.get(f"/api/lab-sessions/{sess.session_id}/snapshot").json()
+
+        step1_data = data["steps"][0]
+        summary = step1_data["check_summary"]
+        assert summary is not None
+        assert summary["last_result"] == "passed"
+        assert summary["safe_message"] is not None
+        _assert_no_sensitive(summary)
+
     def test_step_check_failed_shows_safe_message(self) -> None:
         dr = _MemDraftRepo()
         sr = _MemSessionRepo()
