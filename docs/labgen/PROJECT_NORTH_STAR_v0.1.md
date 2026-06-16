@@ -57,7 +57,75 @@ Feedback / Reflection
 Cleanup / Credential Reclaim
 ```
 
-## 4. Current Domain Proof
+## 4. Article Operability / Lab Feasibility Gate
+
+LabGen is **not** a system that forcibly turns "any article" into an experiment. The first step of Article-to-Lab must be a judgment of whether the input content is operable and verifiable — **before** a Draft Lab Contract is ever generated.
+
+When a user submits a technical article, README, tutorial, or internal tech doc, the system **must** first run the **Lab Feasibility Gate** to decide whether to generate a Draft Lab Contract.
+
+The Feasibility Gate classifies input into exactly one of three tiers:
+
+### 4.1 Directly Lab-Ready
+
+The article has clear, sufficient experiment conditions and may proceed to a Draft Lab Contract.
+
+Judgment criteria (must have all of):
+- a clear technical objective
+- executable operations
+- commands, configuration, code, or deployment steps that can become experiment actions
+- an environment that can be provisioned for it
+- observable results
+- an automatically verifiable state
+- can run safely inside a temporary isolated environment
+- can be cleaned up when the experiment ends
+- does not require real production accounts, real keys, or inaccessible third-party resources
+
+### 4.2 Partially Lab-Ready
+
+The article has practice value but is missing key experiment information. The system must **not** publish directly, and must **not** fabricate missing content.
+
+This case must return **clarification / missing requirements**, for example:
+- missing target system/version
+- missing runtime environment
+- missing command or configuration
+- missing input examples
+- missing verifiable outcome
+- depends on an external service with no safe substitute
+- requires the user to choose an experiment scope
+- content is experimentable in principle, but only a **limited draft** can be generated
+
+### 4.3 Not Lab-Ready / Reject
+
+If the article has no operability, the system must explicitly refuse to generate an experiment, with a clear reason.
+
+Non-exhaustive reject scenarios:
+- pure theory article
+- news, opinion, trend analysis
+- no executable steps
+- no verifiable outcome
+- missing necessary environment with no reasonable inference possible
+- requires a real production environment
+- requires real keys / tokens / accounts / user private or sensitive data
+- requires an inaccessible third-party service
+- involves destructive, illegal, or high-risk unsafe operations
+- experiment cost too high, not suited to a temporary environment
+- cannot be cleaned up
+- cannot establish a safety boundary
+- cannot be automatically verified
+- generating an experiment would mislead the user into thinking they've mastered the article's core content
+
+When rejecting, the system must:
+- clearly state why a lab cannot be generated
+- list which operable elements are missing
+- where possible, suggest what information the user could add to retry
+- if the article is only a concept summary, explicitly state it can only produce summary / study notes, not an executable lab
+- never harden an experiment just to appear "smart"
+- never generate a fake experiment that cannot be verified
+- never bypass safety / cleanup / verifier requirements
+
+This gate is the formal entry gate of the Article-to-Lab pipeline. At the current stage it is recorded in the North Star document for subsequent design; full automated decision-making is **not** required to be implemented now.
+
+## 5. Current Domain Proof
 
 The current K8s learning platform is the **first validation scenario** — it is not the permanent product boundary.
 
@@ -75,7 +143,7 @@ The K8s domain is currently used to validate:
 
 All of the above are domain-agnostic platform capabilities being proven through one concrete domain (K8s). The proof is the point, not the domain.
 
-## 5. Future Domains
+## 6. Future Domains
 
 The architecture must remain able to support, without rewrite:
 - Linux learning platform
@@ -88,7 +156,7 @@ The architecture must remain able to support, without rewrite:
 - security sandbox labs
 - Python / backend engineering labs
 
-## 6. Architecture Principle
+## 7. Architecture Principle
 
 **General Experiment Core + Replaceable Domain Contract**
 
@@ -104,7 +172,7 @@ Do not let the system harden into K8s-only. The following must remain swappable 
 - Feedback Template
 - Admin Review / Publish Gate
 
-## 7. What We Must Not Become
+## 8. What We Must Not Become
 
 - Must not harden into a fixed K8s course platform.
 - Must not just keep adding more K8s labs for their own sake.
@@ -119,7 +187,7 @@ Do not let the system harden into K8s-only. The following must remain swappable 
 - Must not pollute the user's local machine.
 - Must not break future Linux / multi-domain migration capability.
 
-## 8. LLM Positioning
+## 9. LLM Positioning
 
 The LLM's correct position is **not** to publish experiments directly. It is to:
 - extract practicable knowledge points from an article
@@ -137,7 +205,7 @@ But it must always go through:
 - Internal Rehearsal
 - Real Learner Validation
 
-## 9. Product Stage Definition
+## 10. Product Stage Definition
 
 The project is currently in the **real-human product validation phase**.
 
@@ -154,7 +222,7 @@ Current focus is only:
 - validating real feedback from a small cohort
 - validating whether the project is ready to enter the Small Customer Pilot Preparation Gate
 
-## 10. Decision Rule
+## 11. Decision Rule
 
 Every subsequent task must ask:
 
