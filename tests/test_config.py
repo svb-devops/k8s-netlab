@@ -241,7 +241,32 @@ class TestParseExemptVmIds:
         with caplog.at_level(logging.WARNING, logger="backend.config"):
             result = _parse_exempt_vm_ids("# only a comment, no ids")
         assert result == frozenset()
-        assert "no valid VMIDs parsed" in caplog.text
+        assert "unparseable entries" in caplog.text
+
+    def test_logs_warning_on_partial_parse_failure(self, caplog):
+        """MEDIUM (safety-reviewer): a mixed valid/invalid input must still warn,
+        not just the all-invalid case — otherwise a typo silently drops one VMID
+        with no log trail until that VM gets deleted."""
+        import logging
+        from backend.config import _parse_exempt_vm_ids
+        with caplog.at_level(logging.WARNING, logger="backend.config"):
+            result = _parse_exempt_vm_ids("401,40x")
+        assert result == frozenset({401})
+        assert "unparseable entries" in caplog.text
+        assert "40x" in caplog.text
+
+    def test_no_warning_when_all_ids_valid(self, caplog):
+        import logging
+        from backend.config import _parse_exempt_vm_ids
+        with caplog.at_level(logging.WARNING, logger="backend.config"):
+            result = _parse_exempt_vm_ids("401,402")
+        assert result == frozenset({401, 402})
+        assert "unparseable entries" not in caplog.text
+
+    def test_empty_tokens_between_commas_are_silently_skipped(self):
+        """"401,,402" — empty token between commas is not an error, just ignored."""
+        from backend.config import _parse_exempt_vm_ids
+        assert _parse_exempt_vm_ids("401,,402") == frozenset({401, 402})
 
 
 class TestModuleLoadFailsFast:

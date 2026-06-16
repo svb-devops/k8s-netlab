@@ -120,18 +120,18 @@ def _parse_exempt_vm_ids(raw: str) -> frozenset:
         raw: Raw comma-separated VMID string, e.g. "401,402" or "401  # note"
 
     Returns:
-        frozenset[int]: Parsed VMIDs. Logs a warning if non-empty input
-        yields zero valid VMIDs (likely misconfiguration).
+        frozenset[int]: Parsed VMIDs. Logs a warning if any comma-separated
+        part fails to parse as a VMID (likely misconfiguration), including
+        the case where every part fails.
     """
-    ids = frozenset(
-        int(token)
-        for part in raw.split(",")
-        if (token := part.split("#", 1)[0].strip()).isdigit()
-    )
-    if raw.strip() and not ids:
+    parts = [p.split("#", 1)[0].strip() for p in raw.split(",")]
+    parts = [p for p in parts if p]
+    rejected = [p for p in parts if not p.isdigit()]
+    ids = frozenset(int(p) for p in parts if p.isdigit())
+    if rejected:
         logger.warning(
-            f"VM_CLEANUP_EXEMPT_IDS set but no valid VMIDs parsed from: {raw!r} "
-            "— exemption will NOT be applied"
+            f"VM_CLEANUP_EXEMPT_IDS contains unparseable entries {rejected!r} "
+            f"(raw value: {raw!r}) — those entries will NOT be exempted"
         )
     return ids
 
