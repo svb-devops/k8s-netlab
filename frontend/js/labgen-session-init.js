@@ -1,6 +1,7 @@
 import { LabGenClient, LabGenApiError } from '/js/labgenClient.js';
 import { renderSessionView, renderErrorState, renderNotFound, renderLoading } from '/js/labgenViews.js';
 import { LabKubectlTerminal } from '/js/labgen-kubectl-terminal.js';
+import { isSessionActive } from '/js/labgen-session-state.js';
 
 const root = document.getElementById('root');
 const devInfo = document.getElementById('dev-user-info');
@@ -55,7 +56,7 @@ function syncTerminal(snapshot) {
     const nsBadge = document.getElementById('kubectl-terminal-ns-badge');
     if (!panel) return;
 
-    const isActive = snapshot?.lab_session_status === 'LAB_ACTIVE';
+    const isActive = isSessionActive(snapshot);
 
     if (isActive) {
         panel.classList.remove('hidden');

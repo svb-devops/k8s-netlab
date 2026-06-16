@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- fix: Real Human Re-validation for Labs 2–4 v0.1 期间发现 — labgen-session.html 的 kubectl web terminal 在真实 LAB_ACTIVE session 下不出现（之前所有内部 rehearsal/API 测试均未发现该问题）；根因是 `labgen-session-init.js::syncTerminal` 检查 `snapshot.lab_session_status` 字段，但 `/api/lab-sessions/:id/snapshot` 实际返回的 `LearnerSessionSnapshot` 模型字段名是 `session_state`，导致 isActive 永远为 false — 提取纯函数 `isSessionActive()` 到无 DOM 依赖的 `frontend/js/labgen-session-state.js`，改为读取正确字段 — 补回归测试防止重现（tests/frontend/test_session_init.mjs）
 - fix: VM_CLEANUP_EXEMPT_IDS 解析未剥离行内 `#` 注释，导致 systemd EnvironmentFile 加载的值（含注释原文）被 `.isdigit()` 过滤为空集合，保护完全失效，VM 401 被 auto-cleanup 删除两次 — 提取 `_parse_exempt_vm_ids()`，剥离 `#` 后缀；`.env` 注释改为独立行；safety-reviewer 发现 MEDIUM（部分 token 解析失败时静默丢弃无告警）已修复——任意 token 不可解析即记录 WARNING 并列出被丢弃的具体值 — 补回归测试防止重现
 - feat(labgen): Terminal Post-Integration Runtime & Quality Hardening Gate v0.1 — TERMINAL_RUNTIME_HARDENED_WITH_NOTES；coverage 93.21%（3381 tests）；ConfigMap lab E2E rehearsal 9/9 PASS（4 forbidden commands blocked，5 allowed commands execute）；3 bugs found+fixed（V1Subject kubernetes-v36 removal、-nkube-system bypass、staging VM auto-cleanup）；VM_CLEANUP_EXEMPT_IDS 引入保护 staging K3s VM 401；新增 result artifact docs/labgen/TERMINAL_POST_INTEGRATION_RUNTIME_HARDENING_RESULT_v0.1.md
 - fix: auto_cleanup_task VM_CLEANUP_EXEMPT_IDS 保护 staging VM（401）不被 delete_vm 删除也不被 untrack — staging K3s 平台 VM 被加入生产 VMTracker 后反复被 auto-cleanup 删除 — 补回归测试防止重现
