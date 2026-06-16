@@ -105,12 +105,40 @@ VM_TEMPLATE_ID: int = _get_env_int("VM_TEMPLATE_ID", 9000)
 VM_CORES: int = _get_env_int("VM_CORES", 2)
 VM_MEMORY_MB: int = _get_env_int("VM_MEMORY_MB", 4096)
 VM_SESSION_TIMEOUT_MIN: int = _get_env_int("VM_SESSION_TIMEOUT_MIN", 30)
+
+
+def _parse_exempt_vm_ids(raw: str) -> frozenset:
+    """
+    Parse VM_CLEANUP_EXEMPT_IDS from a comma-separated string.
+
+    systemd's EnvironmentFile does NOT strip inline `#` comments (unlike shell
+    `.env` parsing) — `VALUE=401  # comment` is loaded verbatim as
+    "401  # comment", silently breaking naive `.isdigit()` checks. Each token
+    is stripped of any `#...` suffix before validation to guard against this.
+
+    Args:
+        raw: Raw comma-separated VMID string, e.g. "401,402" or "401  # note"
+
+    Returns:
+        frozenset[int]: Parsed VMIDs. Logs a warning if non-empty input
+        yields zero valid VMIDs (likely misconfiguration).
+    """
+    ids = frozenset(
+        int(token)
+        for part in raw.split(",")
+        if (token := part.split("#", 1)[0].strip()).isdigit()
+    )
+    if raw.strip() and not ids:
+        logger.warning(
+            f"VM_CLEANUP_EXEMPT_IDS set but no valid VMIDs parsed from: {raw!r} "
+            "— exemption will NOT be applied"
+        )
+    return ids
+
+
 # VMIDs that auto-cleanup must never delete (platform/staging VMs)
 # Comma-separated integers, e.g. "401,402"
-_exempt_raw = os.getenv("VM_CLEANUP_EXEMPT_IDS", "")
-VM_CLEANUP_EXEMPT_IDS: frozenset[int] = frozenset(
-    int(x.strip()) for x in _exempt_raw.split(",") if x.strip().isdigit()
-)
+VM_CLEANUP_EXEMPT_IDS: frozenset = _parse_exempt_vm_ids(os.getenv("VM_CLEANUP_EXEMPT_IDS", ""))
 
 # --- Application Configuration ---
 APP_HOST: str = os.getenv("APP_HOST", "0.0.0.0")

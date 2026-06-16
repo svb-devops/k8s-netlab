@@ -208,6 +208,42 @@ def test_https_registry_mirror_no_warning(monkeypatch, caplog):
     assert "insecure" not in caplog.text.lower()
 
 
+class TestParseExemptVmIds:
+    """Tests for _parse_exempt_vm_ids() — VM_CLEANUP_EXEMPT_IDS parsing.
+
+    Regression: systemd's EnvironmentFile does not strip inline `#` comments,
+    so a .env line like `VM_CLEANUP_EXEMPT_IDS=401  # note` is loaded
+    verbatim as "401  # note". The naive `.isdigit()` check silently dropped
+    such entries, leaving the exemption set empty and allowing the
+    auto-cleanup task to delete a protected staging VM.
+    """
+
+    def test_parses_plain_comma_separated_ids(self):
+        from backend.config import _parse_exempt_vm_ids
+        assert _parse_exempt_vm_ids("401,402") == frozenset({401, 402})
+
+    def test_empty_string_yields_empty_set(self):
+        from backend.config import _parse_exempt_vm_ids
+        assert _parse_exempt_vm_ids("") == frozenset()
+
+    def test_strips_inline_comment_after_value(self):
+        """Regression: systemd EnvironmentFile passes inline comments through verbatim."""
+        from backend.config import _parse_exempt_vm_ids
+        assert _parse_exempt_vm_ids("401  # staging K3s platform VM — do not delete") == frozenset({401})
+
+    def test_strips_inline_comment_with_multiple_ids(self):
+        from backend.config import _parse_exempt_vm_ids
+        assert _parse_exempt_vm_ids("401,402  # two staging VMs") == frozenset({401, 402})
+
+    def test_logs_warning_when_input_nonempty_but_no_valid_ids(self, caplog):
+        import logging
+        from backend.config import _parse_exempt_vm_ids
+        with caplog.at_level(logging.WARNING, logger="backend.config"):
+            result = _parse_exempt_vm_ids("# only a comment, no ids")
+        assert result == frozenset()
+        assert "no valid VMIDs parsed" in caplog.text
+
+
 class TestModuleLoadFailsFast:
     """Test that importing config module fails without required env vars."""
 
