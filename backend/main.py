@@ -361,9 +361,25 @@ async def terminal_endpoint(websocket: WebSocket, vm_id: int):
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIR = PROJECT_ROOT / "frontend"
 
+class NoCacheStaticFiles(StaticFiles):
+    """StaticFiles that forbids long-lived edge/browser caching.
+
+    Cloudflare honors the origin's Cache-Control header (Origin Cache
+    Control). The default starlette StaticFiles response has no
+    Cache-Control header, which Cloudflare was treating as cacheable for
+    its default TTL (~4h) — so a JS bugfix deployed to disk could stay
+    invisible to real users for hours. Force revalidation on every request.
+    """
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return response
+
+
 # Mount static files (JS, CSS)
-app.mount("/js", StaticFiles(directory=str(FRONTEND_DIR / "js")), name="js")
-app.mount("/css", StaticFiles(directory=str(FRONTEND_DIR / "css")), name="css")
+app.mount("/js", NoCacheStaticFiles(directory=str(FRONTEND_DIR / "js")), name="js")
+app.mount("/css", NoCacheStaticFiles(directory=str(FRONTEND_DIR / "css")), name="css")
 
 
 # ============================================================
