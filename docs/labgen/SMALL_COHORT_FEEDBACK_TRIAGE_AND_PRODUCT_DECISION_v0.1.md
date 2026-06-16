@@ -541,3 +541,7 @@ See full artifact: `docs/labgen/REAL_HUMAN_LEARNER_VALIDATION_RESULT_v0.1.md`
 *home_lab_mvp is a controlled pilot profile on single-node Proxmox (T430).*  
 *No real secrets appear in this document.*  
 *Production VMID range 500–599 was not touched during this triage.*
+
+---
+
+This gate remains aligned with PROJECT_NORTH_STAR_v0.1: Article-to-Lab / Technical Content-to-Experiment Platform, "读完即练，结果说话".

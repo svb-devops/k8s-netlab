@@ -238,3 +238,21 @@ secret values that look like real credentials.
 
 *This checklist contains no real secrets. All placeholders use `<angle-bracket>` format.*  
 *Keep a completed copy as provisioning evidence for the trial record.*
+
+---
+
+This gate remains aligned with PROJECT_NORTH_STAR_v0.1: Article-to-Lab / Technical Content-to-Experiment Platform, "读完即练，结果说话". K8s domain proof for the broader Article-to-Lab platform.
+
+## North Star Alignment Check
+
+| Check | Status |
+|-------|--------|
+| Still serving Article-to-Lab | YES |
+| Still supports "读完即练，结果说话" | YES |
+| Avoids K8s-only hardcoding | YES — adapter boundaries unchanged |
+| Preserves Linux/domain portability | YES |
+| No skipped human review | YES |
+| No skipped StaticValidator | YES |
+| No skipped cleanup | YES |
+| No premature public launch expansion | YES |
+| No home_lab_mvp → production promotion | YES |

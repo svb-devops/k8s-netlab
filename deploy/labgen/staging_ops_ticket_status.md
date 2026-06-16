@@ -142,3 +142,21 @@ OPS-REGISTRY-001 ─────────────────────
 *No real secrets appear in this file.  
 All example values use `<placeholder>` or `<set-in-secret-manager>` format.  
 Ops updates this file in-place as each ticket progresses.*
+
+---
+
+This gate remains aligned with PROJECT_NORTH_STAR_v0.1: Article-to-Lab / Technical Content-to-Experiment Platform, "读完即练，结果说话". K8s domain proof for the broader Article-to-Lab platform.
+
+## North Star Alignment Check
+
+| Check | Status |
+|-------|--------|
+| Still serving Article-to-Lab | YES |
+| Still supports "读完即练，结果说话" | YES |
+| Avoids K8s-only hardcoding | YES — staging config is domain-specific by necessity (K3s kubeconfig, RBAC), but adapter boundaries (Runtime/Verifier/Terminal/Cleanup Adapter) remain swappable per PROJECT_NORTH_STAR_v0.1 §6 |
+| Preserves Linux/domain portability | YES — no change to adapter contracts |
+| No skipped human review | YES |
+| No skipped StaticValidator | YES |
+| No skipped cleanup | YES |
+| No premature public launch expansion | YES |
+| No home_lab_mvp → production promotion | YES |

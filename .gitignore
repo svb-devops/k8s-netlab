@@ -36,6 +36,10 @@ logs/
 
 # Runtime data (user accounts, sessions, VM state)
 data/
+data-staging/
+
+# LabGen verifier credentials (kubeconfig per VM, never commit)
+creds/
 
 # OS files
 .DS_Store

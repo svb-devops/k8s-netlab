@@ -284,3 +284,7 @@ Small Cohort Readiness Gate v0.1 completed: **SMALL_COHORT_READY_WITH_NOTES**
 - 0 BLOCKER / HIGH / MEDIUM open issues
 - Runbook Section J (Small Cohort Pilot Procedure) added
 - See `docs/labgen/SMALL_COHORT_READINESS_GATE_v0.1.md` for full gate result
+
+---
+
+This gate remains aligned with PROJECT_NORTH_STAR_v0.1: Article-to-Lab / Technical Content-to-Experiment Platform, "读完即练，结果说话".

@@ -254,3 +254,7 @@ This closes the HIGH finding (UX-H1: no kubectl terminal) raised by the original
 | LLM calls | 0 |
 | Real human learner | 1 (learner-H1, user acting as learner) |
 | Bugs found and fixed | 4 |
+
+---
+
+This gate remains aligned with PROJECT_NORTH_STAR_v0.1: Article-to-Lab / Technical Content-to-Experiment Platform, "读完即练，结果说话". K8s domain proof for the broader Article-to-Lab platform.
