@@ -172,6 +172,9 @@ def get_session_service() -> LabSessionService:
             ),
             ns_delete_max_retries=config.LABGEN_NS_DELETE_MAX_RETRIES,
             ns_delete_poll_interval=config.LABGEN_NS_DELETE_POLL_INTERVAL_S,
+            credential_reclaim_exempt_vm_ids=frozenset(
+                str(vmid) for vmid in config.VM_CLEANUP_EXEMPT_IDS
+            ),
         )
     return _session_svc
 

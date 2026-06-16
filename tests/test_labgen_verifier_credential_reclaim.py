@@ -653,6 +653,76 @@ class TestLearnerSnapshotCredentialFailure:
 # ---------------------------------------------------------------------------
 
 
+class TestSharedVMCredentialReclaimExemption:
+    """Shared/staging VMs (e.g. home_lab_mvp VM 401) are reused across many
+    sequential student sessions. Reclaiming verifier credentials after every
+    single session's cleanup destroys credentials the NEXT session on the
+    same VM needs — discovered during Real Human Re-validation for Labs 2-4
+    v0.1 when Lab 3 failed at step 1 with credential_missing right after
+    Lab 2's cleanup ran on the same shared VM 401.
+    """
+
+    def test_exempt_vm_credential_survives_complete_cleanup(self, store, reclaimer):
+        _save_cred(store, "401")
+        repo = _MemSessionRepo()
+        session = _make_session(vm_id="401", ready_to_complete=True)
+        repo.create(session)
+        svc = LabSessionService(
+            session_repo=repo,
+            draft_repo=_MemDraftRepo({"lab-1": _make_draft()}),
+            vm_tracker=_RecordingVMTracker(),
+            ns_lifecycle=StubNamespaceLifecycleAdapter(),
+            image_resolver=_StubImageResolver(),
+            credential_reclaimer=reclaimer,
+            credential_reclaim_exempt_vm_ids=frozenset({"401"}),
+        )
+
+        result = svc.complete_session(session.session_id)
+
+        assert result.lab_session_status == LabSessionStatus.LAB_CLOSED
+        assert store.exists("401")
+
+    def test_exempt_vm_credential_survives_abort_cleanup(self, store, reclaimer):
+        _save_cred(store, "401")
+        repo = _MemSessionRepo()
+        session = _make_session(vm_id="401")
+        repo.create(session)
+        svc = LabSessionService(
+            session_repo=repo,
+            draft_repo=_MemDraftRepo({"lab-1": _make_draft()}),
+            vm_tracker=_RecordingVMTracker(),
+            ns_lifecycle=StubNamespaceLifecycleAdapter(),
+            image_resolver=_StubImageResolver(),
+            credential_reclaimer=reclaimer,
+            credential_reclaim_exempt_vm_ids=frozenset({"401"}),
+        )
+
+        result = svc.abort_session(session.session_id)
+
+        assert result.lab_session_status == LabSessionStatus.LAB_CLOSED
+        assert store.exists("401")
+
+    def test_non_exempt_vm_still_reclaimed(self, store, reclaimer):
+        _save_cred(store, "501")
+        repo = _MemSessionRepo()
+        session = _make_session(vm_id="501", ready_to_complete=True)
+        repo.create(session)
+        svc = LabSessionService(
+            session_repo=repo,
+            draft_repo=_MemDraftRepo({"lab-1": _make_draft()}),
+            vm_tracker=_RecordingVMTracker(),
+            ns_lifecycle=StubNamespaceLifecycleAdapter(),
+            image_resolver=_StubImageResolver(),
+            credential_reclaimer=reclaimer,
+            credential_reclaim_exempt_vm_ids=frozenset({"401"}),
+        )
+
+        result = svc.complete_session(session.session_id)
+
+        assert result.lab_session_status == LabSessionStatus.LAB_CLOSED
+        assert not store.exists("501")
+
+
 class TestRegressionReclaimerNone:
     def test_complete_without_reclaimer_still_closes(self):
         repo = _MemSessionRepo()

@@ -215,6 +215,7 @@ class LabSessionService:
         runtime_precheck: Optional["RuntimePrecheckService"] = None,
         ns_delete_poll_interval: float = 1.0,
         ns_delete_max_retries: int = 5,
+        credential_reclaim_exempt_vm_ids: frozenset = frozenset(),
     ) -> None:
         self._session_repo = session_repo
         self._draft_repo = draft_repo
@@ -227,6 +228,7 @@ class LabSessionService:
         self._runtime_precheck = runtime_precheck
         self._ns_delete_poll_interval = ns_delete_poll_interval
         self._ns_delete_max_retries = ns_delete_max_retries
+        self._credential_reclaim_exempt_vm_ids = credential_reclaim_exempt_vm_ids
 
     def _audit(
         self,
@@ -541,10 +543,16 @@ class LabSessionService:
                 namespace_ok = False
                 namespace_failure_reason = FailureReason.NAMESPACE_CLEANUP_FAILED.value
 
-        # Phase 2: verifier credential reclaim (skipped when no reclaimer injected)
+        # Phase 2: verifier credential reclaim (skipped when no reclaimer injected,
+        # or when the VM is a shared/persistent VM reused across many sessions —
+        # reclaiming after every session would wipe credentials the next session
+        # on the same VM needs).
         cred_ok = True
         cred_failure_reason: Optional[str] = None
-        if self._credential_reclaimer is not None:
+        if (
+            self._credential_reclaimer is not None
+            and session.vm_id not in self._credential_reclaim_exempt_vm_ids
+        ):
             cred_result = self._credential_reclaimer.reclaim_for_vm(session.vm_id)
             cred_ok = cred_result.success
             cred_failure_reason = cred_result.failure_reason
