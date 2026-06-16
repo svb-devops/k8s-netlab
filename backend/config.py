@@ -105,6 +105,12 @@ VM_TEMPLATE_ID: int = _get_env_int("VM_TEMPLATE_ID", 9000)
 VM_CORES: int = _get_env_int("VM_CORES", 2)
 VM_MEMORY_MB: int = _get_env_int("VM_MEMORY_MB", 4096)
 VM_SESSION_TIMEOUT_MIN: int = _get_env_int("VM_SESSION_TIMEOUT_MIN", 30)
+# VMIDs that auto-cleanup must never delete (platform/staging VMs)
+# Comma-separated integers, e.g. "401,402"
+_exempt_raw = os.getenv("VM_CLEANUP_EXEMPT_IDS", "")
+VM_CLEANUP_EXEMPT_IDS: frozenset[int] = frozenset(
+    int(x.strip()) for x in _exempt_raw.split(",") if x.strip().isdigit()
+)
 
 # --- Application Configuration ---
 APP_HOST: str = os.getenv("APP_HOST", "0.0.0.0")

@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- fix: auto_cleanup_task VM_CLEANUP_EXEMPT_IDS 保护 staging VM（401）不被 delete_vm 删除也不被 untrack — staging K3s 平台 VM 被加入生产 VMTracker 后反复被 auto-cleanup 删除 — 补回归测试防止重现
 - fix(labgen): kubectl_executor -nkube-system（无空格形式）绕过 namespace override 检查 — 修正 regex 为 `\s-n\s*\S` 覆盖两种形式 — 补回归测试防止重现
 - fix(labgen): learner_credentials._ensure_rolebinding 使用 RbacV1Subject（kubernetes v36 删除 V1Subject）— 补回归测试防止重现
 - feat(labgen): Terminal Post-Integration Runtime & Quality Hardening Gate v0.1 — coverage 从 90.26% 提升至 93.19%；新增 test_labgen_terminal_coverage.py（51 tests）覆盖 execute() subprocess 路径、learner_credentials K8s API mock（SA/Role/RoleBinding/token/kubeconfig）、lab_kubectl_ws WebSocket 命令循环（blocked/allowed/idle/session-ended）、lab_session_repository CRUD；关键安全路径：ownership mismatch 拒绝、session non-active 拒绝、forbidden command blocked、secret -o yaml blocked、config view blocked、namespace badge 正确传递

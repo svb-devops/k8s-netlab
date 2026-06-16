@@ -218,6 +218,53 @@ class TestAutoCleanupTaskSessionPurge:
             f"Warning call must include original error string. Got: {warning_calls}"
         )
 
+    async def test_exempt_vms_not_deleted_and_not_untracked(self):
+        """回归：VM_CLEANUP_EXEMPT_IDS 中的 VM 不得被 delete_vm 删除，也不得被 untrack（保持所有权查询有效）。
+
+        根因：staging K3s VM（401）被加入 VMTracker 供 LabGen lab session 所有权校验使用，
+        但 auto_cleanup_task 会将任何过期 VM 传给 delete_vm，导致 staging VM 被反复删除。
+        修复：VM_CLEANUP_EXEMPT_IDS 中的 VM 只跳过删除，不 untrack。
+        """
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from backend.main import auto_cleanup_task
+
+        mock_auth = MagicMock()
+        mock_tracker = MagicMock()
+        # VM 401 appears as "expired" — must be protected
+        mock_tracker.get_expired_vms.return_value = [401]
+
+        mock_loop = MagicMock()
+        mock_loop.run_in_executor = AsyncMock()
+
+        sleep_calls = [None, asyncio.CancelledError()]
+
+        async def fake_sleep(_):
+            val = sleep_calls.pop(0)
+            if isinstance(val, type) and issubclass(val, BaseException):
+                raise val()
+            if isinstance(val, BaseException):
+                raise val
+
+        with patch("backend.main.auth_manager", mock_auth), \
+             patch("backend.main.vm_tracker", mock_tracker), \
+             patch("backend.main.config") as mock_config, \
+             patch("asyncio.get_running_loop", return_value=mock_loop), \
+             patch("asyncio.sleep", side_effect=fake_sleep):
+            mock_config.VM_SESSION_TIMEOUT_MIN = 30
+            mock_config.VM_TEMPLATE_ID = 101
+            mock_config.VM_CLEANUP_EXEMPT_IDS = frozenset({401})
+            try:
+                await auto_cleanup_task()
+            except asyncio.CancelledError:
+                pass
+
+        # delete_vm must NOT have been called for VM 401
+        mock_loop.run_in_executor.assert_not_called()
+        # untrack_vm must NOT have been called (ownership check must remain valid)
+        mock_tracker.untrack_vm.assert_not_called()
+
 
 # ============================================================
 # SHA-256 → bcrypt 自动升级（L2 回归）

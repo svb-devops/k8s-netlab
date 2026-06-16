@@ -82,10 +82,14 @@ async def auto_cleanup_task():
 
                 for vm_id in expired_vms:
                     try:
-                        # Skip template VM (read from config, not hardcoded)
+                        # Skip template VM and exempt platform/staging VMs.
+                        # Exempt VMs are NOT untracked so ownership checks remain valid.
                         if vm_id == config.VM_TEMPLATE_ID:
                             logger.info(f"Auto-cleanup: Skipping template VM {vm_id}")
-                            vm_tracker.untrack_vm(vm_id)  # Remove from tracking
+                            vm_tracker.untrack_vm(vm_id)
+                            continue
+                        if vm_id in config.VM_CLEANUP_EXEMPT_IDS:
+                            logger.info(f"Auto-cleanup: Skipping exempt VM {vm_id} (platform/staging)")
                             continue
 
                         logger.info(f"Auto-cleanup: Deleting expired VM {vm_id}")
