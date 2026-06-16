@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- feat(labgen): Terminal Post-Integration Runtime & Quality Hardening Gate v0.1 — TERMINAL_RUNTIME_HARDENED_WITH_NOTES；coverage 93.21%（3381 tests）；ConfigMap lab E2E rehearsal 9/9 PASS（4 forbidden commands blocked，5 allowed commands execute）；3 bugs found+fixed（V1Subject kubernetes-v36 removal、-nkube-system bypass、staging VM auto-cleanup）；VM_CLEANUP_EXEMPT_IDS 引入保护 staging K3s VM 401；新增 result artifact docs/labgen/TERMINAL_POST_INTEGRATION_RUNTIME_HARDENING_RESULT_v0.1.md
 - fix: auto_cleanup_task VM_CLEANUP_EXEMPT_IDS 保护 staging VM（401）不被 delete_vm 删除也不被 untrack — staging K3s 平台 VM 被加入生产 VMTracker 后反复被 auto-cleanup 删除 — 补回归测试防止重现
 - fix(labgen): kubectl_executor -nkube-system（无空格形式）绕过 namespace override 检查 — 修正 regex 为 `\s-n\s*\S` 覆盖两种形式 — 补回归测试防止重现
 - fix(labgen): learner_credentials._ensure_rolebinding 使用 RbacV1Subject（kubernetes v36 删除 V1Subject）— 补回归测试防止重现
