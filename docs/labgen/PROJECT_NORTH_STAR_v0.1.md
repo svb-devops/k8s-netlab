@@ -236,6 +236,20 @@ Every subsequent task must ask:
 
 If the answer reveals drift, the task must be paused and realigned.
 
+## 12. Article-to-Lab Pipeline Design Progress
+
+| Gate | Status | Evidence |
+|------|--------|----------|
+| K8s Domain Proof (4 labs, 3 rounds real human validation) | ✅ COMPLETE | `REAL_HUMAN_COHORT_ROUND2_RESULT_v0.1.md` |
+| Small Customer Pilot Preparation Gate | ✅ COMPLETE | `SMALL_CUSTOMER_PILOT_PREPARATION_GATE_v0.1.md` — PREP_READY_WITH_NOTES |
+| Small Customer Pilot Execution | 🔴 BLOCKED | `SMALL_CUSTOMER_PILOT_RESULT_v0.1.md` — NO_SUITABLE_SMALL_CUSTOMER (not a technical blocker) |
+| **Article-to-Lab Pipeline Design Gate** | ✅ COMPLETE | `ARTICLE_TO_LAB_PIPELINE_DESIGN_GATE_v0.1.md` — **ARTICLE_TO_LAB_PIPELINE_DESIGN_READY_WITH_NOTES** |
+| K8s Article-to-Lab Draft Mode Implementation | ⬜ PENDING | Requires LLM provider + storage/copyright policy decisions (Open Questions N-01, N-02, N-03) |
+| Linux Domain Proof | ⬜ PENDING | After K8s Article-to-Lab Draft Mode validated |
+| Docker Domain Proof | ⬜ PENDING | After Linux domain |
+
+The pipeline design (Section E of `ARTICLE_TO_LAB_PIPELINE_DESIGN_GATE_v0.1.md`) is the canonical reference for the Article-to-Lab platform architecture. All subsequent implementation must follow that design and must not harden into K8s-only.
+
 ---
 
 *This document is the authoritative reference for LabGen's structural goal. Any future document that describes the project as a pure K8s learning platform must be corrected to reference this document.*
