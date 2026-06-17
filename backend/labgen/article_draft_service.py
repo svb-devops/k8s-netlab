@@ -179,6 +179,7 @@ class ArticleDraftService:
             "estimated_duration_minutes",
             "review_notes",
             "required_runtime",
+            "source_grounding",
             "target_domain",
         }
         contract = self.get_draft(draft_id)

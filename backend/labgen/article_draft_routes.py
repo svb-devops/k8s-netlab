@@ -35,8 +35,11 @@ from backend.labgen.article_models import (
     AdminDecisionValue,
     ArticleDraftLabContract,
     ArticleDraftStatus,
+    ArticleLabRuntimeRequirement,
     ArticleSourceMetadata,
     ArticleSourceType,
+    SourceGroundingSnippet,
+    VerifierCandidate,
 )
 from backend.labgen.models import LabDraft
 from backend.labgen.stub_feasibility_classifier import compute_content_hash
@@ -107,6 +110,10 @@ class PatchArticleDraftRequest(BaseModel):
     terminal_requirements: Optional[list[str]] = None
     estimated_duration_minutes: Optional[int] = None
     review_notes: Optional[list[str]] = None
+    # Pipeline-critical fields: admin must populate before advancing to publish candidate
+    source_grounding: Optional[list[SourceGroundingSnippet]] = None
+    required_runtime: Optional[ArticleLabRuntimeRequirement] = None
+    verifier_candidates: Optional[list[VerifierCandidate]] = None
 
 
 class AdminReviewRequest(BaseModel):
@@ -235,7 +242,8 @@ async def patch_article_draft(
     admin: str = Depends(_require_admin),
     svc: ArticleDraftService = Depends(get_article_draft_service),
 ) -> ArticleDraftLabContract:
-    updates = {k: v for k, v in req.model_dump(exclude_unset=True).items() if v is not None}
+    # Use getattr to preserve Pydantic model instances (model_dump converts them to dicts)
+    updates = {k: getattr(req, k) for k in req.model_fields_set if getattr(req, k) is not None}
     try:
         return svc.update_draft(draft_id, updates, updated_by=admin)
     except ArticleDraftNotFound:
