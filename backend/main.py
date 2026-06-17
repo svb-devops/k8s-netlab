@@ -41,6 +41,7 @@ from backend.labgen.routes import (
     demo_seed_router,
     image_router,
 )
+from backend.labgen.article_draft_routes import router as article_draft_router
 from backend.middleware import JsonFormatter, RequestIDMiddleware, SecurityHeadersMiddleware
 from backend.proxmox_api import connect_proxmox
 from backend.task_registry import drain as drain_vm_tasks
@@ -246,6 +247,7 @@ app.include_router(lab_draft_gen_router)  # LLM draft generation
 app.include_router(learner_catalog_router)  # Learner lab catalog & eligibility
 app.include_router(demo_seed_router)       # Demo seed (dev/demo only, admin-gated)
 app.include_router(image_router)           # Image resolve & existence check
+app.include_router(article_draft_router)   # Article-to-Lab draft pipeline (admin only)
 
 
 # ============================================================
