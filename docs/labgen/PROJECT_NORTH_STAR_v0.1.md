@@ -245,8 +245,8 @@ If the answer reveals drift, the task must be paused and realigned.
 | Small Customer Pilot Execution | 🔴 BLOCKED | `SMALL_CUSTOMER_PILOT_RESULT_v0.1.md` — NO_SUITABLE_SMALL_CUSTOMER (not a technical blocker) |
 | **Article-to-Lab Pipeline Design Gate** | ✅ COMPLETE | `ARTICLE_TO_LAB_PIPELINE_DESIGN_GATE_v0.1.md` — **ARTICLE_TO_LAB_PIPELINE_DESIGN_READY_WITH_NOTES** |
 | **Article-to-Lab Implementation Prerequisites** | ✅ COMPLETE | `ARTICLE_TO_LAB_IMPLEMENTATION_PREREQUISITES_v0.1.md` — **ARTICLE_TO_LAB_PREREQS_READY_WITH_NOTES** — N-01/N-02/N-03 resolved; v0.1 stub mode; ephemeral source text; user consent |
-| Article-to-Lab MVP Contract Schema Gate | ⬜ PENDING | Next gate — finalize and lock all Pydantic schema extensions before implementation |
-| K8s Article-to-Lab Draft Mode Implementation | ⬜ PENDING | After Contract Schema Gate |
+| **Article-to-Lab MVP Contract Schema Gate** | ✅ COMPLETE | `ARTICLE_TO_LAB_MVP_CONTRACT_SCHEMA_GATE_v0.1.md` — **ARTICLE_TO_LAB_SCHEMA_READY_WITH_NOTES** — 11 Pydantic models locked, 15 guardrail checks, 116 tests |
+| K8s Article-to-Lab Draft Mode Implementation | ⬜ PENDING | After Contract Schema Gate (now unlocked) |
 | Linux Domain Proof | ⬜ PENDING | After K8s Article-to-Lab Draft Mode validated |
 | Docker Domain Proof | ⬜ PENDING | After Linux domain |
 

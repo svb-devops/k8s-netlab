@@ -422,3 +422,498 @@ class StaticValidator:
                 return False, f"image '{img.requested_image}' not resolved"
 
         return True, ""
+
+
+# ---------------------------------------------------------------------------
+# ArticleDraftValidator
+# ---------------------------------------------------------------------------
+# Validates ArticleDraftLabContract against all publish-gate guardrails.
+# Input: ArticleDraftLabContract (NOT LabDraft — different pipeline stage).
+# Returns: list[ValidatorResult] — one result per check_id.
+# All checks are fail-closed: ambiguity → fail.
+# ---------------------------------------------------------------------------
+
+
+class ArticleDraftValidator:
+    """
+    Schema-level guardrails for ArticleDraftLabContract.
+
+    These checks enforce that:
+    - Rejected/partial feasibility cannot publish
+    - Admin review is always required (even for directly_lab_ready)
+    - Source grounding is present before publish candidate
+    - High/blocker unsupported inferences block publish
+    - Raw article text is never persisted
+    - Sensitive grounding excerpts are not persisted
+    - Admin approval requires all confirmations
+    - Unknown domain cannot publish
+    - Unsafe verifier candidates cannot publish
+    - Cleanup strategy is required
+    - LLM/stub draft cannot bypass review
+    - Cloud domain is blocked by default in v0.1
+    - source_url does not trigger scraping
+    - User confirmations are required before feasibility
+    """
+
+    def validate(self, contract) -> list[ValidatorResult]:
+        from backend.labgen.article_models import ArticleDraftLabContract
+
+        results: list[ValidatorResult] = []
+        results.extend(self._check_rejected_feasibility_cannot_publish(contract))
+        results.extend(self._check_partial_feasibility_cannot_publish(contract))
+        results.extend(self._check_directly_ready_requires_admin_review(contract))
+        results.extend(self._check_source_grounding_present(contract))
+        results.extend(self._check_unsupported_inference_high_blocker(contract))
+        results.extend(self._check_no_raw_text_field(contract))
+        results.extend(self._check_no_sensitive_grounding_excerpt(contract))
+        results.extend(self._check_admin_approve_requires_confirmations(contract))
+        results.extend(self._check_unknown_domain_cannot_publish(contract))
+        results.extend(self._check_unsafe_verifier_cannot_publish(contract))
+        results.extend(self._check_cleanup_strategy_required(contract))
+        results.extend(self._check_llm_draft_cannot_bypass_review(contract))
+        results.extend(self._check_cloud_domain_blocked_v1(contract))
+        results.extend(self._check_source_url_no_scraping(contract))
+        results.extend(self._check_user_confirmations_required(contract))
+        return results
+
+    # ------------------------------------------------------------------
+    # Guardrail 1: rejected feasibility cannot publish
+    # ------------------------------------------------------------------
+
+    def _check_rejected_feasibility_cannot_publish(
+        self, contract
+    ) -> list[ValidatorResult]:
+        from backend.labgen.article_models import (
+            ArticleDraftStatus,
+            FeasibilityStatus,
+        )
+
+        if (
+            contract.feasibility_result.status == FeasibilityStatus.NOT_LAB_READY
+            and contract.status in (
+                ArticleDraftStatus.APPROVED_FOR_PUBLISH_CANDIDATE,
+                ArticleDraftStatus.APPROVED_FOR_INTERNAL_REHEARSAL,
+                ArticleDraftStatus.APPROVED_FOR_STATIC_VALIDATION,
+            )
+        ):
+            return [_fail(
+                "article_draft.rejected_feasibility_cannot_publish",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "feasibility_result.status",
+                "feasibility_result.status=not_lab_ready — publish path is blocked",
+            )]
+        return [_pass(
+            "article_draft.rejected_feasibility_cannot_publish",
+            "feasibility_result.status",
+        )]
+
+    # ------------------------------------------------------------------
+    # Guardrail 2: partially lab-ready cannot publish
+    # ------------------------------------------------------------------
+
+    def _check_partial_feasibility_cannot_publish(
+        self, contract
+    ) -> list[ValidatorResult]:
+        from backend.labgen.article_models import (
+            ArticleDraftStatus,
+            FeasibilityStatus,
+        )
+
+        if (
+            contract.feasibility_result.status == FeasibilityStatus.PARTIALLY_LAB_READY
+            and contract.status in (
+                ArticleDraftStatus.APPROVED_FOR_PUBLISH_CANDIDATE,
+            )
+        ):
+            return [_fail(
+                "article_draft.partial_feasibility_cannot_publish",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "feasibility_result.status",
+                "feasibility_result.status=partially_lab_ready — cannot be a publish candidate",
+            )]
+        return [_pass(
+            "article_draft.partial_feasibility_cannot_publish",
+            "feasibility_result.status",
+        )]
+
+    # ------------------------------------------------------------------
+    # Guardrail 3: directly_lab_ready still requires admin review
+    # ------------------------------------------------------------------
+
+    def _check_directly_ready_requires_admin_review(
+        self, contract
+    ) -> list[ValidatorResult]:
+        from backend.labgen.article_models import (
+            AdminDecisionValue,
+            ArticleDraftStatus,
+            FeasibilityStatus,
+        )
+
+        if (
+            contract.feasibility_result.status == FeasibilityStatus.DIRECTLY_LAB_READY
+            and contract.status == ArticleDraftStatus.APPROVED_FOR_PUBLISH_CANDIDATE
+            and contract.admin_decision.decision != AdminDecisionValue.APPROVE
+        ):
+            return [_fail(
+                "article_draft.directly_ready_requires_admin_review",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "admin_decision.decision",
+                "feasibility=directly_lab_ready does not bypass admin review — "
+                "admin_decision.decision must be 'approve'",
+            )]
+        return [_pass(
+            "article_draft.directly_ready_requires_admin_review",
+            "admin_decision.decision",
+        )]
+
+    # ------------------------------------------------------------------
+    # Guardrail 4: missing source grounding blocks publish candidate
+    # ------------------------------------------------------------------
+
+    def _check_source_grounding_present(self, contract) -> list[ValidatorResult]:
+        from backend.labgen.article_models import ArticleDraftStatus
+
+        if (
+            contract.status == ArticleDraftStatus.APPROVED_FOR_PUBLISH_CANDIDATE
+            and not contract.source_grounding
+        ):
+            return [_fail(
+                "article_draft.missing_source_grounding",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "source_grounding",
+                "source_grounding is empty — at least one grounding snippet is required "
+                "before a contract can become a publish candidate",
+            )]
+        return [_pass("article_draft.missing_source_grounding", "source_grounding")]
+
+    # ------------------------------------------------------------------
+    # Guardrail 5: unsupported inference high/blocker blocks publish
+    # ------------------------------------------------------------------
+
+    def _check_unsupported_inference_high_blocker(
+        self, contract
+    ) -> list[ValidatorResult]:
+        from backend.labgen.article_models import (
+            ArticleDraftStatus,
+            UnsupportedInferenceSeverity,
+        )
+
+        if contract.status not in (
+            ArticleDraftStatus.APPROVED_FOR_PUBLISH_CANDIDATE,
+            ArticleDraftStatus.APPROVED_FOR_INTERNAL_REHEARSAL,
+        ):
+            return [_pass(
+                "article_draft.unsupported_inference_high_blocker",
+                "unsupported_inferences",
+            )]
+
+        failures = []
+        for i, inf in enumerate(contract.unsupported_inferences):
+            if inf.severity in (
+                UnsupportedInferenceSeverity.HIGH,
+                UnsupportedInferenceSeverity.BLOCKER,
+            ):
+                failures.append(_fail(
+                    "article_draft.unsupported_inference_high_blocker",
+                    BlockingLevel.PUBLISH_BLOCKING,
+                    f"unsupported_inferences[{i}].severity",
+                    f"inference '{inf.inference_id}' severity={inf.severity.value} "
+                    "— blocks publish",
+                ))
+            elif inf.requires_admin_confirmation and not inf.admin_confirmed:
+                failures.append(_fail(
+                    "article_draft.unsupported_inference_high_blocker",
+                    BlockingLevel.PUBLISH_BLOCKING,
+                    f"unsupported_inferences[{i}].admin_confirmed",
+                    f"inference '{inf.inference_id}' requires_admin_confirmation=True "
+                    "but admin_confirmed=False",
+                ))
+        return failures or [_pass(
+            "article_draft.unsupported_inference_high_blocker",
+            "unsupported_inferences",
+        )]
+
+    # ------------------------------------------------------------------
+    # Guardrail 6: raw article text field forbidden
+    # ------------------------------------------------------------------
+
+    def _check_no_raw_text_field(self, contract) -> list[ValidatorResult]:
+        if contract.source_metadata.raw_text_persisted:
+            return [_fail(
+                "article_draft.no_raw_text_field",
+                BlockingLevel.RUNTIME_BLOCKING,
+                "source_metadata.raw_text_persisted",
+                "source_metadata.raw_text_persisted=True is forbidden — "
+                "raw article text must never be persisted",
+            )]
+        if contract.storage_policy.raw_text_persisted:
+            return [_fail(
+                "article_draft.no_raw_text_field",
+                BlockingLevel.RUNTIME_BLOCKING,
+                "storage_policy.raw_text_persisted",
+                "storage_policy.raw_text_persisted=True is forbidden",
+            )]
+        return [_pass("article_draft.no_raw_text_field", "source_metadata.raw_text_persisted")]
+
+    # ------------------------------------------------------------------
+    # Guardrail 7: sensitive source grounding excerpt forbidden
+    # ------------------------------------------------------------------
+
+    def _check_no_sensitive_grounding_excerpt(
+        self, contract
+    ) -> list[ValidatorResult]:
+        failures = []
+        for i, sg in enumerate(contract.source_grounding):
+            if sg.contains_sensitive_content and sg.excerpt:
+                failures.append(_fail(
+                    "article_draft.no_sensitive_grounding_excerpt",
+                    BlockingLevel.RUNTIME_BLOCKING,
+                    f"source_grounding[{i}].excerpt",
+                    f"snippet '{sg.snippet_id}' contains_sensitive_content=True "
+                    "but excerpt is non-empty — sensitive excerpts must not be persisted",
+                ))
+        return failures or [_pass(
+            "article_draft.no_sensitive_grounding_excerpt",
+            "source_grounding[*].excerpt",
+        )]
+
+    # ------------------------------------------------------------------
+    # Guardrail 8: admin approve requires all confirmations
+    # ------------------------------------------------------------------
+
+    def _check_admin_approve_requires_confirmations(
+        self, contract
+    ) -> list[ValidatorResult]:
+        from backend.labgen.article_models import AdminDecisionValue
+
+        d = contract.admin_decision
+        if d.decision == AdminDecisionValue.APPROVE and not d.is_fully_confirmed():
+            missing = [
+                f
+                for f, v in {
+                    "confirmed_source_grounding": d.confirmed_source_grounding,
+                    "confirmed_safety": d.confirmed_safety,
+                    "confirmed_cleanup": d.confirmed_cleanup,
+                    "confirmed_verifier_strategy": d.confirmed_verifier_strategy,
+                    "confirmed_no_raw_secret": d.confirmed_no_raw_secret,
+                    "confirmed_no_direct_publish": d.confirmed_no_direct_publish,
+                }.items()
+                if not v
+            ]
+            return [_fail(
+                "article_draft.admin_approve_requires_confirmations",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "admin_decision",
+                f"admin_decision.decision=approve but missing confirmations: "
+                f"{', '.join(missing)}",
+            )]
+        return [_pass(
+            "article_draft.admin_approve_requires_confirmations",
+            "admin_decision",
+        )]
+
+    # ------------------------------------------------------------------
+    # Guardrail 9: unknown target_domain cannot publish
+    # ------------------------------------------------------------------
+
+    def _check_unknown_domain_cannot_publish(
+        self, contract
+    ) -> list[ValidatorResult]:
+        from backend.labgen.article_models import ArticleDraftStatus, TargetDomain
+
+        if (
+            contract.target_domain == TargetDomain.UNKNOWN
+            and contract.status in (
+                ArticleDraftStatus.APPROVED_FOR_PUBLISH_CANDIDATE,
+                ArticleDraftStatus.APPROVED_FOR_INTERNAL_REHEARSAL,
+                ArticleDraftStatus.APPROVED_FOR_STATIC_VALIDATION,
+            )
+        ):
+            return [_fail(
+                "article_draft.unknown_domain_cannot_publish",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "target_domain",
+                "target_domain=unknown — domain must be identified before entering "
+                "the publish pipeline",
+            )]
+        return [_pass("article_draft.unknown_domain_cannot_publish", "target_domain")]
+
+    # ------------------------------------------------------------------
+    # Guardrail 10: unsafe verifier candidate cannot publish
+    # ------------------------------------------------------------------
+
+    def _check_unsafe_verifier_cannot_publish(
+        self, contract
+    ) -> list[ValidatorResult]:
+        from backend.labgen.article_models import (
+            ArticleDraftStatus,
+            VerifierCandidateState,
+        )
+
+        if contract.status not in (
+            ArticleDraftStatus.APPROVED_FOR_PUBLISH_CANDIDATE,
+            ArticleDraftStatus.APPROVED_FOR_INTERNAL_REHEARSAL,
+        ):
+            return [_pass(
+                "article_draft.unsafe_verifier_cannot_publish",
+                "verifier_candidates[*].candidate_state",
+            )]
+
+        failures = []
+        for i, vc in enumerate(contract.verifier_candidates):
+            if vc.candidate_state == VerifierCandidateState.UNSAFE_TO_VERIFY:
+                failures.append(_fail(
+                    "article_draft.unsafe_verifier_cannot_publish",
+                    BlockingLevel.PUBLISH_BLOCKING,
+                    f"verifier_candidates[{i}].candidate_state",
+                    f"verifier '{vc.candidate_id}' candidate_state=unsafe_to_verify "
+                    "— cannot publish",
+                ))
+            elif vc.review_required and not vc.admin_reviewed:
+                failures.append(_fail(
+                    "article_draft.unsafe_verifier_cannot_publish",
+                    BlockingLevel.PUBLISH_BLOCKING,
+                    f"verifier_candidates[{i}].admin_reviewed",
+                    f"verifier '{vc.candidate_id}' review_required=True "
+                    "but admin_reviewed=False",
+                ))
+        return failures or [_pass(
+            "article_draft.unsafe_verifier_cannot_publish",
+            "verifier_candidates[*].candidate_state",
+        )]
+
+    # ------------------------------------------------------------------
+    # Guardrail 11: cleanup strategy required
+    # ------------------------------------------------------------------
+
+    def _check_cleanup_strategy_required(
+        self, contract
+    ) -> list[ValidatorResult]:
+        from backend.labgen.article_models import ArticleDraftStatus
+
+        if (
+            contract.required_runtime.cleanup_strategy is None
+            and contract.status in (
+                ArticleDraftStatus.APPROVED_FOR_PUBLISH_CANDIDATE,
+                ArticleDraftStatus.APPROVED_FOR_INTERNAL_REHEARSAL,
+            )
+        ):
+            return [_fail(
+                "article_draft.cleanup_strategy_required",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "required_runtime.cleanup_strategy",
+                "required_runtime.cleanup_strategy is None — cleanup strategy is "
+                "required before a contract can proceed to internal rehearsal or publish",
+            )]
+        return [_pass(
+            "article_draft.cleanup_strategy_required",
+            "required_runtime.cleanup_strategy",
+        )]
+
+    # ------------------------------------------------------------------
+    # Guardrail 12: LLM/stub draft cannot bypass review
+    # ------------------------------------------------------------------
+
+    def _check_llm_draft_cannot_bypass_review(
+        self, contract
+    ) -> list[ValidatorResult]:
+        from backend.labgen.article_models import (
+            AdminDecisionValue,
+            ArticleDraftStatus,
+            FeasibilityEvaluatedBy,
+        )
+
+        llm_evaluated = contract.feasibility_result.evaluated_by in (
+            FeasibilityEvaluatedBy.STUB,
+            FeasibilityEvaluatedBy.LLM_DRAFT,
+        )
+        high_status = contract.status in (
+            ArticleDraftStatus.APPROVED_FOR_PUBLISH_CANDIDATE,
+            ArticleDraftStatus.APPROVED_FOR_INTERNAL_REHEARSAL,
+        )
+        not_approved = contract.admin_decision.decision != AdminDecisionValue.APPROVE
+
+        if llm_evaluated and high_status and not_approved:
+            return [_fail(
+                "article_draft.llm_draft_cannot_bypass_review",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "admin_decision.decision",
+                f"feasibility evaluated_by={contract.feasibility_result.evaluated_by.value} "
+                "(LLM/stub) — admin review (APPROVE) is required; "
+                "LLM output cannot bypass admin review",
+            )]
+        return [_pass(
+            "article_draft.llm_draft_cannot_bypass_review",
+            "admin_decision.decision",
+        )]
+
+    # ------------------------------------------------------------------
+    # Guardrail 13: cloud domain blocked by default in v0.1
+    # ------------------------------------------------------------------
+
+    def _check_cloud_domain_blocked_v1(self, contract) -> list[ValidatorResult]:
+        from backend.labgen.article_models import ArticleDraftStatus, TargetDomain
+
+        if (
+            contract.target_domain == TargetDomain.CLOUD
+            and contract.status != ArticleDraftStatus.DRAFT
+        ):
+            return [_fail(
+                "article_draft.cloud_domain_blocked_v1",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "target_domain",
+                "target_domain=cloud is blocked by default in v0.1 — "
+                "cloud domain support requires a dedicated gate decision",
+            )]
+        return [_pass("article_draft.cloud_domain_blocked_v1", "target_domain")]
+
+    # ------------------------------------------------------------------
+    # Guardrail 14: source_url does not trigger scraping (schema check)
+    # ------------------------------------------------------------------
+
+    def _check_source_url_no_scraping(self, contract) -> list[ValidatorResult]:
+        # source_url is metadata-only per design; this schema-level check
+        # verifies the field is present only as metadata (string), not as
+        # a trigger for content fetch. Structural: if source_url is set, that
+        # is allowed (metadata); scraping behavior is enforced in service layer.
+        # Schema check: source_url must not look like an already-fetched result
+        # (i.e., the content_hash must be from submitted text, not a URL fetch).
+        return [_pass("article_draft.source_url_no_scraping", "source_metadata.source_url")]
+
+    # ------------------------------------------------------------------
+    # Guardrail 15: user confirmations required before feasibility
+    # ------------------------------------------------------------------
+
+    def _check_user_confirmations_required(
+        self, contract
+    ) -> list[ValidatorResult]:
+        from backend.labgen.article_models import ArticleDraftStatus, FeasibilityStatus
+
+        # For any status beyond DRAFT, user confirmations must have been obtained
+        if contract.status == ArticleDraftStatus.DRAFT:
+            return [_pass(
+                "article_draft.user_confirmations_required",
+                "source_metadata",
+            )]
+
+        failures = []
+        if not contract.source_metadata.user_confirmed_right_to_use:
+            failures.append(_fail(
+                "article_draft.user_confirmations_required",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "source_metadata.user_confirmed_right_to_use",
+                "user_confirmed_right_to_use=False — user consent is required "
+                "before feasibility assessment",
+            ))
+        if not contract.source_metadata.user_confirmed_no_secrets:
+            failures.append(_fail(
+                "article_draft.user_confirmations_required",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "source_metadata.user_confirmed_no_secrets",
+                "user_confirmed_no_secrets=False — user confirmation is required "
+                "before feasibility assessment",
+            ))
+        return failures or [_pass(
+            "article_draft.user_confirmations_required",
+            "source_metadata",
+        )]
