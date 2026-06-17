@@ -868,8 +868,8 @@ Any unacknowledged safety flag blocks publication.
 
 | Requirement | Status |
 |-------------|--------|
-| LLM provider selected and accessible | OPEN — must resolve before implementation start |
-| Source article storage / retention policy decided | OPEN — must resolve before implementation start |
+| LLM provider selected and accessible | ✅ RESOLVED (2026-06-16) — v0.1 stub mode; `LLMProviderPort` interface designed; see `ARTICLE_TO_LAB_IMPLEMENTATION_PREREQUISITES_v0.1.md` |
+| Source article storage / retention policy decided | ✅ RESOLVED (2026-06-16) — ephemeral source text; persistent fields enumerated; see Prerequisites doc Section D+E |
 | StaticValidator extension design approved | READY — this document |
 | Draft Lab Contract schema extension designed | READY — this document |
 | Admin review UI extension scope defined | READY — this document |
@@ -881,9 +881,9 @@ Any unacknowledged safety flag blocks publication.
 
 | ID | Question | Impact | Decision needed by |
 |----|---------|--------|-------------------|
-| N-01 | **LLM provider choice**: commercial API (OpenAI, Anthropic) or self-hosted (ollama, local model)? | HIGH — blocks implementation start | Before K8s Article-to-Lab Draft Mode Implementation |
-| N-02 | **Source article storage**: store full text? Hash only? Duration? Who can access? | HIGH — affects privacy, copyright, storage | Before implementation start |
-| N-03 | **Copyright / retention policy**: attribution required? Fair use for education? Deletion on user request? | HIGH — legal risk | Before implementation start |
+| N-01 | **LLM provider choice**: commercial API (OpenAI, Anthropic) or self-hosted (ollama, local model)? | HIGH — blocks implementation start | ✅ **RESOLVED (2026-06-16)** — v0.1 uses stub mode; `LLMProviderPort` abstract interface designed; self-hosted ruled out on T430; commercial API deferred to after stub validation. See `ARTICLE_TO_LAB_IMPLEMENTATION_PREREQUISITES_v0.1.md` Section C. |
+| N-02 | **Source article storage**: store full text? Hash only? Duration? Who can access? | HIGH — affects privacy, copyright, storage | ✅ **RESOLVED (2026-06-16)** — ephemeral source text; persistent: content_hash + source_metadata + feasibility_result + source_grounding_snippets + draft contract; no long-term raw text; user/admin deletable. See Section D. |
+| N-03 | **Copyright / retention policy**: attribution required? Fair use for education? Deletion on user request? | HIGH — legal risk | ✅ **RESOLVED (2026-06-16)** — user consent required per submission; no long-term raw text; 30-day rejection metadata retention; audit indefinite (hash+decision only); admin-only v0.1 = low copyright exposure. See Section E. |
 | N-04 | **User-provided secret handling**: what if an article requires accessing a live service (e.g., "curl api.example.com/your-token")? Reject? Sandbox substitute? | MEDIUM — affects feasibility gate logic | Before v0.1 implementation |
 | N-05 | **Linux runtime choice**: VM-based (snapshot reset) or container-based (Docker-in-Docker)? | MEDIUM — affects Linux domain adapter design | Before Linux domain work begins |
 | N-06 | **Domain prioritization**: K8s → Linux → Docker → or different order? | MEDIUM — sequencing only | Before v0.2 planning |
