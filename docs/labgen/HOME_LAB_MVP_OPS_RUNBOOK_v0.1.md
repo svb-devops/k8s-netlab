@@ -768,6 +768,167 @@ Do NOT:
 
 ---
 
+## K. VM Ownership / Learner Assignment Precheck
+
+**Origin**: Round 2 Small Cohort Pilot (2026-06-16) — learner-r2-a's first Start Lab call
+returned `422 no_vm_assigned` because VM 401 was still owned by the previous test account
+(`k8s_test05`) and was never reassigned to the newly created `learner-r2-a` account.
+This was an ops gap — not a code defect — missing from the pre-user start checklist (Section J.3).
+
+### K.1 Why VM assignment matters
+
+home_lab_mvp uses a single-VM model (VM 401). There is exactly one VM, and it must be
+assigned to exactly one learner at a time. The backend precheck `precheck.no_vm_assigned`
+reads VMTracker to verify the requesting learner owns the VM. If ownership has not been
+transferred from the previous user to the new one, the precheck fails with `422 no_vm_assigned`.
+This is **not a user error** — it is an operator error. The user cannot fix it by retrying.
+
+### K.2 Per-learner start: mandatory ownership checks
+
+Run ALL of the following before each new learner's first lab session:
+
+```bash
+# 1. Who currently owns VM 401?
+python3 - <<'EOF'
+import json
+with open('/root/k8s-netlab/data/vm_creation_times.json') as f:
+    d = json.load(f)
+entry = d.get('401') or d.get(401)
+print('VM 401 tracker entry:', json.dumps(entry, indent=2) if entry else 'NOT TRACKED')
+EOF
+
+# 2. All previous sessions closed?
+python3 - <<'EOF'
+import json
+with open('/root/k8s-netlab/data/lab_sessions.json') as f:
+    d = json.load(f)
+active = [
+    (k[:8], v.get('lab_session_status'), v.get('learner_username'))
+    for k, v in d.items()
+    if v.get('lab_session_status') not in ('LAB_CLOSED', 'LAB_ABORTED', 'LAB_CLEANUP_FAILED')
+]
+print('Active sessions:', active if active else 'NONE — OK')
+EOF
+# Expected: NONE — OK
+
+# 3. No lab namespaces
+kubectl --kubeconfig /etc/labgen/home_lab_mvp.kubeconfig get ns | grep "^lab-"
+# Expected: (no output)
+
+# 4. No tainted VMs
+cat /root/k8s-netlab/data/tainted_vms.json
+# Expected: {} or []
+
+# 5. No terminal credential residuals
+ls /var/lib/labgen-staging/learner-kubeconfigs/ 2>/dev/null && \
+  ls /var/lib/labgen-staging/learner-kubeconfigs/ | grep -v '^$' || echo "CLEAN — OK"
+# Expected: CLEAN — OK
+
+# 6. No verifier credential residuals (401 entry should be present — that is the shared baseline)
+ls /var/lib/labgen-staging/verifier-credentials/vm_creds/401/
+# Expected: kubeconfig.yaml present (this is the persistent verifier baseline, not a residual)
+```
+
+### K.3 Ownership transfer when learner account changes
+
+If the learner account is different from the current VM 401 owner, run the following
+**before** inviting the learner:
+
+```bash
+cd /root/k8s-netlab
+source venv/bin/activate
+
+python3 - <<'EOF'
+from backend.vm_tracker import VMTracker
+import datetime
+
+tracker = VMTracker()
+old_owner = tracker.get_vm_owner(401)
+new_owner = '<new-learner-username>'   # replace with actual username
+
+print(f"Current owner: {old_owner}")
+print(f"Transferring to: {new_owner}")
+
+tracker.track_vm(401, new_owner)
+
+confirmed = tracker.get_vm_owner(401)
+assert confirmed == new_owner, f"Transfer failed: still owned by {confirmed}"
+print(f"Transfer complete. New owner confirmed: {confirmed}")
+EOF
+```
+
+Record the transfer in ops log:
+
+```
+Ownership transfer record:
+  Date:       YYYY-MM-DD HH:MM
+  VM:         401
+  Old owner:  <previous-account>
+  New owner:  <new-learner-account>
+```
+
+### K.4 Verify assignment before inviting learner
+
+After transfer, verify the assignment will not produce 422:
+
+```bash
+python3 - <<'EOF'
+from backend.vm_tracker import VMTracker
+tracker = VMTracker()
+learner = '<new-learner-username>'   # must match what was set in K.3
+owner = tracker.get_vm_owner(401)
+if owner == learner:
+    print(f"PASS — VM 401 correctly assigned to {learner}")
+else:
+    print(f"FAIL — VM 401 owned by '{owner}', expected '{learner}'")
+    raise SystemExit(1)
+EOF
+```
+
+Only proceed to invite the learner when this prints PASS.
+
+### K.5 If Start Lab returns 422 no_vm_assigned
+
+**Do NOT tell the learner to retry repeatedly.** Operator must fix immediately.
+
+Response protocol:
+
+1. Do not allow the learner to retry until the fix is confirmed.
+2. Run K.2 check #1 to see who currently owns VM 401.
+3. Execute ownership transfer per K.3.
+4. Verify PASS per K.4.
+5. Record the incident:
+
+```
+Incident record: 422 no_vm_assigned
+  Date:           YYYY-MM-DD HH:MM
+  Learner:        <username>
+  Previous owner: <username>
+  Root cause:     Ownership not transferred before session start
+  Fix applied:    track_vm(401, <new-learner>) at HH:MM
+  Verified PASS:  HH:MM
+```
+
+6. Notify learner: "A technical issue has been resolved — you can now try starting the lab again."
+7. Re-run J.2 pre-cohort precheck (all 10 checks) before admitting.
+
+### K.6 Small customer pilot: per-customer assignment protocol
+
+No ad-hoc or spontaneous session starts. Every customer/learner session requires ALL of:
+
+| Step | Required | Notes |
+|------|----------|-------|
+| Target learner account created | YES | Account must exist before VM assignment |
+| VM 401 current owner confirmed | YES | Run K.2 check #1 |
+| VM ownership transferred to target learner | YES (if account changed) | Run K.3; always required for new customer |
+| Assignment verified (K.4 prints PASS) | YES | Must pass before inviting |
+| All 10 J.2 pre-cohort checks | YES | Run in full before every session |
+| Verifier re-initialized (J.2 check #8) | YES | Required before EACH lab session, not just first |
+
+Skipping any step is not permitted. There is no exception for "trusted" users or repeat sessions.
+
+---
+
 *Not HA. Not production-grade. Not for general availability.*  
 *home_lab_mvp is a controlled pilot profile on single-node Proxmox (T430).*  
 *No real secrets appear in this document.*  
