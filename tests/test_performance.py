@@ -58,7 +58,10 @@ def docs_client(tmp_path):
     (exp_dir / "01-kubernetes-network-basics.md").write_text("# 实验一\n内容", encoding="utf-8")
     app = FastAPI()
     app.include_router(docs_router)
-    with patch("backend.docs_routes.EXPERIMENTS_DIR", exp_dir):
+    # Mock fetch_experiment_list so the test exercises only in-process logic,
+    # not a real HTTP call to Directus (which can easily exceed 200ms under load).
+    with patch("backend.docs_routes.EXPERIMENTS_DIR", exp_dir), \
+         patch("backend.docs_routes.fetch_experiment_list", return_value=None):
         yield TestClient(app, raise_server_exceptions=True)
 
 
