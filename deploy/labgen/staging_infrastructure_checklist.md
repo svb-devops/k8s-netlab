@@ -1,7 +1,7 @@
 # LabGen MVP — Staging Infrastructure Checklist
 
-> **Status**: K8S_ARTICLE_TO_LAB_ADMIN_REHEARSAL_PASSED_WITH_NOTES (2026-06-17) — K3S_SMOKE_PASSED; RUNTIME_SESSION_SMOKE_PASSED_WITH_NOTES; First Pilot Lab RELEASED; First Pilot User ONBOARDED_WITH_NOTES; Pilot Feedback TRIAGED; Frontend Learner Smoke PASSED_WITH_NOTES; Second/Third/Fourth/Fifth/Sixth/Seventh/Eighth Pilot Users ONBOARDED; Deployment Lab READY; Small Cohort Gates COMPLETE; Real Human Learner REAL_HUMAN_LEARNER_VALIDATED_WITH_NOTES; Learner kubectl Terminal LEARNER_KUBECTL_TERMINAL_READY; Terminal Runtime Hardening TERMINAL_RUNTIME_HARDENED_WITH_NOTES; Real Human Labs 2-4 Re-validation REAL_HUMAN_LABS_2_4_VALIDATED_WITH_NOTES; Real Human Cohort Round 2 REAL_HUMAN_COHORT_ROUND2_COMPLETED_WITH_NOTES; Small Customer Pilot Preparation Gate SMALL_CUSTOMER_PILOT_PREP_READY_WITH_NOTES; Small Customer Pilot Execution SMALL_CUSTOMER_PILOT_BLOCKED; Article-to-Lab Pipeline Design Gate ARTICLE_TO_LAB_PIPELINE_DESIGN_READY_WITH_NOTES; Article-to-Lab Implementation Prerequisites ARTICLE_TO_LAB_PREREQS_READY_WITH_NOTES; Article-to-Lab MVP Contract Schema Gate ARTICLE_TO_LAB_SCHEMA_READY_WITH_NOTES; Article-to-Lab Draft Mode Implementation K8S_ARTICLE_TO_LAB_DRAFT_MODE_READY_WITH_NOTES; **Admin Review Rehearsal K8S_ARTICLE_TO_LAB_ADMIN_REHEARSAL_PASSED_WITH_NOTES**  
-> **Updated**: 2026-06-17 — Admin Review Rehearsal COMPLETE: K8S_ARTICLE_TO_LAB_ADMIN_REHEARSAL_PASSED_WITH_NOTES — 4 samples verified; MEDIUM-001 fixed (PatchArticleDraftRequest + _ALLOWED_UPDATE_KEYS + PATCH extraction); 53 new rehearsal tests; 3623 total tests pass; 93.59% coverage; 0 LLM calls; recommended next step: K8s Article-to-Lab Internal Rehearsal to Publish Candidate; see `docs/labgen/K8S_ARTICLE_TO_LAB_ADMIN_REVIEW_REHEARSAL_RESULT_v0.1.md`  
+> **Status**: NORTH_STAR_REALIGNED_WITH_NOTES (2026-06-20) — K3S_SMOKE_PASSED; RUNTIME_SESSION_SMOKE_PASSED_WITH_NOTES; First Pilot Lab RELEASED; First Pilot User ONBOARDED_WITH_NOTES; Pilot Feedback TRIAGED; Frontend Learner Smoke PASSED_WITH_NOTES; Second/Third/Fourth/Fifth/Sixth/Seventh/Eighth Pilot Users ONBOARDED; Deployment Lab READY; Small Cohort Gates COMPLETE; Real Human Learner REAL_HUMAN_LEARNER_VALIDATED_WITH_NOTES; Learner kubectl Terminal LEARNER_KUBECTL_TERMINAL_READY; Terminal Runtime Hardening TERMINAL_RUNTIME_HARDENED_WITH_NOTES; Real Human Labs 2-4 Re-validation REAL_HUMAN_LABS_2_4_VALIDATED_WITH_NOTES; Real Human Cohort Round 2 REAL_HUMAN_COHORT_ROUND2_COMPLETED_WITH_NOTES; Small Customer Pilot Preparation Gate SMALL_CUSTOMER_PILOT_PREP_READY_WITH_NOTES; Small Customer Pilot Execution SMALL_CUSTOMER_PILOT_BLOCKED; Article-to-Lab Pipeline Design Gate ARTICLE_TO_LAB_PIPELINE_DESIGN_READY_WITH_NOTES; Article-to-Lab Implementation Prerequisites ARTICLE_TO_LAB_PREREQS_READY_WITH_NOTES; Article-to-Lab MVP Contract Schema Gate ARTICLE_TO_LAB_SCHEMA_READY_WITH_NOTES; K8s Draft Mode K8S_ARTICLE_TO_LAB_DRAFT_MODE_READY_WITH_NOTES; Admin Review Rehearsal K8S_ARTICLE_TO_LAB_ADMIN_REHEARSAL_PASSED_WITH_NOTES; **North Star Re-Alignment NORTH_STAR_REALIGNED_WITH_NOTES**  
+> **Updated**: 2026-06-20 — North Star Re-Alignment COMPLETE after Claude Code reset: PROJECT_NORTH_STAR_v0.1.md updated (slogan "读了能做，做了就懂"; Admin-curated Article-to-Lab strategy; Guided Practice Lab definition; AI Tutor constraints; 18-item execution checklist; milestone table updated G-26/G-27 COMPLETE, Internal Rehearsal NEXT); G-25/G-26/G-27/G-28 added to checklist table; 0 code changes; 0 LLM calls; recommended next step: K8s Article-to-Lab Internal Rehearsal to Publish Candidate  
 > **Basis**: `docs/labgen/STAGING_ENVIRONMENT_PROVISIONING_v0.1.md`  
 > **Purpose**: Track provisioning of each infrastructure component required for  
 > Controlled Staging Trial v0.1 live execution  
@@ -209,6 +209,10 @@ python scripts/labgen_ops_staging_intake_verify.py \
 | G-22 | **Small Customer Pilot Execution: SMALL_CUSTOMER_PILOT_BLOCKED** | `[x]` — **SMALL_CUSTOMER_PILOT_BLOCKED** (2026-06-16); Pre-Pilot Gate all PASS; blocker: NO_SUITABLE_SMALL_CUSTOMER (28 users all test/dev accounts); system technically ready; awaiting customer identification; see `docs/labgen/SMALL_CUSTOMER_PILOT_RESULT_v0.1.md` |
 | G-23 | **Article-to-Lab Pipeline Design Gate: ARTICLE_TO_LAB_PIPELINE_DESIGN_READY_WITH_NOTES** | `[x]` — **ARTICLE_TO_LAB_PIPELINE_DESIGN_READY_WITH_NOTES** (2026-06-16); full pipeline designed — Feasibility Gate (3 tiers) + Draft Lab Contract schema (source_grounding, unsupported_inferences, admin_decision) + Admin Review + StaticValidator 5 new checks + Domain Adapter interfaces (K8s complete; Linux/Docker/Networking/Database designed) + Verifier Strategy (5 candidate states) + Cleanup/Credential lifecycle + Safety Policy; existing K8s reuse fully mapped; 3 go/no-go blockers identified (N-01/N-02/N-03) — resolved in G-24; 0 LLM calls; 0 code changes; production VMID 500-599 UNTOUCHED; see `docs/labgen/ARTICLE_TO_LAB_PIPELINE_DESIGN_GATE_v0.1.md` |
 | G-24 | **Article-to-Lab Implementation Prerequisites: ARTICLE_TO_LAB_PREREQS_READY_WITH_NOTES** | `[x]` — **ARTICLE_TO_LAB_PREREQS_READY_WITH_NOTES** (2026-06-16); N-01 RESOLVED: v0.1 stub mode (no live LLM), `LLMProviderPort` abstract interface, fail-closed rules, self-hosted ruled out on T430; N-02 RESOLVED: ephemeral source text, persistent: content_hash+source_metadata+feasibility_result+source_grounding_snippets+contract, sensitive content immediate discard; N-03 RESOLVED: user consent required per submission, ephemeral raw text, 30-day rejection metadata, audit indefinite (hash+decision); all 3 blockers resolved; implementation may start; next gate: Article-to-Lab MVP Contract Schema Gate; 0 LLM calls; 0 code changes; production VMID 500-599 UNTOUCHED; see `docs/labgen/ARTICLE_TO_LAB_IMPLEMENTATION_PREREQUISITES_v0.1.md` |
+| G-25 | **Article-to-Lab MVP Contract Schema Gate: ARTICLE_TO_LAB_SCHEMA_READY_WITH_NOTES** | `[x]` — **ARTICLE_TO_LAB_SCHEMA_READY_WITH_NOTES** (2026-06-16); 11 Pydantic models locked (ArticleSourceMetadata/FeasibilityResult/SafetyFlag×13/SourceGroundingSnippet/UnsupportedInference/TargetDomain×8/ArticleLabRuntimeRequirement/VerifierCandidate/ArticleDraftLabContract/AdminDecision/ArticleStoragePolicy); ArticleDraftValidator 15 guardrail checks; 116 tests; 0 LLM calls; runtime/verifier/terminal unchanged; production VMID 500-599 UNTOUCHED; see `docs/labgen/ARTICLE_TO_LAB_MVP_CONTRACT_SCHEMA_GATE_v0.1.md` |
+| G-26 | **K8s Article-to-Lab Draft Mode Implementation: K8S_ARTICLE_TO_LAB_DRAFT_MODE_READY_WITH_NOTES** | `[x]` — **K8S_ARTICLE_TO_LAB_DRAFT_MODE_READY_WITH_NOTES** (2026-06-17); admin-only stub-based pipeline: stub_feasibility_classifier (deterministic, no LLM) + article_draft_repository (flock JSON, raw text never stored) + article_draft_service (state machine DRAFT→...→APPROVED_FOR_PUBLISH_CANDIDATE, ArticleDraftValidator integration, convert never auto-publishes) + article_draft_routes (9 admin-only endpoints); 60 tests; 3570 total tests; 93.03% coverage; 0 LLM calls; no learner catalog entry; runtime/verifier/terminal unchanged; production VMID 500-599 UNTOUCHED; see `docs/labgen/K8S_ARTICLE_TO_LAB_DRAFT_MODE_IMPLEMENTATION_RESULT_v0.1.md` |
+| G-27 | **K8s Article-to-Lab Admin Review Rehearsal: K8S_ARTICLE_TO_LAB_ADMIN_REHEARSAL_PASSED_WITH_NOTES** | `[x]` — **K8S_ARTICLE_TO_LAB_ADMIN_REHEARSAL_PASSED_WITH_NOTES** (2026-06-17); 4 K8s input samples verified (directly_lab_ready / partially_lab_ready / not_lab_ready / sensitive content); admin enforcement verified; stub classifier confirmed; raw text non-persistence verified; sensitive hard-rejection without persistence; confirmed_* gate verified; StaticValidator bridge (15 checks) verified; full happy path to APPROVED_FOR_PUBLISH_CANDIDATE and LabDraft conversion verified; catalog isolation verified; MEDIUM-001 fixed (PatchArticleDraftRequest missing fields); 53 rehearsal tests; 3623 total tests; 93.59% coverage; 0 LLM calls; no VM/namespace side effects; production VMID 500-599 UNTOUCHED; next: Internal Rehearsal to Publish Candidate; see `docs/labgen/K8S_ARTICLE_TO_LAB_ADMIN_REVIEW_REHEARSAL_RESULT_v0.1.md` |
+| G-28 | **North Star Re-Alignment (post-Claude-reset): NORTH_STAR_REALIGNED_WITH_NOTES** | `[x]` — **NORTH_STAR_REALIGNED_WITH_NOTES** (2026-06-20); authoritative realignment after Claude Code reset; PROJECT_NORTH_STAR_v0.1.md updated: LabGen is Article-to-Lab / Technical Content-to-Experiment Platform ("读了能做，做了就懂" primary slogan); K8s is domain proof only; current phase Admin-curated Article-to-Lab; v0.1 is Guided Practice Lab (not Assessment Lab); lab background = article content brief; AI Tutor context preserved with explicit constraints; Feasibility Gate preserved; LLM only drafts, never publishes; Linux/multi-domain portability preserved; Article-to-Lab Follow-up Execution Checklist (18 invariants) added; milestone table updated (G-26/G-27 now COMPLETE; Internal Rehearsal NEXT); 0 code changes; 0 LLM calls; runtime/verifier/terminal unchanged; production VMID 500-599 UNTOUCHED |
 
 **If G-0a is `[ ]` (intake gate not READY): trial is BLOCKED. Do not run Phase 3+.**  
 **If any other gate is `[ ]`: trial is BLOCKED. Do not proceed with Phase 3+ of the trial runbook.**
@@ -246,18 +250,27 @@ secret values that look like real credentials.
 
 ---
 
-This gate remains aligned with PROJECT_NORTH_STAR_v0.1: Article-to-Lab / Technical Content-to-Experiment Platform, "读完即练，结果说话". K8s domain proof for the broader Article-to-Lab platform.
+This gate remains aligned with PROJECT_NORTH_STAR_v0.1: Article-to-Lab / Technical Content-to-Experiment Platform, "读了能做，做了就懂". K8s domain proof for the broader Article-to-Lab platform.
 
-## North Star Alignment Check
+## North Star Alignment Check (updated 2026-06-20)
 
 | Check | Status |
 |-------|--------|
-| Still serving Article-to-Lab | YES |
-| Still supports "读完即练，结果说话" | YES |
+| Serving "读了能做，做了就懂" | YES |
+| Input is Admin-curated (not reader-submitted) | YES |
+| Output is Guided Practice Lab (not Assessment Lab) | YES |
+| Lab background derived from article content brief | YES — in design |
+| AI Tutor context preserved with explicit constraints | YES |
 | Avoids K8s-only hardcoding | YES — adapter boundaries unchanged |
 | Preserves Linux/domain portability | YES |
-| No skipped human review | YES |
-| No skipped StaticValidator | YES |
+| Feasibility Gate preserved | YES |
+| Inoperable articles → reject (no hardcoding) | YES |
+| Admin Review preserved | YES |
+| StaticValidator preserved | YES |
+| Internal Rehearsal preserved | YES |
+| No direct publish of generated lab | YES |
+| No generated draft in learner catalog without publish gate | YES |
+| No live LLM calls | YES — stub mode only |
 | No skipped cleanup | YES |
 | No premature public launch expansion | YES |
 | No home_lab_mvp → production promotion | YES |

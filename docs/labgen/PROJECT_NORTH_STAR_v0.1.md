@@ -1,6 +1,6 @@
 # LabGen Project North Star v0.1
 
-**Date**: 2026-06-16
+**Date**: 2026-06-20 (re-aligned after Claude reset; original 2026-06-16)
 **Operator**: Claude Code acting as senior dev + ops
 **Status**: Authoritative — supersedes any prior document language that frames LabGen as a fixed K8s course platform
 **No real secrets in this document.**
@@ -15,57 +15,132 @@ LabGen is **not** just an LMS that displays courseware.
 
 LabGen is a platform that turns reproducible technical content into runnable, on-demand experiments.
 
-The user's core scenario: a technical practitioner reads a good article and wants to verify it immediately — without manually building a local environment.
+The user's core scenario: a technical practitioner reads a good, uniquely insightful article and wants to practice immediately — but has no local environment, and rebuilding one manually is too costly. They end up consuming the material passively. Knowledge is never converted to skill.
 
-The project's goal is to turn **"consuming material" into "practiced ability."**
-
-> **Mission statement**: "Let every reproducible technical article become a temporary, isolated, verifiable, recyclable live experiment."
+LabGen solves: **shrink the distance between "reading a technical article" and "running a live verification."**
 
 ## 2. Product Slogan
 
-**读完即练，结果说话。**
+**读了能做，做了就懂。**
+("Read it and be able to do it. Do it and you understand.")
+
+Alt expression: **读完即练，结果说话。**
 ("Read it, then practice it immediately — the result speaks for itself.")
 
 Interpretation:
-- **读完即练**: An article is not consumed by passive reading alone — it gets parsed into practicable steps.
-- **马上**: The system prepares the environment; the user doesn't build it themselves.
-- **结果**: Isolated environment, least-privilege access, credential non-leakage.
-- **说话**: Every step can be Checked; the system gives feedback.
-- **结果说话**: When the experiment completes, the environment is reclaimed, credentials are revoked, resources are cleaned up.
+- **读了能做**: Every article should become something you can practice right away, not just consume.
+- **做了就懂**: Doing the steps in an isolated, verifiable environment converts reading into retained ability.
+- **结果说话**: Every step can be Checked; the system confirms progress automatically.
+- **结果说话**: When the experiment completes, the environment is reclaimed, credentials are revoked, resources are cleaned up — nothing lingers.
 
-## 3. Canonical Flow
+## 3. Current Phase Product Strategy
+
+The current phase uses **Admin-curated Article-to-Lab**.
+
+This means:
+
+- Technical articles are provided by the admin / project team, **not** by general readers.
+- The admin is responsible for article curation, rights confirmation, safety confirmation, and content quality.
+- The system parses admin-provided articles into Guided Practice Labs.
+- The admin reviews the Draft Lab Contract before any learner sees it.
+- Project-team-authored articles are published to public channels (WeChat public accounts, Zhihu, CSDN, GitHub, blogs, etc.).
+- Readers enter the corresponding lab from the article's CTA (call to action).
+- Readers practice immediately in a browser terminal/workspace.
+- The lab session ends with cleanup and credential reclaim.
+
+**Not in scope for current phase:**
+
+- General readers freely submitting arbitrary articles.
+- Auto-generating and publishing labs from any article.
+- URL scraping.
+- Live LLM publishing.
+- Auto-publishing generated drafts.
+- Public launch.
+- Production rollout.
+
+**Future rollout path:**
+
+1. Admin-curated articles (current).
+2. Trusted contributor / trusted customer articles.
+3. Eventually: general reader-submitted article input (with consent and review gates).
+
+## 4. Content Form: Guided Practice Lab (not Assessment Lab)
+
+v0.1 produces **Guided Practice Labs**, not Assessment Labs.
+
+The goal is to help readers reproduce and understand the article's practical workflow — not to test whether they already know it.
+
+### Lab UX Layout
+
+**Left panel:**
+- Experiment document
+- Experiment background (article content brief — see below)
+- Experiment objectives
+- Guided steps
+- Copyable commands
+- Expected output
+- Common issues / hint prompts
+- Check button
+- AI Tutor
+
+**Right panel:**
+- Browser terminal / workspace
+- Current namespace / VM / sandbox status
+- Command execution environment
+
+### Design Principles
+
+- **Give commands**: don't make users guess commands.
+- **Give context**: don't leave users wondering why.
+- **Give expected output**: don't make users guess if it worked.
+- **Give hint prompts**: don't let users get stuck.
+- **Check confirms progress**: not gatekeeping or assessing difficulty.
+- If the article lacks sufficient operable information → mark as `partially_lab_ready` or reject; do not hardcode invented steps.
+- Experiment background must be derived from the article content brief:
+  - What this article covers.
+  - Why it is worth practicing.
+  - Which key points this experiment will reproduce.
+- AI Tutor remains present (see Section 12 for constraints).
+
+## 5. Canonical Flow
 
 ```text
-Technical Article / Document / README
+Admin-curated Technical Article / Document / README
+        ↓
+Article Operability / Lab Feasibility Gate
         ↓
 Experiment Planner
         ↓
 Draft Lab Contract
         ↓
-Human/Admin Review
+Human / Admin Review
         ↓
-Static Validation
+StaticValidator
         ↓
-Runtime Provisioning
+Internal Rehearsal
         ↓
-Learner Workspace + Terminal
+Publish article-linked lab
         ↓
-Step Verification
+Reader enters from article CTA
+        ↓
+Learner Workspace + Terminal + AI Tutor
+        ↓
+Guided Step Verification
         ↓
 Feedback / Reflection
         ↓
 Cleanup / Credential Reclaim
 ```
 
-## 4. Article Operability / Lab Feasibility Gate
+## 6. Article Operability / Lab Feasibility Gate
 
 LabGen is **not** a system that forcibly turns "any article" into an experiment. The first step of Article-to-Lab must be a judgment of whether the input content is operable and verifiable — **before** a Draft Lab Contract is ever generated.
 
-When a user submits a technical article, README, tutorial, or internal tech doc, the system **must** first run the **Lab Feasibility Gate** to decide whether to generate a Draft Lab Contract.
+When an admin submits a technical article, README, tutorial, or internal tech doc, the system **must** first run the **Lab Feasibility Gate** to decide whether to generate a Draft Lab Contract.
 
 The Feasibility Gate classifies input into exactly one of three tiers:
 
-### 4.1 Directly Lab-Ready
+### 6.1 Directly Lab-Ready
 
 The article has clear, sufficient experiment conditions and may proceed to a Draft Lab Contract.
 
@@ -79,8 +154,9 @@ Judgment criteria (must have all of):
 - can run safely inside a temporary isolated environment
 - can be cleaned up when the experiment ends
 - does not require real production accounts, real keys, or inaccessible third-party resources
+- does not involve destructive, illegal, or high-risk unsafe operations
 
-### 4.2 Partially Lab-Ready
+### 6.2 Partially Lab-Ready
 
 The article has practice value but is missing key experiment information. The system must **not** publish directly, and must **not** fabricate missing content.
 
@@ -91,10 +167,11 @@ This case must return **clarification / missing requirements**, for example:
 - missing input examples
 - missing verifiable outcome
 - depends on an external service with no safe substitute
-- requires the user to choose an experiment scope
+- cleanup path unclear
+- verifier path unclear
 - content is experimentable in principle, but only a **limited draft** can be generated
 
-### 4.3 Not Lab-Ready / Reject
+### 6.3 Not Lab-Ready / Reject
 
 If the article has no operability, the system must explicitly refuse to generate an experiment, with a clear reason.
 
@@ -103,7 +180,6 @@ Non-exhaustive reject scenarios:
 - news, opinion, trend analysis
 - no executable steps
 - no verifiable outcome
-- missing necessary environment with no reasonable inference possible
 - requires a real production environment
 - requires real keys / tokens / accounts / user private or sensitive data
 - requires an inaccessible third-party service
@@ -112,20 +188,18 @@ Non-exhaustive reject scenarios:
 - cannot be cleaned up
 - cannot establish a safety boundary
 - cannot be automatically verified
-- generating an experiment would mislead the user into thinking they've mastered the article's core content
+- generating an experiment would mislead the user into thinking they have mastered the article's core content
 
 When rejecting, the system must:
 - clearly state why a lab cannot be generated
 - list which operable elements are missing
-- where possible, suggest what information the user could add to retry
+- where possible, suggest what information the admin could add to retry
 - if the article is only a concept summary, explicitly state it can only produce summary / study notes, not an executable lab
 - never harden an experiment just to appear "smart"
 - never generate a fake experiment that cannot be verified
-- never bypass safety / cleanup / verifier requirements
+- never let LLM output override a Feasibility Gate rejection
 
-This gate is the formal entry gate of the Article-to-Lab pipeline. At the current stage it is recorded in the North Star document for subsequent design; full automated decision-making is **not** required to be implemented now.
-
-## 5. Current Domain Proof
+## 7. Current Domain Proof
 
 The current K8s learning platform is the **first validation scenario** — it is not the permanent product boundary.
 
@@ -140,10 +214,12 @@ The K8s domain is currently used to validate:
 - small cohort validation
 - ops runbook
 - home_lab_mvp runtime
+- Article-to-Lab stub pipeline (admin-curated, stub classifier)
+- Admin Review Rehearsal (4 input samples verified)
 
 All of the above are domain-agnostic platform capabilities being proven through one concrete domain (K8s). The proof is the point, not the domain.
 
-## 6. Future Domains
+## 8. Future Domains
 
 The architecture must remain able to support, without rewrite:
 - Linux learning platform
@@ -152,16 +228,17 @@ The architecture must remain able to support, without rewrite:
 - Docker / container labs
 - database labs
 - CI/CD labs
-- cloud service labs
+- cloud service labs (currently blocked by safety policy)
 - security sandbox labs
 - Python / backend engineering labs
 
-## 7. Architecture Principle
+## 9. Architecture Principle
 
 **General Experiment Core + Replaceable Domain Contract**
 
 Do not let the system harden into K8s-only. The following must remain swappable abstractions:
 - Lab Contract
+- Article Draft Contract
 - Domain Contract
 - Runtime Adapter
 - Environment Provisioner
@@ -171,8 +248,9 @@ Do not let the system harden into K8s-only. The following must remain swappable 
 - Safety Policy
 - Feedback Template
 - Admin Review / Publish Gate
+- AI Tutor Context
 
-## 8. What We Must Not Become
+## 10. What We Must Not Become
 
 - Must not harden into a fixed K8s course platform.
 - Must not just keep adding more K8s labs for their own sake.
@@ -186,8 +264,14 @@ Do not let the system harden into K8s-only. The following must remain swappable 
 - Must not let experiment environments accumulate long-term residue.
 - Must not pollute the user's local machine.
 - Must not break future Linux / multi-domain migration capability.
+- Must not allow inoperable articles to be hardcoded into experiments.
+- Must not generate experiments that cannot be automatically verified.
+- Must not mislead learners into thinking they have mastered article content via fake experiments.
+- Must not allow reader-submitted articles until the admin-curated gate is validated.
+- Must not allow URL scraping.
+- Must not let any generated draft enter the learner catalog without a complete publish gate.
 
-## 9. LLM Positioning
+## 11. LLM Positioning
 
 The LLM's correct position is **not** to publish experiments directly. It is to:
 - extract practicable knowledge points from an article
@@ -196,18 +280,42 @@ The LLM's correct position is **not** to publish experiments directly. It is to:
 - generate a verifier draft
 - generate an environment-requirement draft
 - generate a learning-feedback draft
+- generate an AI Tutor hint draft
 - help admins correct content
 
 But it must always go through:
-- Human/Admin Review
+- Human / Admin Review
 - StaticValidator
 - Publish Gate
 - Internal Rehearsal
 - Real Learner Validation
 
-## 10. Product Stage Definition
+v0.1 uses stub mode only (no live LLM calls). `LLMProviderPort` is the swappable interface. Live LLM is deferred until stub flow is validated.
 
-The project is currently in the **real-human product validation phase**.
+## 12. AI Tutor Context
+
+AI Tutor is part of the Guided Practice Lab and must remain present. Its role and constraints:
+
+**AI Tutor may:**
+- Explain what a command does.
+- Explain an error message.
+- Guide the learner within safety boundaries.
+- Help the learner understand the current step.
+- Hint at what to look for next.
+
+**AI Tutor must not:**
+- Bypass the experiment (skip steps / shortcut the lab).
+- Leak platform information (kubeconfig paths, admin credentials, other users' data).
+- Suggest dangerous or irreversible operations.
+- Complete the lab for the user.
+- Answer questions outside the current lab's domain.
+- Reveal that a step's verifier logic can be fooled.
+
+## 13. Product Stage Definition
+
+The project has completed **real-human product validation** (3 rounds, 4 labs, multiple learners).
+
+It is currently in the **Article-to-Lab pipeline build phase**.
 
 It is **not**:
 - public launch
@@ -215,43 +323,80 @@ It is **not**:
 - cloud production
 - LLM live generation phase
 - fixed course expansion phase
+- customer pilot (blocked — no suitable external customer identified)
 
-Current focus is only:
-- validating whether real learners can independently complete experiments
-- validating the terminal + verifier + cleanup closed loop
-- validating real feedback from a small cohort
-- validating whether the project is ready to enter the Small Customer Pilot Preparation Gate
+Current focus:
+- Building and validating the Article-to-Lab pipeline (admin-curated, stub classifier)
+- Admin Review Rehearsal: complete (4 K8s samples verified)
+- Next: K8s Article-to-Lab Internal Rehearsal to Publish Candidate
+- Eventually: Linux domain proof, Docker domain proof
 
-## 11. Decision Rule
+## 14. Decision Rule
 
 Every subsequent task must ask:
 
 - Does this step shrink the distance between "read an article" and "run a live verification"?
 - Does this step strengthen Article-to-Lab capability?
 - Does this step preserve future Linux / multi-domain migration capability?
-- Does this step still support "读完即练，结果说话"?
+- Does this step still support "读了能做，做了就懂"?
+- Does this step produce a Guided Practice Lab, not an Assessment Lab?
 - Does this step merely pile on more fixed K8s coursework?
 - Does this step introduce K8s-only hardcoding that cannot migrate?
 - Does this step weaken cleanup / credential / safety / verifier boundaries?
+- Does this step bypass Admin Review or Feasibility Gate?
 
 If the answer reveals drift, the task must be paused and realigned.
 
-## 12. Article-to-Lab Pipeline Design Progress
+## 15. Article-to-Lab Follow-up Execution Checklist
+
+Every subsequent Article-to-Lab task must verify:
+
+**Product alignment:**
+- [ ] Serves "读了能做，做了就懂"
+- [ ] Input is Admin-curated (not reader-submitted)
+- [ ] Output is Guided Practice Lab (not Assessment Lab)
+- [ ] Experiment background is derived from article content brief
+- [ ] AI Tutor context is included
+- [ ] Steps include: copyable commands / expected output / hint prompts
+- [ ] Check is used for progress confirmation (not difficulty gatekeeping)
+
+**Gate preservation:**
+- [ ] Feasibility Gate is preserved
+- [ ] Inoperable articles → reject (no hardcoding)
+- [ ] Admin Review is preserved
+- [ ] StaticValidator is preserved
+- [ ] Internal Rehearsal is preserved
+
+**Boundary preservation:**
+- [ ] No direct publish of generated lab
+- [ ] No generated draft in learner catalog without complete publish gate
+- [ ] No live LLM calls
+- [ ] No break of Linux / multi-domain portability
+- [ ] No modification of runtime / verifier / terminal (unless explicit gate)
+- [ ] No modification of production VMID 500-599
+- [ ] No modification of production pool / registry
+- [ ] No customer pilot launch
+- [ ] No fifth lab published
+- [ ] No concurrency increase
+
+## 16. Article-to-Lab Pipeline Progress
 
 | Gate | Status | Evidence |
 |------|--------|----------|
 | K8s Domain Proof (4 labs, 3 rounds real human validation) | ✅ COMPLETE | `REAL_HUMAN_COHORT_ROUND2_RESULT_v0.1.md` |
-| Small Customer Pilot Preparation Gate | ✅ COMPLETE | `SMALL_CUSTOMER_PILOT_PREPARATION_GATE_v0.1.md` — PREP_READY_WITH_NOTES |
-| Small Customer Pilot Execution | 🔴 BLOCKED | `SMALL_CUSTOMER_PILOT_RESULT_v0.1.md` — NO_SUITABLE_SMALL_CUSTOMER (not a technical blocker) |
-| **Article-to-Lab Pipeline Design Gate** | ✅ COMPLETE | `ARTICLE_TO_LAB_PIPELINE_DESIGN_GATE_v0.1.md` — **ARTICLE_TO_LAB_PIPELINE_DESIGN_READY_WITH_NOTES** |
-| **Article-to-Lab Implementation Prerequisites** | ✅ COMPLETE | `ARTICLE_TO_LAB_IMPLEMENTATION_PREREQUISITES_v0.1.md` — **ARTICLE_TO_LAB_PREREQS_READY_WITH_NOTES** — N-01/N-02/N-03 resolved; v0.1 stub mode; ephemeral source text; user consent |
-| **Article-to-Lab MVP Contract Schema Gate** | ✅ COMPLETE | `ARTICLE_TO_LAB_MVP_CONTRACT_SCHEMA_GATE_v0.1.md` — **ARTICLE_TO_LAB_SCHEMA_READY_WITH_NOTES** — 11 Pydantic models locked, 15 guardrail checks, 116 tests |
-| K8s Article-to-Lab Draft Mode Implementation | ⬜ PENDING | After Contract Schema Gate (now unlocked) |
-| Linux Domain Proof | ⬜ PENDING | After K8s Article-to-Lab Draft Mode validated |
+| Small Customer Pilot Preparation Gate | ✅ COMPLETE | `SMALL_CUSTOMER_PILOT_PREPARATION_GATE_v0.1.md` |
+| Small Customer Pilot Execution | 🔴 BLOCKED | `SMALL_CUSTOMER_PILOT_RESULT_v0.1.md` — NO_SUITABLE_SMALL_CUSTOMER |
+| Article-to-Lab Pipeline Design Gate | ✅ COMPLETE | `ARTICLE_TO_LAB_PIPELINE_DESIGN_GATE_v0.1.md` |
+| Article-to-Lab Implementation Prerequisites | ✅ COMPLETE | `ARTICLE_TO_LAB_IMPLEMENTATION_PREREQUISITES_v0.1.md` — N-01/N-02/N-03 resolved |
+| Article-to-Lab MVP Contract Schema Gate | ✅ COMPLETE | `ARTICLE_TO_LAB_MVP_CONTRACT_SCHEMA_GATE_v0.1.md` — 11 models, 15 guardrails, 116 tests |
+| **K8s Article-to-Lab Draft Mode Implementation** | ✅ **COMPLETE** | `K8S_ARTICLE_TO_LAB_DRAFT_MODE_IMPLEMENTATION_RESULT_v0.1.md` — 9 endpoints, 60 tests, stub classifier |
+| **K8s Article-to-Lab Admin Review Rehearsal** | ✅ **COMPLETE** | `K8S_ARTICLE_TO_LAB_ADMIN_REVIEW_REHEARSAL_RESULT_v0.1.md` — 4 samples, MEDIUM-001 fixed, 53 tests |
+| K8s Article-to-Lab Internal Rehearsal to Publish Candidate | ⬜ NEXT | After Admin Review Rehearsal (now unlocked) |
+| Linux Domain Proof | ⬜ PENDING | After K8s Article-to-Lab pipeline fully validated |
 | Docker Domain Proof | ⬜ PENDING | After Linux domain |
 
-The pipeline design (Section E of `ARTICLE_TO_LAB_PIPELINE_DESIGN_GATE_v0.1.md`) is the canonical reference for the Article-to-Lab platform architecture. All subsequent implementation must follow that design and must not harden into K8s-only.
+The pipeline design (`ARTICLE_TO_LAB_PIPELINE_DESIGN_GATE_v0.1.md`) is the canonical reference for the Article-to-Lab platform architecture. All subsequent implementation must follow that design and must not harden into K8s-only.
 
 ---
 
-*This document is the authoritative reference for LabGen's structural goal. Any future document that describes the project as a pure K8s learning platform must be corrected to reference this document.*
+*This document is the authoritative reference for LabGen's structural goal. Any future document that describes the project as a pure K8s learning platform, or that omits the Admin-curated / Guided Practice Lab / Article Operability Gate constraints, must be corrected to reference this document.*
