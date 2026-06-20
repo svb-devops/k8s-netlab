@@ -43,13 +43,15 @@ LabGen's mission is not to build a fixed K8s course platform. K8s is a domain pr
 
 The final product is: **"Let every reproducible technical article become a temporary, isolated, verifiable, recyclable live experiment."**
 
-Product slogan: **读完即练，结果说话。**
+Primary product slogan (updated 2026-06-20): **读了能练，练完即熟。**
+
+Secondary expression (at time of this gate): **读完即练，结果说话。**
 
 | Alignment Check | Status |
 |-----------------|--------|
 | K8s as domain proof, not final product boundary | YES — 4 labs prove the platform, not add coursework |
 | Article-to-Lab as the actual product direction | YES — this gate designs the pipeline |
-| "读完即练，结果说话" preserved | YES — the pipeline starts from an article, ends with a reclaimed environment |
+| "读了能练，练完即熟" preserved | YES — the pipeline starts from an article, ends with a reclaimed environment |
 | Linux / multi-domain future migration preserved | YES — all adapter abstractions remain domain-swappable |
 | Not declaring LLM live generation enabled | YES — gate is design only |
 | Not declaring arbitrary article-to-lab complete | YES — design only, no live pipeline |

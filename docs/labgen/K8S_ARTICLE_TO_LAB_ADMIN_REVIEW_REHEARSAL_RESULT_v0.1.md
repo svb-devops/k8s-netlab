@@ -30,7 +30,7 @@ may proceed once findings are acknowledged.
 
 ## B. North Star Alignment
 
-> "读完即练，结果说话"
+> "读了能练，练完即熟" (primary slogan, updated 2026-06-20; secondary: "读完即练，结果说话")
 
 - Article-to-Lab direction confirmed as the platform's north star
 - K8s used as domain proof (not final boundary)

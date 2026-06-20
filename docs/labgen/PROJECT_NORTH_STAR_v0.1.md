@@ -21,14 +21,19 @@ LabGen solves: **shrink the distance between "reading a technical article" and "
 
 ## 2. Product Slogan
 
-**读了能做，做了就懂。**
+**读了能练，练完即熟。**
+("Read it and practice it. Practice through it and you master it.")
+
+Auxiliary expression: **读了能做，做了就懂。**
 ("Read it and be able to do it. Do it and you understand.")
 
 Alt expression: **读完即练，结果说话。**
 ("Read it, then practice it immediately — the result speaks for itself.")
 
 Interpretation:
-- **读了能做**: Every article should become something you can practice right away, not just consume.
+- **读了能练**: Every article should become something you can practice right away, not just consume.
+- **练完即熟**: Completing the hands-on steps in an isolated, verifiable environment converts reading into retained, executable skill — the way 熟能生巧 (practice makes perfect) always works.
+- **读了能做**: The article gives you real operations to reproduce, not passive content to scroll through.
 - **做了就懂**: Doing the steps in an isolated, verifiable environment converts reading into retained ability.
 - **结果说话**: Every step can be Checked; the system confirms progress automatically.
 - **结果说话**: When the experiment completes, the environment is reclaimed, credentials are revoked, resources are cleaned up — nothing lingers.
@@ -338,7 +343,7 @@ Every subsequent task must ask:
 - Does this step shrink the distance between "read an article" and "run a live verification"?
 - Does this step strengthen Article-to-Lab capability?
 - Does this step preserve future Linux / multi-domain migration capability?
-- Does this step still support "读了能做，做了就懂"?
+- Does this step still support "读了能练，练完即熟"?
 - Does this step produce a Guided Practice Lab, not an Assessment Lab?
 - Does this step merely pile on more fixed K8s coursework?
 - Does this step introduce K8s-only hardcoding that cannot migrate?
@@ -352,7 +357,7 @@ If the answer reveals drift, the task must be paused and realigned.
 Every subsequent Article-to-Lab task must verify:
 
 **Product alignment:**
-- [ ] Serves "读了能做，做了就懂"
+- [ ] Serves "读了能练，练完即熟"
 - [ ] Input is Admin-curated (not reader-submitted)
 - [ ] Output is Guided Practice Lab (not Assessment Lab)
 - [ ] Experiment background is derived from article content brief

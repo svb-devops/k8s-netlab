@@ -35,7 +35,7 @@ An admin can now submit K8s article text via API, receive a feasibility assessme
 
 ## B. North Star Alignment
 
-> "读完即练，结果说话"
+> "读了能练，练完即熟" (primary slogan, updated 2026-06-20; secondary: "读完即练，结果说话")
 
 - K8s is domain proof, not the final boundary
 - Article → Feasibility Gate → Draft Contract → Admin Review → StaticValidator → LabDraft (DRAFT) chain is working end-to-end

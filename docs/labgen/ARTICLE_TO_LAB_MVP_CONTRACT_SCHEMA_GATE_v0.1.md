@@ -339,7 +339,7 @@ Do NOT start:
 | No production VM / pool / registry modified | PASS |
 | No "arbitrary Article-to-Lab implemented" claim | PASS |
 | No "production ready" / "public launch" claim | PASS |
-| "读完即练，结果说话" preserved | PASS |
+| "读了能练，练完即熟" preserved | PASS |
 | 116 tests pass | PASS |
 | Existing 3394 tests unaffected | PASS (static validator regression: 65 pass) |
 | Pre-commit 8/8 security scans | PASS (at commit) |
