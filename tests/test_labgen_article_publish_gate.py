@@ -852,6 +852,51 @@ class TestRegression:
         with pytest.raises(StepDraftUnavailable):
             svc.check_step(learner_session.session_id, "step_1", "learner-test")
 
+    def test_published_article_linked_lab_allows_learner_precheck(self):
+        """Learner precheck PASSES for a PUBLISHED article-linked lab (positive reader path)."""
+        draft = _article_draft_rehearsed()
+        draft = draft.model_copy(update={"publish_status": PublishStatus.PUBLISHED})
+        dr = _MemDraftRepo(drafts=[draft])
+        svc = _make_service(draft_repo=dr)
+        result = svc.run_precheck(draft.lab_id, "401", "learner1")
+        assert result.passed, f"Expected precheck PASS for published article lab, got: {result.failures}"
+
+    def test_published_article_lab_step_preview_has_do_instruction(self):
+        """Published article-linked lab's step preview contains the 'do' instruction for reader."""
+        from backend.labgen.learner_catalog import LearnerCatalogService
+        from backend.labgen.static_validator import StaticValidator
+
+        draft = _article_draft_rehearsed()
+        draft = draft.model_copy(update={"publish_status": PublishStatus.PUBLISHED})
+        dr = _MemDraftRepo(drafts=[draft])
+        sr = _MemSessionRepo()
+        svc = LearnerCatalogService(draft_repo=dr, validator=StaticValidator(), session_repo=sr)
+
+        detail = svc.get_published_lab_detail(draft.lab_id, actor_user="learner1")
+        assert detail is not None
+        assert len(detail.steps_preview) > 0
+        first_step = detail.steps_preview[0]
+        assert first_step.instructions_summary, "step must have non-empty instructions_summary for reader"
+
+    def test_published_article_lab_step_check_count_matches_verify_list(self):
+        """check_count in step preview equals the number of verify templates in the draft."""
+        from backend.labgen.learner_catalog import LearnerCatalogService
+        from backend.labgen.static_validator import StaticValidator
+
+        draft = _article_draft_rehearsed()
+        draft = draft.model_copy(update={"publish_status": PublishStatus.PUBLISHED})
+        step = draft.steps[0]
+
+        dr = _MemDraftRepo(drafts=[draft])
+        sr = _MemSessionRepo()
+        svc = LearnerCatalogService(draft_repo=dr, validator=StaticValidator(), session_repo=sr)
+
+        detail = svc.get_published_lab_detail(draft.lab_id, actor_user="learner1")
+        preview_step = detail.steps_preview[0]
+        assert preview_step.check_count == len(step.verify), (
+            f"check_count {preview_step.check_count} must equal len(step.verify) {len(step.verify)}"
+        )
+
 
 # ===========================================================================
 # Fixtures

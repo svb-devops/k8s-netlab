@@ -59,9 +59,9 @@ POST /api/labgen/drafts/cf019133.../publish → 409 REHEARSAL_REQUIRED
 - vm_id: 401 (labgen-home-k3s-staging-01)
 - namespace: `lab-0b0fb49b-0c84-41e6-abee-5d56ffb41df4`
 
-**K3s kubeconfig 修正**：
-- platform kubeconfig（`/etc/labgen/home_lab_mvp.kubeconfig`）：旧 IP → 新 IP
-- verifier kubeconfig（`/var/lib/labgen-staging/verifier-credentials/401/kubeconfig.yaml`）：旧 IP → 新 IP
+**K3s kubeconfig 修正**（后续 G-32 澄清：服务实际路径为 `creds/`，非 `/etc/labgen/`）：
+- platform kubeconfig：`creds/platform_kubeconfig.yaml`（server: 172.16.100.153）✅
+- verifier kubeconfig：`creds/vm_creds/401/kubeconfig.yaml`（server: 172.16.100.153）✅
 
 **步骤执行**：
 - step_1（configmap_exists，name=app-config）→ PASS（手动创建 ConfigMap）
