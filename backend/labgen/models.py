@@ -97,6 +97,11 @@ class ConnectionState(str, Enum):
     RECONNECTING = "reconnecting"
 
 
+class SessionType(str, Enum):
+    LEARNER = "learner"
+    INTERNAL_REHEARSAL = "internal_rehearsal"
+
+
 # ---------------------------------------------------------------------------
 # Base
 # ---------------------------------------------------------------------------
@@ -313,6 +318,8 @@ class LabSessionState(SchemaVersionedModel):
     completed_step_ids: list[str] = Field(default_factory=list)
     ready_to_complete: bool = False
     last_verify_results: list[VerifyResult] = Field(default_factory=list)
+    session_type: SessionType = SessionType.LEARNER
+    article_draft_id: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

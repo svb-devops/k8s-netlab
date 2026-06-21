@@ -279,9 +279,12 @@ class LearnerCatalogService:
 
         # 3. Active session check — mirrors start precheck; only if session_repo injected
         if self._session_repo is not None:
+            from backend.labgen.models import SessionType
             existing = self._session_repo.list_by_student(actor_user)
             if any(
-                s.lab_id == lab_id and s.lab_session_status in _ACTIVE_STATES
+                s.lab_id == lab_id
+                and s.lab_session_status in _ACTIVE_STATES
+                and s.session_type != SessionType.INTERNAL_REHEARSAL
                 for s in existing
             ):
                 is_startable = False

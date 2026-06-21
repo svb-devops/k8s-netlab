@@ -1,14 +1,5 @@
 {
   "permissions": {
-    "deny": [
-      "Bash(qm destroy*)",
-      "Bash(qm delete*)",
-      "Bash(git reset --hard*)",
-      "Bash(git push --force*)",
-      "Bash(rm -rf /*)",
-      "Bash(DROP TABLE*)",
-      "Bash(DROP DATABASE*)"
-    ],
     "allow": [
       "Bash(git *)",
       "Bash(pytest *)",
@@ -22,7 +13,19 @@
       "Bash(curl *)",
       "Bash(pvesh *)",
       "Bash(bash scripts/*)",
-      "Bash(cat data/*)"
+      "Bash(cat data/*)",
+      "Bash(export KUBECONFIG=/etc/labgen/home_lab_mvp.kubeconfig)",
+      "Bash(kubectl get *)",
+      "Bash(awk '$1 !~ /^kube-system|^kube-public|^kube-node-lease/')"
+    ],
+    "deny": [
+      "Bash(qm destroy*)",
+      "Bash(qm delete*)",
+      "Bash(git reset --hard*)",
+      "Bash(git push --force*)",
+      "Bash(rm -rf /*)",
+      "Bash(DROP TABLE*)",
+      "Bash(DROP DATABASE*)"
     ]
   }
 }

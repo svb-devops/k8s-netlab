@@ -21,6 +21,7 @@ from backend.labgen.models import (
     LabSessionStatus,
     PublishStatus,
     RuntimeAuditEventType,
+    SessionType,
 )
 from backend.labgen.namespace_lifecycle import (
     NamespaceLifecyclePort,
@@ -29,6 +30,7 @@ from backend.labgen.namespace_lifecycle import (
 from backend.labgen.runtime_audit import RuntimeAuditService
 
 if TYPE_CHECKING:
+    from backend.labgen.article_models import ArticleDraftLabContract
     from backend.labgen.image_resolver import ImageResolver
     from backend.labgen.lab_session_repository import LabSessionRepository
     from backend.labgen.models import LabDraft
@@ -270,7 +272,9 @@ class LabSessionService:
 
         existing = self._session_repo.list_by_student(student_username)
         if any(
-            s.lab_id == lab_id and s.lab_session_status in _ACTIVE_STATES
+            s.lab_id == lab_id
+            and s.lab_session_status in _ACTIVE_STATES
+            and s.session_type != SessionType.INTERNAL_REHEARSAL
             for s in existing
         ):
             failures.append(FailureReason.PRECHECK_SESSION_ALREADY_ACTIVE.value)
@@ -347,6 +351,113 @@ class LabSessionService:
                 )
                 return session
 
+        return self._do_create_session(
+            lab_id=lab_id,
+            vm_id=vm_id,
+            username=student_username,
+            session_type=SessionType.LEARNER,
+        )
+
+    def run_rehearsal_precheck(
+        self,
+        lab_id: str,
+        vm_id: str,
+        admin_username: str,
+        article_draft_id: Optional[str] = None,
+    ) -> PrecheckResult:
+        """Precheck for admin-only internal rehearsal sessions.
+
+        Differences from run_precheck():
+        - Does NOT require publish_status=PUBLISHED (DRAFT is expected)
+        - DOES require source_article_id to be set (confirms article-generated origin;
+          source_article_id is only set by convert_to_lab_draft which requires an
+          approved article draft)
+        - Normal cleanup / VM / duplicate-session checks still apply
+        """
+
+        failures: list[str] = []
+
+        draft = self._draft_repo.get(lab_id)
+        if draft is None:
+            failures.append(FailureReason.REHEARSAL_DRAFT_NOT_FOUND.value)
+        else:
+            if not draft.source_article_id:
+                failures.append(FailureReason.REHEARSAL_DRAFT_NOT_ARTICLE_GENERATED.value)
+            if draft.cleanup is None:
+                failures.append(FailureReason.REHEARSAL_CLEANUP_NOT_DECLARED.value)
+
+        if not self._vm_tracker.vm_exists(vm_id):
+            failures.append(FailureReason.REHEARSAL_VM_NOT_FOUND.value)
+        elif not self._vm_tracker.is_vm_owned_by(vm_id, admin_username):
+            failures.append(FailureReason.REHEARSAL_VM_NOT_OWNED.value)
+        elif self._vm_tracker.is_vm_tainted(vm_id):
+            failures.append(FailureReason.REHEARSAL_VM_TAINTED.value)
+
+        existing = self._session_repo.list_by_student(admin_username)
+        if any(
+            s.lab_id == lab_id and s.lab_session_status in _ACTIVE_STATES
+            for s in existing
+        ):
+            failures.append(FailureReason.REHEARSAL_SESSION_ALREADY_ACTIVE.value)
+
+        return PrecheckResult(passed=len(failures) == 0, failures=failures)
+
+    def create_rehearsal_session(
+        self,
+        lab_id: str,
+        vm_id: str,
+        admin_username: str,
+        article_draft_id: Optional[str] = None,
+    ) -> LabSessionState:
+        """Create an admin-only internal rehearsal session against a DRAFT lab.
+
+        Safety guarantees:
+        - Does NOT require publish_status=PUBLISHED
+        - Does NOT add the lab to the learner catalog
+        - Session is tagged session_type=INTERNAL_REHEARSAL
+        - Normal cleanup / namespace / credential lifecycle still applies
+        - Only callable through the /internal/rehearsal-sessions route (X-Admin-Token)
+        """
+        if self._adapter_selection is not None:
+            if any(i.severity == "blocking" for i in self._adapter_selection.issues):
+                session = LabSessionState(
+                    lab_id=lab_id,
+                    vm_id=vm_id,
+                    student_username=admin_username,
+                    lab_session_status=LabSessionStatus.LAB_START_FAILED,
+                    failure_reason=FailureReason.ADAPTER_UNSAFE_IN_PRODUCTION.value,
+                    session_type=SessionType.INTERNAL_REHEARSAL,
+                    article_draft_id=article_draft_id,
+                )
+                session = self._session_repo.create(session)
+                self._audit(
+                    session.session_id,
+                    RuntimeAuditEventType.LAB_START_FAILED,
+                    failure_reason=FailureReason.ADAPTER_UNSAFE_IN_PRODUCTION.value,
+                )
+                return session
+
+        result = self.run_rehearsal_precheck(lab_id, vm_id, admin_username, article_draft_id)
+        if not result.passed:
+            raise PrecheckFailed(result.failures)
+
+        return self._do_create_session(
+            lab_id=lab_id,
+            vm_id=vm_id,
+            username=admin_username,
+            session_type=SessionType.INTERNAL_REHEARSAL,
+            article_draft_id=article_draft_id,
+        )
+
+    def _do_create_session(
+        self,
+        lab_id: str,
+        vm_id: str,
+        username: str,
+        session_type: SessionType,
+        article_draft_id: Optional[str] = None,
+    ) -> LabSessionState:
+        """Shared post-precheck session creation: image check → ns create → rb create → active."""
         # Safe: precheck already verified draft exists
         draft = self._draft_repo.get(lab_id)
 
@@ -356,9 +467,11 @@ class LabSessionService:
             session = LabSessionState(
                 lab_id=lab_id,
                 vm_id=vm_id,
-                student_username=student_username,
+                student_username=username,
                 lab_session_status=LabSessionStatus.LAB_START_FAILED,
                 failure_reason=failure_reason,
+                session_type=session_type,
+                article_draft_id=article_draft_id,
             )
             session = self._session_repo.create(session)
             self._audit(session.session_id, RuntimeAuditEventType.LAB_START_FAILED, failure_reason=failure_reason)
@@ -367,16 +480,16 @@ class LabSessionService:
         if any_rechecked and draft is not None:
             self._draft_repo.update(draft.model_copy(update={"image_resolution": updated_images}))
 
-        # Allocate session_id early so namespace is derived from it
         session = LabSessionState(
             lab_id=lab_id,
             vm_id=vm_id,
-            student_username=student_username,
+            student_username=username,
             lab_session_status=LabSessionStatus.NAMESPACE_CREATING,
+            session_type=session_type,
+            article_draft_id=article_draft_id,
         )
         session.namespace = f"lab-{session.session_id}"
 
-        # NAMESPACE_CREATING: attempt to create, then confirm existence
         try:
             create_ok = self._ns_lifecycle.create_namespace(session.namespace)
         except Exception:
@@ -401,7 +514,6 @@ class LabSessionService:
             self._audit(session.session_id, RuntimeAuditEventType.LAB_START_FAILED, failure_reason=FailureReason.NAMESPACE_CREATE_FAILED.value)
             return session
 
-        # VERIFIER_BINDING_CREATING: create RoleBinding, then verify existence
         session.lab_session_status = LabSessionStatus.VERIFIER_BINDING_CREATING
         try:
             binding_ok = self._ns_lifecycle.ensure_verifier_rolebinding(session.namespace)

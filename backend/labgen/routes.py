@@ -29,6 +29,7 @@ from backend.labgen.lab_session_service import (
     SessionNotFound,
     VMTrackerPort,
 )
+from backend.labgen.models import SessionType
 from backend.labgen.runtime_adapter_selection import (
     RuntimeAdapterSelectionService,
     RuntimeAdapterSelectionResult,
@@ -959,6 +960,10 @@ async def get_lab_session(
     if session.student_username != username and not auth_manager.is_admin(username):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
+    # Rehearsal sessions are admin-only; return 404 (not 403) to avoid existence leakage
+    if session.session_type == SessionType.INTERNAL_REHEARSAL and not auth_manager.is_admin(username):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
     return session
 
 
@@ -976,6 +981,10 @@ async def complete_lab_session(
 
     if session.student_username != username:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the session owner can complete it")
+
+    # Rehearsal sessions must only be mutated via the rehearsal-specific endpoint (dual-auth required)
+    if session.session_type == SessionType.INTERNAL_REHEARSAL:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
     try:
         return svc.complete_session(session_id)
@@ -998,6 +1007,10 @@ async def abort_lab_session(
 
     if session.student_username != username:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the session owner can abort it")
+
+    # Rehearsal sessions must only be mutated via the rehearsal-specific endpoint (dual-auth required)
+    if session.session_type == SessionType.INTERNAL_REHEARSAL:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
 
     try:
         return svc.abort_session(session_id)
@@ -1414,3 +1427,116 @@ async def check_image_existence(
     resolver: ImageResolver = Depends(get_image_resolver),
 ) -> list[ImageResolutionResult]:
     return [resolver.check_registry_existence(img) for img in body.images]
+
+
+# ===========================================================================
+# Internal Rehearsal Bridge — POST /internal/rehearsal-sessions
+#
+# Admin-only endpoint for creating rehearsal sessions against DRAFT generated
+# LabDrafts (source_article_id set). Never adds lab to learner catalog.
+# Never publishes. Never changes publish_status.
+# Session is tagged session_type=INTERNAL_REHEARSAL and invisible to learners.
+# ===========================================================================
+
+rehearsal_router = APIRouter(prefix="/internal/rehearsal-sessions", tags=["internal"])
+
+
+class CreateRehearsalSessionRequest(BaseModel):
+    lab_id: str
+    vm_id: str
+    article_draft_id: Optional[str] = None
+
+
+@rehearsal_router.post(
+    "",
+    response_model=LabSessionState,
+    status_code=status.HTTP_201_CREATED,
+    summary="[ADMIN ONLY] Start an internal rehearsal session for a DRAFT generated lab",
+    description=(
+        "Creates an admin-only internal rehearsal session against a DRAFT LabDraft "
+        "(source_article_id must be set — article-generated labs only). "
+        "Does NOT publish the lab. Does NOT add it to the learner catalog. "
+        "Session is tagged session_type=INTERNAL_REHEARSAL and excluded from learner views. "
+        "Cleanup, verifier, and namespace lifecycle run identically to a normal learner session. "
+        "Requires X-Admin-Token header."
+    ),
+)
+async def create_rehearsal_session(
+    body: CreateRehearsalSessionRequest,
+    _: None = Depends(require_internal_token),
+    admin: str = Depends(require_admin_user),
+    svc: LabSessionService = Depends(get_session_service),
+) -> LabSessionState:
+    try:
+        return svc.create_rehearsal_session(
+            lab_id=body.lab_id,
+            vm_id=body.vm_id,
+            admin_username=admin,
+            article_draft_id=body.article_draft_id,
+        )
+    except PrecheckFailed as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"precheck_failures": exc.failures},
+        )
+
+
+@rehearsal_router.post(
+    "/{session_id}/complete",
+    response_model=LabSessionState,
+    summary="[ADMIN ONLY] Complete an internal rehearsal session",
+)
+async def complete_rehearsal_session(
+    session_id: str,
+    _: None = Depends(require_internal_token),
+    admin: str = Depends(require_admin_user),
+    svc: LabSessionService = Depends(get_session_service),
+) -> LabSessionState:
+    try:
+        session = svc._require_session(session_id)
+    except SessionNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    if session.session_type != SessionType.INTERNAL_REHEARSAL:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This endpoint is only for internal rehearsal sessions",
+        )
+
+    try:
+        return svc.complete_session(session_id)
+    except SessionAlreadyTerminated:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session is already terminated")
+    except LabNotReadyToComplete:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=FailureReason.LAB_NOT_READY_TO_COMPLETE.value,
+        )
+
+
+@rehearsal_router.post(
+    "/{session_id}/abort",
+    response_model=LabSessionState,
+    summary="[ADMIN ONLY] Abort an internal rehearsal session",
+)
+async def abort_rehearsal_session(
+    session_id: str,
+    _: None = Depends(require_internal_token),
+    admin: str = Depends(require_admin_user),
+    svc: LabSessionService = Depends(get_session_service),
+) -> LabSessionState:
+    try:
+        session = svc._require_session(session_id)
+    except SessionNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+
+    if session.session_type != SessionType.INTERNAL_REHEARSAL:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This endpoint is only for internal rehearsal sessions",
+        )
+
+    try:
+        return svc.abort_session(session_id)
+    except SessionAlreadyTerminated:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session is already terminated")

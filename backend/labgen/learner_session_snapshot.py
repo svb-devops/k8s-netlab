@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Optional
 
 from pydantic import BaseModel, Field
 
-from backend.labgen.models import LabSessionStatus
+from backend.labgen.models import LabSessionStatus, SessionType
 
 if TYPE_CHECKING:
     from backend.labgen.lab_session_repository import LabSessionRepository
@@ -431,6 +431,10 @@ class LearnerSessionSnapshotService:
     ) -> list[LearnerSessionListItem]:
         sessions = self._session_repo.list_by_student(actor_user)
 
+        # Exclude internal rehearsal sessions from the learner view — they are
+        # admin-only and must never appear in the learner catalog or session list.
+        sessions = [s for s in sessions if s.session_type != SessionType.INTERNAL_REHEARSAL]
+
         if status_filter:
             sessions = [s for s in sessions if s.lab_session_status.value == status_filter]
         if lab_id_filter:
@@ -461,6 +465,11 @@ class LearnerSessionSnapshotService:
 
         if session.student_username != actor_user and not is_admin:
             raise SnapshotAccessDenied(session_id)
+
+        # Rehearsal sessions are admin-only; raise SnapshotNotFound (not AccessDenied)
+        # to avoid leaking session existence to non-admin callers.
+        if session.session_type == SessionType.INTERNAL_REHEARSAL and not is_admin:
+            raise SnapshotNotFound(session_id)
 
         draft = self._draft_repo.get(session.lab_id)
         title = _sanitize(draft.title) if draft else "Unknown Lab"

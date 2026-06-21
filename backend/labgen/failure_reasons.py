@@ -65,3 +65,12 @@ class FailureReason(str, Enum):
     NAMESPACE_CONFIG_MISSING = "namespace_config_missing"
     NAMESPACE_INVALID_NAME = "namespace_invalid_name"
     NAMESPACE_ADAPTER_CONFIG_UNSAFE = "namespace_adapter_config_unsafe"
+
+    # -- Internal rehearsal bridge --------------------------------------------
+    REHEARSAL_DRAFT_NOT_FOUND = "rehearsal.draft_not_found"
+    REHEARSAL_DRAFT_NOT_ARTICLE_GENERATED = "rehearsal.draft_not_article_generated"
+    REHEARSAL_CLEANUP_NOT_DECLARED = "rehearsal.cleanup_not_declared"
+    REHEARSAL_VM_NOT_FOUND = "rehearsal.vm_not_found"
+    REHEARSAL_VM_NOT_OWNED = "rehearsal.vm_not_owned"
+    REHEARSAL_VM_TAINTED = "rehearsal.vm_tainted"
+    REHEARSAL_SESSION_ALREADY_ACTIVE = "rehearsal.session_already_active"
