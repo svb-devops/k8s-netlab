@@ -18,6 +18,7 @@ from backend.labgen.models import (
     PublishStatus,
     RuntimeAuditEventType,
     SchemaVersionedModel,
+    SessionType,
     VerifyResult,
 )
 from backend.labgen.runtime_audit import RuntimeAuditService
@@ -113,7 +114,10 @@ class StepProgressionService:
             raise StepAccessDenied(session_id)
 
         draft = self._draft_repo.get(session.lab_id)
-        if draft is None or draft.publish_status != PublishStatus.PUBLISHED:
+        is_rehearsal = session.session_type == SessionType.INTERNAL_REHEARSAL
+        if draft is None or (
+            draft.publish_status != PublishStatus.PUBLISHED and not is_rehearsal
+        ):
             raise StepDraftUnavailable(session.lab_id)
 
         if not draft.steps:

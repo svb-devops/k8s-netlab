@@ -769,6 +769,89 @@ class TestRegression:
             "Aborted rehearsal must not set rehearsal_completed=True"
         )
 
+    def test_internal_rehearsal_step_check_allowed_on_draft_lab(self):
+        """INTERNAL_REHEARSAL session can check steps even when draft is not PUBLISHED."""
+        from backend.labgen.step_progression_service import StepProgressionService, StepDraftUnavailable
+        from backend.labgen.runtime_audit import RuntimeAuditRepository, RuntimeAuditService
+
+        draft = _article_draft_unpublished()
+        assert draft.publish_status == PublishStatus.DRAFT
+
+        rehearsal_session = LabSessionState(
+            lab_id=draft.lab_id,
+            vm_id="401",
+            student_username="smoke-admin",
+            lab_session_status=LabSessionStatus.LAB_ACTIVE,
+            session_type=SessionType.INTERNAL_REHEARSAL,
+            namespace="lab-rehearsal-test",
+        )
+        dr = _MemDraftRepo(drafts=[draft])
+        sr = _MemSessionRepo(sessions=[rehearsal_session])
+
+        class _NullAudit:
+            def record(self, *a, **kw): pass
+
+        class _NullVerifier:
+            def check(self, session_id, template): return VerifyResult(
+                verify_id=template.verify_id,
+                type=template.type,
+                passed=True,
+                error_code=None,
+                failure_reason=None,
+            )
+
+        from backend.labgen.models import VerifyResult as _VR
+        svc = StepProgressionService(
+            session_repo=sr,
+            draft_repo=dr,
+            verifier_svc=_NullVerifier(),
+            audit_svc=_NullAudit(),
+        )
+        # Should NOT raise StepDraftUnavailable for INTERNAL_REHEARSAL
+        result = svc.check_step(rehearsal_session.session_id, "step_1", "smoke-admin")
+        assert result.all_passed is True
+
+    def test_learner_session_cannot_check_steps_on_draft_lab(self):
+        """LEARNER session still cannot check steps on an unpublished lab (gate preserved)."""
+        from backend.labgen.step_progression_service import StepProgressionService, StepDraftUnavailable
+        from backend.labgen.models import VerifyResult as _VR
+
+        draft = _article_draft_unpublished()
+        assert draft.publish_status == PublishStatus.DRAFT
+
+        learner_session = LabSessionState(
+            lab_id=draft.lab_id,
+            vm_id="501",
+            student_username="learner-test",
+            lab_session_status=LabSessionStatus.LAB_ACTIVE,
+            session_type=SessionType.LEARNER,
+            namespace="lab-learner-test",
+        )
+        dr = _MemDraftRepo(drafts=[draft])
+        sr = _MemSessionRepo(sessions=[learner_session])
+
+        class _NullAudit:
+            def record(self, *a, **kw): pass
+
+        class _NullVerifier:
+            def check(self, session_id, template): return _VR(
+                verify_id=template.verify_id,
+                type=template.type,
+                passed=True,
+                error_code=None,
+                failure_reason=None,
+            )
+
+        svc = StepProgressionService(
+            session_repo=sr,
+            draft_repo=dr,
+            verifier_svc=_NullVerifier(),
+            audit_svc=_NullAudit(),
+        )
+        import pytest
+        with pytest.raises(StepDraftUnavailable):
+            svc.check_step(learner_session.session_id, "step_1", "learner-test")
+
 
 # ===========================================================================
 # Fixtures
