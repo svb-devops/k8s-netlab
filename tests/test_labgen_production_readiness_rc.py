@@ -1029,8 +1029,13 @@ class TestAdminDiagnosticsConsistency:
             assert isinstance(body["production_safe"], bool)
             assert "checked_at" in body
 
-    def test_adapter_status_production_safe_false_in_test_mode(self):
+    def test_adapter_status_production_safe_false_in_test_mode(self, monkeypatch):
         # In test mode (default for RC tests), production_safe must be False.
+        # Patch config module directly — config values are read at import time, not from env.
+        import backend.config as _cfg
+        monkeypatch.setattr(_cfg, "LABGEN_RUNTIME_MODE", "development")
+        monkeypatch.setattr(_cfg, "LABGEN_NAMESPACE_ADAPTER", "stub")
+        monkeypatch.setattr(_cfg, "LABGEN_K8S_PLATFORM_KUBECONFIG_PATH", "")
         with _rc_ctx() as ctx:
             ctx["as_admin"]()
             r = ctx["client"].get("/api/labgen/runtime/adapter-status")
