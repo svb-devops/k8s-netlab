@@ -19,6 +19,12 @@ from backend.labgen.models import (
     ValidatorStatus,
 )
 
+# Placeholder patterns that block publish — trusted reader sees real content, not stubs
+_PLACEHOLDER_RE = re.compile(
+    r"\[TODO[^\]]*\]|(?<!\w)TODO(?!\w)|\bTBD\b|\bPLACEHOLDER\b|coming soon",
+    re.IGNORECASE,
+)
+
 # External registries forbidden per §7 and §10
 _EXTERNAL_REGISTRIES = (
     "docker.io/",
@@ -110,6 +116,7 @@ class StaticValidator:
     def validate(self, draft: LabDraft) -> list[ValidatorResult]:
         results: list[ValidatorResult] = []
 
+        results.extend(self._check_content_no_placeholders(draft))
         results.extend(self._check_image_no_latest_tag(draft))
         results.extend(self._check_image_no_unknown_registry(draft))
         results.extend(self._check_image_all_resolved(draft))
@@ -137,6 +144,54 @@ class StaticValidator:
         draft.runtime_requirements.shared_namespace_candidate_reason = reason
 
         return results
+
+    # ------------------------------------------------------------------
+    # Content quality check  (content.no_placeholders)
+    # ------------------------------------------------------------------
+
+    def _check_content_no_placeholders(self, draft: LabDraft) -> list[ValidatorResult]:
+        """Reject publish if any reader-facing field still contains stub placeholder text."""
+        failures = []
+
+        for field, value in [("title", draft.title), ("description", draft.description)]:
+            if value and _PLACEHOLDER_RE.search(value):
+                failures.append(_fail(
+                    "content.no_placeholders",
+                    BlockingLevel.PUBLISH_BLOCKING,
+                    field,
+                    f"'{field}' contains placeholder text — must be replaced before publishing",
+                ))
+
+        for i, step in enumerate(draft.steps):
+            for field, value in [("why", step.why), ("do", step.do), ("observe", step.observe)]:
+                if value and _PLACEHOLDER_RE.search(value):
+                    failures.append(_fail(
+                        "content.no_placeholders",
+                        BlockingLevel.PUBLISH_BLOCKING,
+                        f"steps[{i}].{field}",
+                        f"Step '{step.step_id}' field '{field}' contains placeholder text",
+                    ))
+            for field, value in [
+                ("concept", step.explain.concept),
+                ("observation", step.explain.observation),
+            ]:
+                if value and _PLACEHOLDER_RE.search(value):
+                    failures.append(_fail(
+                        "content.no_placeholders",
+                        BlockingLevel.PUBLISH_BLOCKING,
+                        f"steps[{i}].explain.{field}",
+                        f"Step '{step.step_id}' explain.{field} contains placeholder text",
+                    ))
+            for j, vt in enumerate(step.verify):
+                if vt.notes and _PLACEHOLDER_RE.search(vt.notes):
+                    failures.append(_fail(
+                        "content.no_placeholders",
+                        BlockingLevel.PUBLISH_BLOCKING,
+                        f"steps[{i}].verify[{j}].notes",
+                        f"Verify '{vt.verify_id}' notes contains placeholder text",
+                    ))
+
+        return failures or [_pass("content.no_placeholders", "title/description/steps[*]")]
 
     # ------------------------------------------------------------------
     # Image checks  (§10: image.*)
