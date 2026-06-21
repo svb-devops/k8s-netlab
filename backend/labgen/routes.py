@@ -275,7 +275,8 @@ def get_decision_service(
             repo=repo,
             validator=StaticValidator(),
             image_readiness_svc=ImageReadinessService(),
-        )
+        ),
+        draft_repo=repo,
     )
 
 
@@ -530,7 +531,19 @@ async def publish_draft(
             },
         )
 
-    updated = svc.publish(draft)
+    from backend.labgen.publish_service import RehearsalNotCompleted
+    try:
+        updated = svc.publish(draft)
+    except RehearsalNotCompleted:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "status": "BLOCKED",
+                "is_publishable": False,
+                "draft_id": lab_id,
+                "issues": [{"code": "REHEARSAL_REQUIRED", "message": "Rehearsal not completed", "severity": "error", "source": "state"}],
+            },
+        )
     saved = repo.update(updated)
 
     # Defense-in-depth: if publish service somehow blocked despite ALLOWED decision

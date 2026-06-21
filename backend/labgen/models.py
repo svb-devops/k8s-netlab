@@ -256,6 +256,13 @@ class LabDraft(SchemaVersionedModel):
     shared_namespace_candidate_reason: str = ""
     publish_status: PublishStatus = PublishStatus.DRAFT
     validator_results: list[ValidatorResult] = Field(default_factory=list)
+    # Article-pipeline rehearsal gate — set by convert_to_lab_draft; cleared on publish.
+    # rehearsal_required=True means this draft must pass an internal rehearsal before publish.
+    # rehearsal_completed=True is set by LabSessionService after a successful INTERNAL_REHEARSAL
+    # session completes with cleanup_verified=True.
+    # Default False preserves backward compat for all manually-authored labs.
+    rehearsal_required: bool = False
+    rehearsal_completed: bool = False
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

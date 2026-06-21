@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from backend.labgen.draft_preview import DraftPreviewService, DraftPreviewSummary
 from backend.labgen.image_readiness import ImageReadinessStatus
+from backend.labgen.repository import LabDraftRepository
 
 
 class PublishDecisionStatus(str, Enum):
@@ -34,6 +35,7 @@ class PublishBlockReasonCode(str, Enum):
     UNAUTHORIZED = "UNAUTHORIZED"
     INVALID_DRAFT_STATE = "INVALID_DRAFT_STATE"
     SENSITIVE_CONTENT_DETECTED = "SENSITIVE_CONTENT_DETECTED"
+    REHEARSAL_REQUIRED = "REHEARSAL_REQUIRED"
 
 
 class PublishDecisionIssue(BaseModel):
@@ -63,13 +65,44 @@ class PublishDecisionService:
     same StaticValidator run and issue-mapping logic.
     """
 
-    def __init__(self, preview_svc: DraftPreviewService) -> None:
+    def __init__(
+        self,
+        preview_svc: DraftPreviewService,
+        draft_repo: Optional[LabDraftRepository] = None,
+    ) -> None:
         self._preview_svc = preview_svc
+        self._draft_repo = draft_repo
 
     def evaluate(self, draft_id: str) -> PublishDecision:
         from backend.labgen.llm_generation import sanitize_text
 
         checked_at = datetime.now(tz=timezone.utc).isoformat()
+
+        # Rehearsal gate: article-pipeline drafts must complete an internal rehearsal
+        # before publish. Check before snapshot so we don't leak validator state.
+        if self._draft_repo is not None:
+            draft = self._draft_repo.get(draft_id)
+            if draft is not None and draft.rehearsal_required and not draft.rehearsal_completed:
+                return PublishDecision(
+                    status=PublishDecisionStatus.BLOCKED,
+                    is_publishable=False,
+                    draft_id=draft_id,
+                    validation_status="rehearsal_required",
+                    preview_summary=None,
+                    issues=[
+                        PublishDecisionIssue(
+                            code=PublishBlockReasonCode.REHEARSAL_REQUIRED.value,
+                            message=sanitize_text(
+                                "This lab was generated from an article and must complete "
+                                "an internal rehearsal session before it can be published."
+                            ),
+                            severity="error",
+                            source="state",
+                        )
+                    ],
+                    checked_at=checked_at,
+                )
+
         snapshot = self._preview_svc.build_snapshot(draft_id)
 
         if snapshot is None:

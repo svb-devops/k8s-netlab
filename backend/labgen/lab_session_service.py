@@ -674,6 +674,16 @@ class LabSessionService:
             session.cleanup_verified = True
             session = self._session_repo.update(session)
             self._audit(session.session_id, RuntimeAuditEventType.CLEANUP_SUCCESS)
+            # Mark the source draft as rehearsal_completed only when a fully-completed
+            # INTERNAL_REHEARSAL session cleans up successfully. Aborted/timed-out
+            # rehearsal sessions (ready_to_complete=False) must not unblock the gate.
+            if (
+                session.session_type == SessionType.INTERNAL_REHEARSAL
+                and session.ready_to_complete
+            ):
+                draft = self._draft_repo.get(session.lab_id)
+                if draft is not None and not draft.rehearsal_completed:
+                    self._draft_repo.update(draft.model_copy(update={"rehearsal_completed": True}))
             return session
 
         # Namespace failure takes precedence over credential failure in the failure_reason

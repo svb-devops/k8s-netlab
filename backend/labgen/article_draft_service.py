@@ -504,4 +504,5 @@ def _build_lab_draft_from_contract(
         runtime_requirements=RuntimeRequirements(),
         cleanup=cleanup,
         publish_status=PublishStatus.DRAFT,
+        rehearsal_required=True,
     )

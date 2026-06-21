@@ -19,12 +19,22 @@ from backend.labgen.models import (
 from backend.labgen.static_validator import StaticValidator
 
 
+class RehearsalNotCompleted(Exception):
+    """Raised when publish is attempted on an article-pipeline draft that hasn't been rehearsed."""
+
+
 class PublishService:
     def __init__(self, validator: StaticValidator, image_resolver: ImageResolver) -> None:
         self._validator = validator
         self._image_resolver = image_resolver
 
     def publish(self, draft: LabDraft) -> LabDraft:
+        # Rehearsal gate — enforced at mutation point regardless of caller path.
+        if draft.rehearsal_required and not draft.rehearsal_completed:
+            raise RehearsalNotCompleted(
+                f"Draft {draft.lab_id} requires rehearsal before publish"
+            )
+
         # Always re-run StaticValidator (never trust stale results)
         results = self._validator.validate(draft)
 
