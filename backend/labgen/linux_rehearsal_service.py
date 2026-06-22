@@ -39,6 +39,7 @@ from typing import Optional, TYPE_CHECKING
 
 from backend.labgen.failure_reasons import FailureReason
 from backend.labgen.linux_cleanup import CleanupResult, ResidualScanResult
+from backend.labgen.linux_workspace import WorkspacePathEscapeError
 from backend.labgen.linux_runtime_adapter import (
     LinuxRuntimeAdapter,
     LinuxSpikeDisabledError,
@@ -137,6 +138,12 @@ def _safe_exec_command(
         try:
             adapter.write_file(session_id, path, content)
             return CommandExecutionResult(cmd=cmd, executed_via="write_file", ok=True)
+        except WorkspacePathEscapeError as exc:
+            return CommandExecutionResult(
+                cmd=cmd, executed_via="write_file", ok=False,
+                policy_rejected=True,
+                rejection_reason=f"path_escape:{exc}",
+            )
         except Exception as exc:
             return CommandExecutionResult(
                 cmd=cmd, executed_via="write_file", ok=False, stderr=str(exc)
@@ -150,6 +157,12 @@ def _safe_exec_command(
         try:
             adapter.write_file(session_id, path, content)
             return CommandExecutionResult(cmd=cmd, executed_via="write_file", ok=True)
+        except WorkspacePathEscapeError as exc:
+            return CommandExecutionResult(
+                cmd=cmd, executed_via="write_file", ok=False,
+                policy_rejected=True,
+                rejection_reason=f"path_escape:{exc}",
+            )
         except Exception as exc:
             return CommandExecutionResult(
                 cmd=cmd, executed_via="write_file", ok=False, stderr=str(exc)
@@ -161,6 +174,12 @@ def _safe_exec_command(
         try:
             adapter.make_directory(session_id, path)
             return CommandExecutionResult(cmd=cmd, executed_via="make_directory", ok=True)
+        except WorkspacePathEscapeError as exc:
+            return CommandExecutionResult(
+                cmd=cmd, executed_via="make_directory", ok=False,
+                policy_rejected=True,
+                rejection_reason=f"path_escape:{exc}",
+            )
         except Exception as exc:
             return CommandExecutionResult(
                 cmd=cmd, executed_via="make_directory", ok=False, stderr=str(exc)
@@ -173,6 +192,12 @@ def _safe_exec_command(
         try:
             adapter.chmod_file(session_id, path, int(mode_str, 8))
             return CommandExecutionResult(cmd=cmd, executed_via="chmod_file", ok=True)
+        except WorkspacePathEscapeError as exc:
+            return CommandExecutionResult(
+                cmd=cmd, executed_via="chmod_file", ok=False,
+                policy_rejected=True,
+                rejection_reason=f"path_escape:{exc}",
+            )
         except Exception as exc:
             return CommandExecutionResult(
                 cmd=cmd, executed_via="chmod_file", ok=False, stderr=str(exc)
