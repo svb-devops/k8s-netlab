@@ -317,6 +317,36 @@ class TestLabSessionRepository:
         repo.create(session)
         assert repo.get(session.session_id).schema_version == "1.0"
 
+    def test_has_active_session_for_vm_true_when_lab_active(self, tmp_path):
+        repo = LabSessionRepository(path=tmp_path / "sessions.json")
+        repo.create(_make_session(vm_id="401", lab_session_status=LabSessionStatus.LAB_ACTIVE))
+        assert repo.has_active_session_for_vm("401") is True
+
+    def test_has_active_session_for_vm_false_when_lab_closed(self, tmp_path):
+        repo = LabSessionRepository(path=tmp_path / "sessions.json")
+        repo.create(_make_session(vm_id="401", lab_session_status=LabSessionStatus.LAB_CLOSED))
+        assert repo.has_active_session_for_vm("401") is False
+
+    def test_has_active_session_for_vm_false_when_no_sessions(self, tmp_path):
+        repo = LabSessionRepository(path=tmp_path / "sessions.json")
+        assert repo.has_active_session_for_vm("401") is False
+
+    def test_has_active_session_for_vm_false_when_aborted(self, tmp_path):
+        repo = LabSessionRepository(path=tmp_path / "sessions.json")
+        repo.create(_make_session(vm_id="401", lab_session_status=LabSessionStatus.LAB_ABORTED))
+        assert repo.has_active_session_for_vm("401") is False
+
+    def test_has_active_session_for_vm_true_during_cleanup(self, tmp_path):
+        """Cleanup 中的 session 仍应阻止 VM 删除。"""
+        repo = LabSessionRepository(path=tmp_path / "sessions.json")
+        repo.create(_make_session(vm_id="401", lab_session_status=LabSessionStatus.CLEANUP_REQUESTED))
+        assert repo.has_active_session_for_vm("401") is True
+
+    def test_has_active_session_for_vm_false_for_different_vm(self, tmp_path):
+        repo = LabSessionRepository(path=tmp_path / "sessions.json")
+        repo.create(_make_session(vm_id="402", lab_session_status=LabSessionStatus.LAB_ACTIVE))
+        assert repo.has_active_session_for_vm("401") is False
+
 
 # ===========================================================================
 # Service — precheck unit tests

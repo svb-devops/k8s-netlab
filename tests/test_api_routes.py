@@ -327,6 +327,52 @@ class TestDeleteVM:
         resp = client.delete("/api/vms/50")
         assert resp.status_code == 422
 
+    def test_active_labgen_session_blocks_deletion_with_409(self, client):
+        """VM 有活跃 LabGen session 时，DELETE 返回 409 而非执行删除。"""
+        mock_tracker = MagicMock()
+        mock_tracker.is_owner.return_value = True
+
+        mock_repo = MagicMock()
+        mock_repo.has_active_session_for_vm.return_value = True
+
+        with patch("backend.api_routes.vm_tracker", mock_tracker), \
+             patch("backend.api_routes._get_lab_session_repo", return_value=mock_repo):
+            resp = client.delete("/api/vms/500")
+
+        assert resp.status_code == 409
+        assert "lab session" in resp.json()["detail"].lower()
+        mock_repo.has_active_session_for_vm.assert_called_once_with("500")
+
+    def test_closed_labgen_session_does_not_block_deletion(self, client):
+        """VM 只有已关闭的 LabGen session（无活跃），DELETE 正常执行。"""
+        mock_tracker = MagicMock()
+        mock_tracker.is_owner.return_value = True
+
+        mock_repo = MagicMock()
+        mock_repo.has_active_session_for_vm.return_value = False
+
+        with patch("backend.api_routes.vm_tracker", mock_tracker), \
+             patch("backend.api_routes._get_lab_session_repo", return_value=mock_repo), \
+             patch("backend.api_routes.delete_vm", return_value={"success": True, "data": {}}):
+            resp = client.delete("/api/vms/500")
+
+        assert resp.status_code == 200
+
+    def test_no_labgen_sessions_proceeds_normally(self, client):
+        """VM 没有任何 LabGen session 时，DELETE 正常执行。"""
+        mock_tracker = MagicMock()
+        mock_tracker.is_owner.return_value = True
+
+        mock_repo = MagicMock()
+        mock_repo.has_active_session_for_vm.return_value = False
+
+        with patch("backend.api_routes.vm_tracker", mock_tracker), \
+             patch("backend.api_routes._get_lab_session_repo", return_value=mock_repo), \
+             patch("backend.api_routes.delete_vm", return_value={"success": True, "data": {}}):
+            resp = client.delete("/api/vms/500")
+
+        assert resp.status_code == 200
+
 
 # ============================================================
 # GET /api/vms

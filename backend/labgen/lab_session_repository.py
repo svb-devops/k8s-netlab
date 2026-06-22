@@ -10,8 +10,18 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from backend.labgen.models import LabSessionState
+from backend.labgen.models import LabSessionState, LabSessionStatus
 from backend.storage_utils import safe_read_json, safe_update_json
+
+# States where the VM is no longer in active use and may be safely deleted.
+_DONE_STATUSES: frozenset[LabSessionStatus] = frozenset({
+    LabSessionStatus.LAB_CLOSED,
+    LabSessionStatus.LAB_CLEANUP_FAILED,
+    LabSessionStatus.LAB_START_FAILED,
+    LabSessionStatus.LAB_TIMEOUT,
+    LabSessionStatus.LAB_COMPLETED,
+    LabSessionStatus.LAB_ABORTED,
+})
 
 logger = logging.getLogger(__name__)
 
@@ -89,3 +99,10 @@ class LabSessionRepository:
             except Exception as exc:
                 logger.error("LabSessionRepository.list_by_vm_id failed: %s", exc)
         return result
+
+    def has_active_session_for_vm(self, vm_id: str) -> bool:
+        """Return True if any session for this VM is not in a done/terminal state."""
+        return any(
+            s.lab_session_status not in _DONE_STATUSES
+            for s in self.list_by_vm_id(vm_id)
+        )

@@ -14,11 +14,16 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from backend import config
 from backend.auth_deps import get_current_user
+from backend.labgen.lab_session_repository import LabSessionRepository
 from backend.proxmox_api import connect_proxmox
 from backend.rate_limiter import rate_limiter
 from backend.task_registry import register as register_task
 from backend.vm_manager import create_vm, delete_vm, list_vms
 from backend.vm_tracker import vm_tracker
+
+
+def _get_lab_session_repo() -> LabSessionRepository:
+    return LabSessionRepository()
 
 logger = logging.getLogger(__name__)
 
@@ -264,6 +269,15 @@ async def api_delete_vm(
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You don't have permission to delete this VM"
+            )
+
+        # Block deletion if VM is in use by an active LabGen lab session
+        lab_session_repo = _get_lab_session_repo()
+        if lab_session_repo.has_active_session_for_vm(str(vm_id)):
+            logger.warning(f"API: User '{current_user}' tried to delete VM {vm_id} with active lab session")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="VM is in use by an active lab session and cannot be deleted"
             )
 
         logger.info(f"API: User '{current_user}' deleting VM {vm_id} (force={force})")
