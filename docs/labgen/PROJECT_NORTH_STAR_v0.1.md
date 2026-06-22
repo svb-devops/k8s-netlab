@@ -396,9 +396,13 @@ Every subsequent Article-to-Lab task must verify:
 | Article-to-Lab MVP Contract Schema Gate | ✅ COMPLETE | `ARTICLE_TO_LAB_MVP_CONTRACT_SCHEMA_GATE_v0.1.md` — 11 models, 15 guardrails, 116 tests |
 | **K8s Article-to-Lab Draft Mode Implementation** | ✅ **COMPLETE** | `K8S_ARTICLE_TO_LAB_DRAFT_MODE_IMPLEMENTATION_RESULT_v0.1.md` — 9 endpoints, 60 tests, stub classifier |
 | **K8s Article-to-Lab Admin Review Rehearsal** | ✅ **COMPLETE** | `K8S_ARTICLE_TO_LAB_ADMIN_REVIEW_REHEARSAL_RESULT_v0.1.md` — 4 samples, MEDIUM-001 fixed, 53 tests |
-| K8s Article-to-Lab Internal Rehearsal to Publish Candidate | ⬜ NEXT | After Admin Review Rehearsal (now unlocked) |
-| Linux Domain Proof | ⬜ PENDING | After K8s Article-to-Lab pipeline fully validated |
-| Docker Domain Proof | ⬜ PENDING | After Linux domain |
+| K8s Article-linked Lab Reader-facing CTA Dry Run | ✅ COMPLETE | `READER_FACING_ARTICLE_CTA_DRY_RUN_RESULT_v0.1.md` — reader path end-to-end validated |
+| K8s Guided Practice Quality Iteration Lab 5 | ✅ COMPLETE | `GUIDED_PRACTICE_QUALITY_ITERATION_LAB5_RESULT_v0.1.md` — all TODO placeholders cleared, placeholder gate added |
+| **K8s Article-linked Lab Trusted Reader Pilot** | ✅ **COMPLETE** | session a301676a, LAB_CLOSED, cleanup_verified=True, step_1+step_2 PASS, observer-confirmed no hiccups |
+| **Linux Domain Proof Design Gate** | ✅ **COMPLETE** | `LINUX_DOMAIN_PROOF_DESIGN_GATE_v0.1.md` — LINUX_DOMAIN_PROOF_DESIGN_READY_WITH_NOTES; 5 BLOCKER couplings identified and enumerated; recommended runtime: container sandbox; recommended first lab: Linux Files and Permissions Basics |
+| Linux Domain Contract Schema Extension | ⬜ NEXT | After design gate (Task 1 of 7) |
+| Linux Domain Proof (full, through Trusted Reader) | ⬜ PENDING | 6 more tasks after schema extension |
+| Docker Domain Proof | ⬜ PENDING | After Linux domain proof |
 
 The pipeline design (`ARTICLE_TO_LAB_PIPELINE_DESIGN_GATE_v0.1.md`) is the canonical reference for the Article-to-Lab platform architecture. All subsequent implementation must follow that design and must not harden into K8s-only.
 
