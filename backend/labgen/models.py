@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 SCHEMA_VERSION = "1.0"
 
@@ -17,6 +17,26 @@ SCHEMA_VERSION = "1.0"
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
+
+
+class LabDomainType(str, Enum):
+    """Domain type for a published LabDraft.
+
+    Separate from TargetDomain (article pipeline artifact) — this enum lives
+    in the published-lab layer and defaults to K8S for backward compatibility.
+    Runtime support status:
+      K8S  — runtime implemented, labs publishable
+      LINUX — schema-ready (v0.1), runtime implementation pending (publish blocked)
+      All others — schema draft only
+    """
+
+    K8S = "k8s"
+    LINUX = "linux"
+    DOCKER = "docker"
+    NETWORKING = "networking"
+    DATABASE = "database"
+    CICD = "cicd"
+    UNKNOWN = "unknown"
 
 
 class VerifyType(str, Enum):
@@ -30,6 +50,21 @@ class VerifyType(str, Enum):
     NODE_READY = "node_ready"
     PVC_BOUND = "pvc_bound"
     JOB_COMPLETED = "job_completed"
+
+
+class LinuxVerifyType(str, Enum):
+    """Verify primitives for Linux domain labs.
+
+    All verification is workspace-scoped and read-only.
+    No shell execution — state is inferred from filesystem properties only.
+    Runtime implementation is pending (v0.1 schema-only).
+    """
+
+    LINUX_FILE_EXISTS = "linux_file_exists"
+    LINUX_DIRECTORY_EXISTS = "linux_directory_exists"
+    LINUX_FILE_CONTENT_MATCHES = "linux_file_content_matches"
+    LINUX_FILE_MODE_MATCHES = "linux_file_mode_matches"
+    LINUX_NO_RESIDUAL_FILES = "linux_no_residual_files"
 
 
 class ImageStatus(str, Enum):
@@ -170,6 +205,108 @@ class ExplainField(BaseModel):
     published_to_student: bool = False
 
 
+class LinuxVerifyTemplate(SchemaVersionedModel):
+    """Verifier template for Linux domain steps.
+
+    target_path must be workspace-relative (no absolute paths, no .. traversal).
+    workspace_relative_only is an invariant — always True.
+    Runtime execution is NOT implemented in v0.1; this is schema-only.
+    """
+
+    verify_id: str
+    type: LinuxVerifyType
+    target_path: str
+    expected_content: Optional[str] = None   # required for LINUX_FILE_CONTENT_MATCHES
+    expected_mode: Optional[str] = None      # required for LINUX_FILE_MODE_MATCHES (e.g. "644", "755")
+    workspace_relative_only: bool = True     # invariant: always True
+    timeout_seconds: int = 10
+    max_output_bytes: int = 65536
+    description: str = ""
+    failure_hint: str = ""
+    blocking_level_on_fail: BlockingLevel = BlockingLevel.PUBLISH_BLOCKING
+
+    @field_validator("workspace_relative_only")
+    @classmethod
+    def _enforce_workspace_relative(cls, v: bool) -> bool:
+        if not v:
+            raise ValueError(
+                "workspace_relative_only must always be True — "
+                "Linux verifiers must not access paths outside the workspace"
+            )
+        return v
+
+
+class LinuxSandboxPolicy(SchemaVersionedModel):
+    """Runtime sandbox policy for Linux domain labs.
+
+    Defaults enforce a strict unprivileged workspace-only sandbox.
+    allow_root and allow_network MUST both be False in v0.1.
+    Runtime implementation is NOT present in v0.1 (schema-only).
+    """
+
+    runtime_type: str = "linux_container"   # linux_container | linux_vm | sandboxed_shell
+    base_image: str = "ubuntu:22.04"
+    shell: str = "bash"
+    learner_user: str = "learner"
+    working_directory: str = "/home/learner/workspace"
+    workspace_root: str = "/home/learner/workspace"
+    allow_network: bool = False
+    allow_root: bool = False
+    allowed_commands: list[str] = Field(default_factory=list)
+    denied_commands: list[str] = Field(default_factory=lambda: [
+        "sudo", "su", "apt-get", "apt", "yum", "dnf", "systemctl", "service",
+        "ssh", "scp", "curl", "wget",
+    ])
+    forbidden_paths: list[str] = Field(default_factory=lambda: [
+        "/etc", "/root", "/var", "/proc/sys", "/sys", "/dev", "/boot",
+    ])
+    max_session_seconds: int = 3600
+    max_processes: int = 50
+    max_output_bytes: int = 1048576
+    env_policy: str = "minimal"              # minimal | isolated | inherited
+    filesystem_scope: str = "workspace_only"  # workspace_only | home | full
+    process_policy: str = "unprivileged"     # unprivileged | restricted
+    security_notes: list[str] = Field(default_factory=list)
+
+
+class CleanupLinuxWorkspace(SchemaVersionedModel):
+    """Cleanup spec for Linux domain labs.
+
+    workspace_root must be set to the actual sandbox workspace path.
+    cleanup_paths must all be within workspace_root.
+    taint_on_cleanup_failure is an invariant — always True.
+    Forbidden cleanup paths guard against accidentally wiping host directories.
+    """
+
+    workspace_root: str
+    cleanup_paths: list[str] = Field(default_factory=list)
+    kill_session_processes: bool = True
+    revoke_credentials: bool = True
+    close_terminal: bool = True
+    residual_checks: list[str] = Field(default_factory=lambda: [
+        "workspace_removed_or_empty",
+        "no_session_owned_processes",
+        "credentials_revoked",
+        "terminal_closed",
+    ])
+    taint_on_cleanup_failure: bool = True
+    max_cleanup_seconds: int = 60
+    allowed_cleanup_root: str = ""
+    forbidden_cleanup_paths: list[str] = Field(default_factory=lambda: [
+        "/", "/home", "/tmp", "/etc", "/var", "/root",
+    ])
+
+    @field_validator("taint_on_cleanup_failure")
+    @classmethod
+    def _enforce_taint(cls, v: bool) -> bool:
+        if not v:
+            raise ValueError(
+                "taint_on_cleanup_failure must be True — "
+                "cleanup failure must always taint the VM to prevent residue"
+            )
+        return v
+
+
 class Step(SchemaVersionedModel):
     step_id: str
     order: int
@@ -179,6 +316,7 @@ class Step(SchemaVersionedModel):
     observe: str
     explain: ExplainField
     verify: list[VerifyTemplate] = Field(default_factory=list)
+    linux_verify: list[LinuxVerifyTemplate] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -246,9 +384,14 @@ class LabDraft(SchemaVersionedModel):
     description: str
     estimated_duration_minutes: int
     prerequisites: list[str] = Field(default_factory=list)
+    # target_domain defaults to K8S for all existing labs (backward compat).
+    # LINUX is schema-ready in v0.1 but publish is blocked until runtime is implemented.
+    target_domain: LabDomainType = LabDomainType.K8S
     runtime_requirements: RuntimeRequirements
     steps: list[Step]
-    cleanup: Optional[CleanupSpec] = None
+    cleanup: Optional[CleanupSpec] = None                              # K8s domain
+    linux_sandbox_policy: Optional[LinuxSandboxPolicy] = None          # Linux domain
+    linux_cleanup: Optional[CleanupLinuxWorkspace] = None              # Linux domain
     image_resolution: list[ImageResolutionResult] = Field(default_factory=list)
     # Derived by StaticValidator — LLM must not set these
     pollution_level: PollutionLevel = PollutionLevel.UNKNOWN

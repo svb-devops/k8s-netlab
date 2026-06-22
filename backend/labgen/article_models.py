@@ -150,8 +150,10 @@ _BLOCKED_DOMAINS_V1: frozenset[TargetDomain] = frozenset({
 })
 
 # Domains allowed to proceed to draft/implementation in v0.1
+# LINUX is schema-ready; publish is blocked by StaticValidator until runtime is implemented
 _ALLOWED_DRAFT_DOMAINS_V1: frozenset[TargetDomain] = frozenset({
     TargetDomain.K8S,
+    TargetDomain.LINUX,
 })
 
 

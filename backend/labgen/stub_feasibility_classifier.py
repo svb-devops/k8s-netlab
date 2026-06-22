@@ -70,6 +70,17 @@ _K8S_SIGNALS: list[re.Pattern] = [
     re.compile(r"(?i)(apiVersion|kind:\s*(Deployment|Service|Pod|ConfigMap|Secret|Namespace))"),
 ]
 
+# Patterns suggesting Linux domain (schema-ready in v0.1, runtime pending)
+_LINUX_SIGNALS: list[re.Pattern] = [
+    re.compile(r"(?i)\b(chmod|chown|chgrp)\b"),
+    re.compile(r"(?i)\b(file\s+permissions?|directory\s+permissions?|linux\s+permissions?)\b"),
+    re.compile(r"(?i)\b(inodes?|symbolic\s+links?|hard\s+links?|file\s+ownership)\b"),
+    re.compile(r"(?i)\b(bash\s+script|shell\s+script|/etc/passwd|/etc/shadow|/proc/)\b"),
+    re.compile(r"(?i)\b(linux\s+file|linux\s+directory|linux\s+process|linux\s+user)\b"),
+    re.compile(r"(?i)\b(ext4|ext3|xfs|btrfs|filesystem|file\s+system)\b"),
+    re.compile(r"(?i)(ls\s+-l|stat\s+\S|touch\s+\S|mkdir\s+\S|rm\s+\S|find\s+\.)"),
+]
+
 # Patterns suggesting cloud domain (blocked in v0.1)
 _CLOUD_SIGNALS: list[re.Pattern] = [
     re.compile(r"(?i)(aws|amazon web services|azure|gcp|google cloud|cloud provider|cloud vendor)"),
@@ -165,10 +176,14 @@ class StubFeasibilityClassifier:
 
         # --- Domain detection ---
         k8s_hits = _count_patterns(text, _K8S_SIGNALS)
+        linux_hits = _count_patterns(text, _LINUX_SIGNALS)
         cloud_hits = _count_patterns(text, _CLOUD_SIGNALS)
 
         if k8s_hits > 0:
             domain_candidates.append(TargetDomain.K8S)
+        # Linux only added if K8s not detected — K8s terms overlap with Linux (e.g. namespace)
+        if linux_hits > 0 and k8s_hits == 0:
+            domain_candidates.append(TargetDomain.LINUX)
         if cloud_hits > 0:
             domain_candidates.append(TargetDomain.CLOUD)
         if not domain_candidates:
@@ -187,6 +202,27 @@ class StubFeasibilityClassifier:
                 cleanup_feasibility="blocked",
                 runtime_feasibility="blocked",
                 rejection_code="stub.cloud_domain_blocked_v1",
+                evaluated_by=FeasibilityEvaluatedBy.STUB,
+                evaluated_at=datetime.now(tz=timezone.utc),
+            )
+
+        # Linux domain detected — schema-ready, runtime implementation pending
+        if TargetDomain.LINUX in domain_candidates and TargetDomain.K8S not in domain_candidates:
+            linux_operable = _has_pattern(text, _OPERABLE_SIGNALS)
+            return FeasibilityResult(
+                status=(
+                    FeasibilityStatus.DIRECTLY_LAB_READY
+                    if linux_operable
+                    else FeasibilityStatus.PARTIALLY_LAB_READY
+                ),
+                reasons=["linux domain detected — schema-ready; runtime implementation pending"],
+                missing_requirements=["linux runtime adapter", "linux verifier execution"],
+                safety_flags=safety_flags,
+                target_domain_candidates=domain_candidates,
+                operability_score=0.5 if linux_operable else 0.3,
+                verifier_feasibility=VerifierFeasibility.NEEDS_NEW_PRIMITIVE,
+                cleanup_feasibility="destroy_container",
+                runtime_feasibility="linux_container",
                 evaluated_by=FeasibilityEvaluatedBy.STUB,
                 evaluated_at=datetime.now(tz=timezone.utc),
             )

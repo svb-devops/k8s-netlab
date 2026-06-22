@@ -388,6 +388,8 @@ def _pick_target_domain(feasibility: FeasibilityResult) -> TargetDomain:
     candidates = feasibility.target_domain_candidates
     if TargetDomain.K8S in candidates:
         return TargetDomain.K8S
+    if TargetDomain.LINUX in candidates:
+        return TargetDomain.LINUX
     if candidates:
         return candidates[0]
     return TargetDomain.UNKNOWN

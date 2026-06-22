@@ -12,8 +12,13 @@ from typing import Optional
 
 from backend.labgen.models import (
     BlockingLevel,
+    CleanupLinuxWorkspace,
     ImageStatus,
+    LabDomainType,
     LabDraft,
+    LinuxSandboxPolicy,
+    LinuxVerifyTemplate,
+    LinuxVerifyType,
     PollutionLevel,
     ValidatorResult,
     ValidatorStatus,
@@ -55,6 +60,25 @@ _CLUSTER_SCOPED_KINDS = (
 
 # Node-level indicators for pollution detection (§8)
 _NODE_LEVEL_PATTERNS = ("hostPath:", "hostNetwork: true", "hostPID: true", "hostIPC: true")
+
+# Linux domain: forbidden absolute paths for verifier target_path and sandbox workspace_root
+_LINUX_FORBIDDEN_PATH_PREFIXES: tuple[str, ...] = (
+    "/etc", "/root", "/var", "/proc", "/sys", "/dev", "/boot",
+    "/usr", "/bin", "/sbin", "/lib", "/lib64",
+)
+
+# Linux domain: forbidden paths for cleanup (guard against wiping host directories)
+_LINUX_FORBIDDEN_CLEANUP_ROOTS: frozenset[str] = frozenset({
+    "/", "/home", "/tmp", "/etc", "/var", "/root",
+})
+
+# Linux domain: required residual check keys that every cleanup policy must include
+_LINUX_REQUIRED_RESIDUAL_CHECKS: frozenset[str] = frozenset({
+    "workspace_removed_or_empty",
+    "no_session_owned_processes",
+    "credentials_revoked",
+    "terminal_closed",
+})
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +138,12 @@ class StaticValidator:
     """
 
     def validate(self, draft: LabDraft) -> list[ValidatorResult]:
+        if draft.target_domain == LabDomainType.LINUX:
+            return self._validate_linux(draft)
+        # K8s path — all existing checks run unchanged
+        return self._validate_k8s(draft)
+
+    def _validate_k8s(self, draft: LabDraft) -> list[ValidatorResult]:
         results: list[ValidatorResult] = []
 
         results.extend(self._check_content_no_placeholders(draft))
@@ -130,6 +160,8 @@ class StaticValidator:
         results.extend(self._check_helm_no_generation(draft))
         results.extend(self._check_service_nodeport(draft))
         results.extend(self._check_operator_crd(draft))
+        # K8s domain must not contain Linux verifiers
+        results.extend(self._check_k8s_no_linux_verifiers(draft))
 
         # Derived fields — computed after all structural checks
         pollution = self._derive_pollution_level(draft)
@@ -142,6 +174,43 @@ class StaticValidator:
         draft.shared_namespace_candidate_reason = reason
         draft.runtime_requirements.shared_namespace_candidate = candidate
         draft.runtime_requirements.shared_namespace_candidate_reason = reason
+
+        return results
+
+    def _validate_linux(self, draft: LabDraft) -> list[ValidatorResult]:
+        """Linux domain validation — schema-only, publish always blocked (runtime pending)."""
+        results: list[ValidatorResult] = []
+
+        # Shared quality checks (domain-agnostic)
+        results.extend(self._check_content_no_placeholders(draft))
+        results.extend(self._check_explain_verified_if_published(draft))
+
+        # Linux must not contain K8s verifiers
+        results.extend(self._check_linux_no_k8s_verifiers(draft))
+
+        # Linux-specific structural checks
+        results.extend(self._check_linux_sandbox_policy_required(draft))
+        results.extend(self._check_linux_cleanup_required(draft))
+        results.extend(self._check_linux_verifiers_safe(draft))
+        results.extend(self._check_linux_sandbox_safe(draft))
+        results.extend(self._check_linux_cleanup_safe(draft))
+
+        # Pollution level: workspace-only for Linux container labs
+        if draft.linux_sandbox_policy is not None:
+            draft.pollution_level = PollutionLevel.NAMESPACE_ONLY
+            draft.runtime_requirements.pollution_level = PollutionLevel.NAMESPACE_ONLY
+            results.append(_pass("pollution.known", "pollution_level"))
+        else:
+            draft.pollution_level = PollutionLevel.UNKNOWN
+            results.append(_fail(
+                "pollution.known",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "pollution_level",
+                "Linux sandbox policy missing — pollution level cannot be derived",
+            ))
+
+        # Publish gate: Linux runtime not yet implemented in v0.1
+        results.extend(self._check_linux_publish_blocked_until_runtime(draft))
 
         return results
 
@@ -427,6 +496,246 @@ class StaticValidator:
                 "pollution_level=unknown — cannot determine resource scope, publish blocked",
             )]
         return [_pass("pollution.known", "pollution_level")]
+
+    # ------------------------------------------------------------------
+    # K8s domain: reject Linux verifiers in K8s labs
+    # ------------------------------------------------------------------
+
+    def _check_k8s_no_linux_verifiers(self, draft: LabDraft) -> list[ValidatorResult]:
+        failures = []
+        for i, step in enumerate(draft.steps):
+            if step.linux_verify:
+                failures.append(_fail(
+                    "k8s.no_linux_verifiers",
+                    BlockingLevel.PUBLISH_BLOCKING,
+                    f"steps[{i}].linux_verify",
+                    f"Step '{step.step_id}' contains Linux verifiers in a K8s domain lab — "
+                    "linux_verify must be empty for K8s labs",
+                ))
+        return failures or [_pass("k8s.no_linux_verifiers", "steps[*].linux_verify")]
+
+    # ------------------------------------------------------------------
+    # Linux domain checks
+    # ------------------------------------------------------------------
+
+    def _check_linux_no_k8s_verifiers(self, draft: LabDraft) -> list[ValidatorResult]:
+        """Linux domain labs must not use K8s VerifyTemplate entries."""
+        failures = []
+        for i, step in enumerate(draft.steps):
+            if step.verify:
+                failures.append(_fail(
+                    "linux.no_k8s_verifiers",
+                    BlockingLevel.PUBLISH_BLOCKING,
+                    f"steps[{i}].verify",
+                    f"Step '{step.step_id}' contains K8s verifiers in a Linux domain lab — "
+                    "verify must be empty for Linux labs; use linux_verify instead",
+                ))
+        return failures or [_pass("linux.no_k8s_verifiers", "steps[*].verify")]
+
+    def _check_linux_sandbox_policy_required(self, draft: LabDraft) -> list[ValidatorResult]:
+        if draft.linux_sandbox_policy is None:
+            return [_fail(
+                "linux.sandbox_policy_required",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "linux_sandbox_policy",
+                "linux_sandbox_policy is required for Linux domain labs",
+            )]
+        return [_pass("linux.sandbox_policy_required", "linux_sandbox_policy")]
+
+    def _check_linux_cleanup_required(self, draft: LabDraft) -> list[ValidatorResult]:
+        if draft.linux_cleanup is None:
+            return [_fail(
+                "linux.cleanup_required",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "linux_cleanup",
+                "linux_cleanup is required for Linux domain labs",
+            )]
+        return [_pass("linux.cleanup_required", "linux_cleanup")]
+
+    def _check_linux_verifiers_safe(self, draft: LabDraft) -> list[ValidatorResult]:
+        """Validate all LinuxVerifyTemplate entries: safe paths, required fields."""
+        failures = []
+        for i, step in enumerate(draft.steps):
+            for j, lv in enumerate(step.linux_verify):
+                fp = f"steps[{i}].linux_verify[{j}]"
+
+                if not lv.target_path:
+                    failures.append(_fail(
+                        "linux.verifiers_safe",
+                        BlockingLevel.PUBLISH_BLOCKING,
+                        f"{fp}.target_path",
+                        f"Verify '{lv.verify_id}': target_path must not be empty",
+                    ))
+                    continue
+
+                if ".." in lv.target_path:
+                    failures.append(_fail(
+                        "linux.verifiers_safe",
+                        BlockingLevel.PUBLISH_BLOCKING,
+                        f"{fp}.target_path",
+                        f"Verify '{lv.verify_id}': target_path contains '..' path traversal",
+                    ))
+
+                for forbidden in _LINUX_FORBIDDEN_PATH_PREFIXES:
+                    if lv.target_path == forbidden or lv.target_path.startswith(forbidden + "/"):
+                        failures.append(_fail(
+                            "linux.verifiers_safe",
+                            BlockingLevel.PUBLISH_BLOCKING,
+                            f"{fp}.target_path",
+                            f"Verify '{lv.verify_id}': target_path '{lv.target_path}' "
+                            f"accesses forbidden system path '{forbidden}'",
+                        ))
+                        break
+
+                if (
+                    lv.type == LinuxVerifyType.LINUX_FILE_CONTENT_MATCHES
+                    and not lv.expected_content
+                ):
+                    failures.append(_fail(
+                        "linux.verifiers_safe",
+                        BlockingLevel.PUBLISH_BLOCKING,
+                        f"{fp}.expected_content",
+                        f"Verify '{lv.verify_id}': expected_content is required "
+                        "for linux_file_content_matches",
+                    ))
+
+                if (
+                    lv.type == LinuxVerifyType.LINUX_FILE_MODE_MATCHES
+                    and not lv.expected_mode
+                ):
+                    failures.append(_fail(
+                        "linux.verifiers_safe",
+                        BlockingLevel.PUBLISH_BLOCKING,
+                        f"{fp}.expected_mode",
+                        f"Verify '{lv.verify_id}': expected_mode is required "
+                        "for linux_file_mode_matches",
+                    ))
+
+        return failures or [_pass("linux.verifiers_safe", "steps[*].linux_verify")]
+
+    def _check_linux_sandbox_safe(self, draft: LabDraft) -> list[ValidatorResult]:
+        """Validate LinuxSandboxPolicy safety constraints."""
+        if draft.linux_sandbox_policy is None:
+            return [_pass("linux.sandbox_safe", "linux_sandbox_policy")]
+
+        policy = draft.linux_sandbox_policy
+        failures = []
+
+        if policy.allow_root:
+            failures.append(_fail(
+                "linux.sandbox_safe",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "linux_sandbox_policy.allow_root",
+                "linux_sandbox_policy.allow_root must be False — root access is forbidden",
+            ))
+
+        if policy.allow_network:
+            failures.append(_fail(
+                "linux.sandbox_safe",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "linux_sandbox_policy.allow_network",
+                "linux_sandbox_policy.allow_network must be False — network access is forbidden",
+            ))
+
+        for forbidden in _LINUX_FORBIDDEN_PATH_PREFIXES:
+            if policy.workspace_root == forbidden or policy.workspace_root.startswith(
+                forbidden + "/"
+            ):
+                failures.append(_fail(
+                    "linux.sandbox_safe",
+                    BlockingLevel.PUBLISH_BLOCKING,
+                    "linux_sandbox_policy.workspace_root",
+                    f"workspace_root '{policy.workspace_root}' is within forbidden "
+                    f"system path '{forbidden}'",
+                ))
+                break
+
+        if not policy.workspace_root:
+            failures.append(_fail(
+                "linux.sandbox_safe",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "linux_sandbox_policy.workspace_root",
+                "linux_sandbox_policy.workspace_root must not be empty",
+            ))
+
+        if ".." in policy.workspace_root:
+            failures.append(_fail(
+                "linux.sandbox_safe",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "linux_sandbox_policy.workspace_root",
+                "linux_sandbox_policy.workspace_root contains '..' path traversal",
+            ))
+
+        return failures or [_pass("linux.sandbox_safe", "linux_sandbox_policy")]
+
+    def _check_linux_cleanup_safe(self, draft: LabDraft) -> list[ValidatorResult]:
+        """Validate CleanupLinuxWorkspace safety constraints."""
+        if draft.linux_cleanup is None:
+            return [_pass("linux.cleanup_safe", "linux_cleanup")]
+
+        cleanup = draft.linux_cleanup
+        failures = []
+
+        if not cleanup.workspace_root:
+            failures.append(_fail(
+                "linux.cleanup_safe",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "linux_cleanup.workspace_root",
+                "linux_cleanup.workspace_root must not be empty",
+            ))
+        elif cleanup.workspace_root in _LINUX_FORBIDDEN_CLEANUP_ROOTS:
+            failures.append(_fail(
+                "linux.cleanup_safe",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "linux_cleanup.workspace_root",
+                f"linux_cleanup.workspace_root '{cleanup.workspace_root}' is a "
+                "forbidden cleanup root — cannot clean up system directories",
+            ))
+
+        for k, path in enumerate(cleanup.cleanup_paths):
+            if path in _LINUX_FORBIDDEN_CLEANUP_ROOTS:
+                failures.append(_fail(
+                    "linux.cleanup_safe",
+                    BlockingLevel.PUBLISH_BLOCKING,
+                    f"linux_cleanup.cleanup_paths[{k}]",
+                    f"cleanup_path '{path}' is a forbidden cleanup root",
+                ))
+            elif cleanup.workspace_root and not (
+                path == cleanup.workspace_root or path.startswith(cleanup.workspace_root + "/")
+            ):
+                failures.append(_fail(
+                    "linux.cleanup_safe",
+                    BlockingLevel.PUBLISH_BLOCKING,
+                    f"linux_cleanup.cleanup_paths[{k}]",
+                    f"cleanup_path '{path}' is outside workspace_root "
+                    f"'{cleanup.workspace_root}' — only workspace-scoped cleanup allowed",
+                ))
+
+        missing = _LINUX_REQUIRED_RESIDUAL_CHECKS - set(cleanup.residual_checks)
+        if missing:
+            failures.append(_fail(
+                "linux.cleanup_safe",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "linux_cleanup.residual_checks",
+                f"linux_cleanup.residual_checks missing required checks: "
+                f"{sorted(missing)}",
+            ))
+
+        return failures or [_pass("linux.cleanup_safe", "linux_cleanup")]
+
+    def _check_linux_publish_blocked_until_runtime(
+        self, draft: LabDraft
+    ) -> list[ValidatorResult]:
+        """Linux runtime is not yet implemented in v0.1 — all Linux labs are publish-blocked."""
+        return [_fail(
+            "linux.publish_blocked_until_runtime",
+            BlockingLevel.PUBLISH_BLOCKING,
+            "target_domain",
+            "Linux domain runtime is not yet implemented (v0.1 schema-only). "
+            "Publishing Linux labs requires: runtime adapter, verifier execution, "
+            "cleanup execution, and internal rehearsal. "
+            "This gate will be lifted when Task 2-7 of the Linux domain proof are complete.",
+        )]
 
     # ------------------------------------------------------------------
     # Derived: shared_namespace_candidate  (§8, 9 conditions)
