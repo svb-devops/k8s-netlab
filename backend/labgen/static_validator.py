@@ -191,6 +191,7 @@ class StaticValidator:
         # Linux-specific structural checks
         results.extend(self._check_linux_sandbox_policy_required(draft))
         results.extend(self._check_linux_cleanup_required(draft))
+        results.extend(self._check_linux_verifiers_present(draft))
         results.extend(self._check_linux_verifiers_safe(draft))
         results.extend(self._check_linux_sandbox_safe(draft))
         results.extend(self._check_linux_cleanup_safe(draft))
@@ -517,6 +518,19 @@ class StaticValidator:
     # ------------------------------------------------------------------
     # Linux domain checks
     # ------------------------------------------------------------------
+
+    def _check_linux_verifiers_present(self, draft: LabDraft) -> list[ValidatorResult]:
+        """Linux domain labs must declare at least one linux_verify entry."""
+        has_any = any(step.linux_verify for step in draft.steps)
+        if not has_any:
+            return [_fail(
+                "linux.verifiers_present",
+                BlockingLevel.PUBLISH_BLOCKING,
+                "steps[*].linux_verify",
+                "Linux domain labs must have at least one linux_verify entry — "
+                "no verifiable outcome declared",
+            )]
+        return [_pass("linux.verifiers_present", "steps[*].linux_verify")]
 
     def _check_linux_no_k8s_verifiers(self, draft: LabDraft) -> list[ValidatorResult]:
         """Linux domain labs must not use K8s VerifyTemplate entries."""

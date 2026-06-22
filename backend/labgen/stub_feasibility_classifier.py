@@ -81,6 +81,47 @@ _LINUX_SIGNALS: list[re.Pattern] = [
     re.compile(r"(?i)(ls\s+-l|stat\s+\S|touch\s+\S|mkdir\s+\S|rm\s+\S|find\s+\.)"),
 ]
 
+# Linux: safe workspace commands — positive signal for DIRECTLY_LAB_READY
+_LINUX_SAFE_COMMAND_SIGNALS: list[re.Pattern] = [
+    re.compile(r"(?i)\bmkdir\b"),
+    re.compile(r"(?i)\bchmod\b"),
+    re.compile(r"(?i)\bcat\s+\S"),
+    re.compile(r"(?i)\bstat\b"),
+    re.compile(r"(?i)\b(printf|echo)\s+.{1,80}>\s*\S"),    # redirect to file
+    re.compile(r"(?i)(expected\s+output|example\s+output|output\s+should)"),
+]
+
+# Linux: unsafe commands that cannot run in workspace sandbox → NOT_LAB_READY
+_LINUX_UNSAFE_COMMAND_PATTERNS: list[re.Pattern] = [
+    re.compile(r"(?i)\bsudo\s+\w"),
+    re.compile(r"(?i)\bsu\s+-"),  # matches su -, su - root, su -l, etc.
+    re.compile(r"(?i)\bsystemctl\s+(start|stop|enable|disable|restart|reload)\b"),
+    re.compile(r"(?i)\bservice\s+\w+\s+(start|stop|restart|status)\b"),
+]
+
+# Linux: system directory modification patterns → NOT_LAB_READY
+_LINUX_SYSTEM_MODIFY_PATTERNS: list[re.Pattern] = [
+    re.compile(r"(?i)(edit|modify|change|write\s+to|update)\s+/etc/\w"),
+    re.compile(r"(?i)(echo|printf|>>|>)\s+.{0,40}/etc/\w"),
+    re.compile(r"(?i)\bchmod\s+\S+\s+/etc/\w"),
+    re.compile(r"(?i)\bchown\s+\S+\s+/etc/\w"),
+    # Additional /etc write vectors: cp, mv, tee, sed -i, truncate, install
+    re.compile(r"(?i)\b(cp|mv)\s+\S+\s+/etc/\w"),
+    re.compile(r"(?i)\btee\s+.{0,40}/etc/\w"),
+    re.compile(r"(?i)\bsed\s+(-i|--in-place)\b.{0,60}/etc/\w"),
+    re.compile(r"(?i)\b(truncate|install)\s+.{0,40}/etc/\w"),
+]
+
+# Linux: network-required patterns → NOT_LAB_READY (network forbidden in sandbox)
+_LINUX_NETWORK_REQUIRED_PATTERNS: list[re.Pattern] = [
+    re.compile(r"(?i)\bcurl\s+https?://"),
+    re.compile(r"(?i)\bwget\s+https?://"),
+    re.compile(r"(?i)\bssh\s+\w+@\w"),
+    re.compile(r"(?i)\bscp\s+\w"),
+    re.compile(r"(?i)\bping\s+\S"),
+    re.compile(r"(?i)(requires?\s+internet|requires?\s+network|internet\s+connection\s+required)"),
+]
+
 # Patterns suggesting cloud domain (blocked in v0.1)
 _CLOUD_SIGNALS: list[re.Pattern] = [
     re.compile(r"(?i)(aws|amazon web services|azure|gcp|google cloud|cloud provider|cloud vendor)"),
@@ -208,18 +249,98 @@ class StubFeasibilityClassifier:
 
         # Linux domain detected — schema-ready, runtime implementation pending
         if TargetDomain.LINUX in domain_candidates and TargetDomain.K8S not in domain_candidates:
+            # Hard reject: unsafe system commands (sudo, systemctl, service)
+            if _has_pattern(text, _LINUX_UNSAFE_COMMAND_PATTERNS):
+                safety_flags.append(SafetyFlag.DANGEROUS_OR_ILLEGAL)
+                return FeasibilityResult(
+                    status=FeasibilityStatus.NOT_LAB_READY,
+                    reasons=[
+                        "linux article requires privileged commands (sudo/systemctl/service) "
+                        "that cannot run in the workspace sandbox"
+                    ],
+                    missing_requirements=[
+                        "sandbox-safe commands only (no sudo, no systemctl, no service)"
+                    ],
+                    safety_flags=safety_flags,
+                    target_domain_candidates=domain_candidates,
+                    operability_score=0.0,
+                    verifier_feasibility=VerifierFeasibility.NOT_VERIFIABLE,
+                    cleanup_feasibility="blocked",
+                    runtime_feasibility="blocked",
+                    rejection_code="stub.linux_unsafe_commands",
+                    evaluated_by=FeasibilityEvaluatedBy.STUB,
+                    evaluated_at=datetime.now(tz=timezone.utc),
+                )
+
+            # Hard reject: system directory modification (/etc writes)
+            if _has_pattern(text, _LINUX_SYSTEM_MODIFY_PATTERNS):
+                safety_flags.append(SafetyFlag.REQUIRES_PRODUCTION_ENVIRONMENT)
+                return FeasibilityResult(
+                    status=FeasibilityStatus.NOT_LAB_READY,
+                    reasons=[
+                        "linux article modifies system directories (/etc or similar) "
+                        "that are forbidden in the workspace sandbox"
+                    ],
+                    missing_requirements=[
+                        "workspace-scoped operations only (no /etc, /root, /var modifications)"
+                    ],
+                    safety_flags=safety_flags,
+                    target_domain_candidates=domain_candidates,
+                    operability_score=0.0,
+                    verifier_feasibility=VerifierFeasibility.NOT_VERIFIABLE,
+                    cleanup_feasibility="blocked",
+                    runtime_feasibility="blocked",
+                    rejection_code="stub.linux_system_path_modify",
+                    evaluated_by=FeasibilityEvaluatedBy.STUB,
+                    evaluated_at=datetime.now(tz=timezone.utc),
+                )
+
+            # Hard reject: network required (curl/wget/ssh/ping)
+            if _has_pattern(text, _LINUX_NETWORK_REQUIRED_PATTERNS):
+                safety_flags.append(SafetyFlag.UNSAFE_NETWORK_BEHAVIOR)
+                return FeasibilityResult(
+                    status=FeasibilityStatus.NOT_LAB_READY,
+                    reasons=[
+                        "linux article requires network access (curl/wget/ssh/scp/ping) "
+                        "that is forbidden in the workspace sandbox"
+                    ],
+                    missing_requirements=[
+                        "network-free implementation (no curl/wget/ssh/scp/ping)"
+                    ],
+                    safety_flags=safety_flags,
+                    target_domain_candidates=domain_candidates,
+                    operability_score=0.0,
+                    verifier_feasibility=VerifierFeasibility.NOT_VERIFIABLE,
+                    cleanup_feasibility="blocked",
+                    runtime_feasibility="blocked",
+                    rejection_code="stub.linux_network_required",
+                    evaluated_by=FeasibilityEvaluatedBy.STUB,
+                    evaluated_at=datetime.now(tz=timezone.utc),
+                )
+
+            # Operability: safe workspace commands + structured output
+            safe_cmd_count = _count_patterns(text, _LINUX_SAFE_COMMAND_SIGNALS)
             linux_operable = _has_pattern(text, _OPERABLE_SIGNALS)
+            directly_ready = safe_cmd_count >= 2 and linux_operable
+
             return FeasibilityResult(
                 status=(
                     FeasibilityStatus.DIRECTLY_LAB_READY
-                    if linux_operable
+                    if directly_ready
                     else FeasibilityStatus.PARTIALLY_LAB_READY
                 ),
                 reasons=["linux domain detected — schema-ready; runtime implementation pending"],
-                missing_requirements=["linux runtime adapter", "linux verifier execution"],
+                missing_requirements=(
+                    []
+                    if directly_ready
+                    else [
+                        "workspace-safe command examples (mkdir/cat/chmod/stat/printf)",
+                        "expected output or structured steps",
+                    ]
+                ),
                 safety_flags=safety_flags,
                 target_domain_candidates=domain_candidates,
-                operability_score=0.5 if linux_operable else 0.3,
+                operability_score=0.7 if directly_ready else 0.3,
                 verifier_feasibility=VerifierFeasibility.NEEDS_NEW_PRIMITIVE,
                 cleanup_feasibility="destroy_container",
                 runtime_feasibility="linux_container",

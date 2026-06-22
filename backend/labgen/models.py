@@ -426,6 +426,9 @@ class LabDraft(SchemaVersionedModel):
     # Default False preserves backward compat for all manually-authored labs.
     rehearsal_required: bool = False
     rehearsal_completed: bool = False
+    # Linux domain: AI tutor context. Informs tutor persona for learner interactions.
+    # None for K8s labs (no tutor context). Linux template always populates this.
+    ai_tutor_context: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
