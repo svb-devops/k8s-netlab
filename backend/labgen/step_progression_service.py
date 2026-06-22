@@ -13,7 +13,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
+from backend.labgen.failure_reasons import FailureReason
 from backend.labgen.models import (
+    LabDomainType,
     LabSessionStatus,
     PublishStatus,
     RuntimeAuditEventType,
@@ -25,6 +27,7 @@ from backend.labgen.runtime_audit import RuntimeAuditService
 
 if TYPE_CHECKING:
     from backend.labgen.lab_session_repository import LabSessionRepository
+    from backend.labgen.linux_verifier_client import LinuxVerifierService
     from backend.labgen.repository import LabDraftRepository
     from backend.labgen.verifier import VerifierService
 
@@ -81,11 +84,13 @@ class StepProgressionService:
         draft_repo: "LabDraftRepository",
         verifier_svc: "VerifierService",
         audit_svc: Optional[RuntimeAuditService] = None,
+        linux_verifier_svc: Optional["LinuxVerifierService"] = None,
     ) -> None:
         self._session_repo = session_repo
         self._draft_repo = draft_repo
         self._verifier_svc = verifier_svc
         self._audit_svc = audit_svc
+        self._linux_verifier_svc = linux_verifier_svc
 
     def _audit(
         self,
@@ -133,11 +138,39 @@ class StepProgressionService:
                 f"current step is {current_step.step_id!r}, requested {step_id!r}"
             )
 
-        # Run all verify templates from the published draft (caller cannot inject templates)
-        verify_results: list[VerifyResult] = [
-            self._verifier_svc.check(session_id, template)
-            for template in current_step.verify
-        ]
+        # Run all verify templates from the published draft (caller cannot inject templates).
+        # Linux domain labs use linux_verify templates and the Linux verifier service.
+        # K8s domain labs (and all others) use verify templates and the K8s verifier service.
+        if draft.target_domain == LabDomainType.LINUX:
+            if self._linux_verifier_svc is None:
+                not_configured = VerifyResult(
+                    session_id=session_id,
+                    verify_id="linux_verifier_not_configured",
+                    verify_type="linux",
+                    passed=False,
+                    error_code=FailureReason.LINUX_VERIFIER_NOT_CONFIGURED.value,
+                    failure_reason=FailureReason.LINUX_VERIFIER_NOT_CONFIGURED.value,
+                    detail="Linux verifier service is not configured for this environment.",
+                )
+                self._session_repo.update(session)
+                return StepCheckResponse(
+                    session_id=session_id,
+                    step_id=step_id,
+                    all_passed=False,
+                    advanced=False,
+                    ready_to_complete=session.ready_to_complete,
+                    verify_results=[not_configured],
+                    failure_reason=FailureReason.LINUX_VERIFIER_NOT_CONFIGURED.value,
+                )
+            verify_results: list[VerifyResult] = [
+                self._linux_verifier_svc.check(session_id, tmpl)
+                for tmpl in current_step.linux_verify
+            ]
+        else:
+            verify_results = [
+                self._verifier_svc.check(session_id, template)
+                for template in current_step.verify
+            ]
 
         # all([]) is True — steps with no verify templates advance automatically
         all_passed = all(r.passed for r in verify_results)

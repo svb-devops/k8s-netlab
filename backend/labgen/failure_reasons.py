@@ -74,3 +74,16 @@ class FailureReason(str, Enum):
     REHEARSAL_VM_NOT_OWNED = "rehearsal.vm_not_owned"
     REHEARSAL_VM_TAINTED = "rehearsal.vm_tainted"
     REHEARSAL_SESSION_ALREADY_ACTIVE = "rehearsal.session_already_active"
+
+    # -- Linux verifier (workspace-scoped, filesystem-only) -------------------
+    LINUX_WORKSPACE_NOT_FOUND = "linux.workspace_not_found"
+    LINUX_WORKSPACE_NOT_ACTIVE = "linux.workspace_not_active"
+    LINUX_PATH_ESCAPE = "linux.path_escape"
+    LINUX_FILE_NOT_FOUND = "linux.file_not_found"
+    LINUX_DIRECTORY_NOT_FOUND = "linux.directory_not_found"
+    LINUX_CONTENT_MISMATCH = "linux.content_mismatch"
+    LINUX_FILE_TOO_LARGE = "linux.file_too_large"
+    LINUX_MODE_MISMATCH = "linux.mode_mismatch"
+    LINUX_RESIDUAL_FILES_FOUND = "linux.residual_files_found"
+    LINUX_VERIFY_TYPE_NOT_SUPPORTED = "linux.verify_type_not_supported"
+    LINUX_VERIFIER_NOT_CONFIGURED = "linux.verifier_not_configured"
