@@ -259,13 +259,28 @@ class LinuxWorkspaceManager:
         return os.path.isdir(abs_path)
 
     def list_files_recursive(self, session: WorkspaceSession) -> list[str]:
-        """Return all file paths relative to workspace_root."""
+        """Return all file paths (and symlinks) relative to workspace_root.
+
+        Aligned with no_residual_files(): symlink-to-dirs are included in the
+        result and not traversed. followlinks=False prevents escape via symlink.
+        """
         workspace = session.workspace_path
         result: list[str] = []
-        for root, dirs, files in os.walk(workspace):
+        for root, dirs, files in os.walk(workspace, followlinks=False):
             for fname in files:
                 abs_f = os.path.join(root, fname)
                 result.append(os.path.relpath(abs_f, workspace))
+            non_symlink_dirs = []
+            for d in dirs:
+                abs_d = os.path.join(root, d)
+                try:
+                    if stat.S_ISLNK(os.lstat(abs_d).st_mode):
+                        result.append(os.path.relpath(abs_d, workspace))
+                    else:
+                        non_symlink_dirs.append(d)
+                except OSError:
+                    non_symlink_dirs.append(d)
+            dirs[:] = non_symlink_dirs
         return result
 
     # ------------------------------------------------------------------

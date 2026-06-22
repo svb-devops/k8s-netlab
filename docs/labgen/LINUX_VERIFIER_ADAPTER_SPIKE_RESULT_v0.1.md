@@ -153,7 +153,7 @@ VerifyResult:
 | max_output_bytes cap | Enforced in `file_content_matches` |
 | `os.walk(followlinks=False)` | Explicit — no symlink traversal in residual scan |
 
-**MEDIUM (spike limitation, documented):** TOCTOU window between `resolve_path()` and `open()` on the resolved absolute path. Only exploitable if a concurrent lab user process has write access to the workspace. Not applicable to spike (workspace is never exposed to learner processes). Requires `O_NOFOLLOW` or `os.fstat` re-verification for production hardening.
+**~~MEDIUM~~ (CLOSED — Hardening v0.1):** TOCTOU window between `resolve_path()` and `open()` — closed with three-layer mitigation (lstat on original path + _recheck_containment + O_NOFOLLOW). Residual intermediate-component TOCTOU documented as LOW in Hardening result.
 
 ---
 
@@ -209,7 +209,7 @@ VerifyResult:
 
 | Severity | Description | Status |
 |----------|-------------|--------|
-| MEDIUM | TOCTOU symlink race between resolve_path and open() | Documented, spike-era acceptable |
+| ~~MEDIUM~~ | TOCTOU symlink race between resolve_path and open() | **CLOSED** in Hardening v0.1 — three-layer mitigation + lstat on original path |
 | LOW | `os.walk` should explicitly pass `followlinks=False` | **Fixed** before commit |
 | NOTE | Domain dispatch in StepProgressionService: no K8s fallthrough | Confirmed |
 | NOTE | Host absolute paths not in VerifyResult.detail | Confirmed |
