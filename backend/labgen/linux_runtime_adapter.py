@@ -281,6 +281,19 @@ class LinuxRuntimeAdapter:
         return self._workspace_mgr.directory_exists(ws, rel_path)
 
     # ------------------------------------------------------------------
+    # Workspace manager access (for LinuxVerifierService co-location)
+    # ------------------------------------------------------------------
+
+    @property
+    def workspace_manager(self) -> LinuxWorkspaceManager:
+        """Return the underlying workspace manager.
+
+        Used by LinuxVerifierService to share the same workspace state
+        as this adapter without creating a second manager for the same sandbox.
+        """
+        return self._workspace_mgr
+
+    # ------------------------------------------------------------------
     # Residual scan (without cleanup)
     # ------------------------------------------------------------------
 

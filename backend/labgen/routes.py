@@ -1553,3 +1553,214 @@ async def abort_rehearsal_session(
         return svc.abort_session(session_id)
     except SessionAlreadyTerminated:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session is already terminated")
+
+
+# ===========================================================================
+# Linux Internal Rehearsal Bridge — /internal/linux-rehearsal-sessions
+#
+# Admin-only endpoint for running internal rehearsal against LINUX domain
+# DRAFT LabDrafts. Never publishes. Never adds to learner catalog.
+# Requires X-Admin-Token header AND admin user cookie/token (dual auth).
+# ===========================================================================
+
+from backend.labgen.linux_rehearsal_service import (
+    LinuxRehearsalService,
+    LinuxRehearsalPrecheckFailed,
+    LinuxRehearsalSessionNotFound,
+    LinuxRehearsalSessionNotActive,
+    LinuxRehearsalNotReadyToComplete,
+    LinuxRehearsalStepNotFound,
+    LinuxRehearsalStepNotCurrent,
+)
+
+linux_rehearsal_router = APIRouter(
+    prefix="/internal/linux-rehearsal-sessions", tags=["internal"]
+)
+
+_linux_rehearsal_svc: Optional[LinuxRehearsalService] = None
+
+
+def get_linux_rehearsal_service() -> LinuxRehearsalService:
+    global _linux_rehearsal_svc
+    if _linux_rehearsal_svc is None:
+        _linux_rehearsal_svc = LinuxRehearsalService(
+            session_repo=get_session_repository(),
+            draft_repo=get_repository(),
+        )
+    return _linux_rehearsal_svc
+
+
+class CreateLinuxRehearsalRequest(BaseModel):
+    lab_id: str
+    article_draft_id: Optional[str] = None
+
+
+class ExecuteLinuxStepRequest(BaseModel):
+    step_id: str
+
+
+@linux_rehearsal_router.post(
+    "",
+    response_model=LabSessionState,
+    status_code=status.HTTP_201_CREATED,
+    summary="[ADMIN ONLY] Start a Linux internal rehearsal session for a DRAFT Linux lab",
+    description=(
+        "Creates an admin-only internal rehearsal session against a Linux DRAFT LabDraft. "
+        "target_domain must be LINUX. Never publishes. Never adds to learner catalog. "
+        "Session is tagged session_type=INTERNAL_REHEARSAL. "
+        "Requires X-Admin-Token header AND admin user auth."
+    ),
+)
+async def create_linux_rehearsal_session(
+    body: CreateLinuxRehearsalRequest,
+    _: None = Depends(require_internal_token),
+    admin: str = Depends(require_admin_user),
+    svc: LinuxRehearsalService = Depends(get_linux_rehearsal_service),
+) -> LabSessionState:
+    try:
+        return svc.create_linux_rehearsal_session(
+            lab_id=body.lab_id,
+            admin_username=admin,
+            article_draft_id=body.article_draft_id,
+        )
+    except LinuxRehearsalPrecheckFailed as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"precheck_failures": exc.failures},
+        )
+
+
+@linux_rehearsal_router.get(
+    "/{session_id}",
+    response_model=LabSessionState,
+    summary="[ADMIN ONLY] Get a Linux internal rehearsal session",
+)
+async def get_linux_rehearsal_session(
+    session_id: str,
+    _: None = Depends(require_internal_token),
+    admin: str = Depends(require_admin_user),
+    svc: LinuxRehearsalService = Depends(get_linux_rehearsal_service),
+) -> LabSessionState:
+    try:
+        session = svc.get_session(session_id)
+    except LinuxRehearsalSessionNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    if session.student_username != admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    return session
+
+
+@linux_rehearsal_router.post(
+    "/{session_id}/steps",
+    response_model=dict,
+    summary="[ADMIN ONLY] Execute a step in a Linux internal rehearsal session",
+    description=(
+        "Executes the commands for the specified step (using safe Python-native workspace API "
+        "for shell-redirect forms) then runs the step's Linux verifiers. "
+        "Advances the step index if all verifiers pass. Steps must be executed in order."
+    ),
+)
+async def execute_linux_rehearsal_step(
+    session_id: str,
+    body: ExecuteLinuxStepRequest,
+    _: None = Depends(require_internal_token),
+    admin: str = Depends(require_admin_user),
+    svc: LinuxRehearsalService = Depends(get_linux_rehearsal_service),
+) -> dict:
+    try:
+        session = svc.get_session(session_id)
+    except LinuxRehearsalSessionNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    if session.student_username != admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    try:
+        result = svc.execute_linux_step(session_id, body.step_id)
+    except LinuxRehearsalSessionNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    except LinuxRehearsalSessionNotActive:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session is not active")
+    except LinuxRehearsalStepNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except LinuxRehearsalStepNotCurrent as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"error": "step_not_current", "message": str(exc)},
+        )
+    return {
+        "step_id": result.step_id,
+        "all_verifiers_passed": result.all_verifiers_passed,
+        "ready_to_complete": result.ready_to_complete,
+        "step_index_advanced": result.step_index_advanced,
+        "command_count": len(result.command_results),
+        "verifier_results": [
+            {
+                "verify_id": r.verify_id,
+                "passed": r.passed,
+                "detail": r.detail,
+                "failure_reason": r.failure_reason,
+            }
+            for r in result.verifier_results
+        ],
+    }
+
+
+@linux_rehearsal_router.post(
+    "/{session_id}/complete",
+    response_model=LabSessionState,
+    summary="[ADMIN ONLY] Complete a Linux internal rehearsal session",
+    description=(
+        "Completes the rehearsal: runs workspace cleanup, verifies no residual files, "
+        "marks session LAB_CLOSED, and sets rehearsal_completed=True on the draft. "
+        "Requires ready_to_complete=True (execute all required steps first)."
+    ),
+)
+async def complete_linux_rehearsal_session(
+    session_id: str,
+    _: None = Depends(require_internal_token),
+    admin: str = Depends(require_admin_user),
+    svc: LinuxRehearsalService = Depends(get_linux_rehearsal_service),
+) -> LabSessionState:
+    try:
+        session = svc.get_session(session_id)
+    except LinuxRehearsalSessionNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    if session.student_username != admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    try:
+        result = svc.complete_linux_rehearsal(session_id)
+    except LinuxRehearsalSessionNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    except LinuxRehearsalSessionNotActive:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session is not active")
+    except LinuxRehearsalNotReadyToComplete:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=FailureReason.LINUX_REHEARSAL_NOT_READY_TO_COMPLETE.value,
+        )
+    return result.session
+
+
+@linux_rehearsal_router.post(
+    "/{session_id}/abort",
+    response_model=LabSessionState,
+    summary="[ADMIN ONLY] Abort a Linux internal rehearsal session",
+)
+async def abort_linux_rehearsal_session(
+    session_id: str,
+    _: None = Depends(require_internal_token),
+    admin: str = Depends(require_admin_user),
+    svc: LinuxRehearsalService = Depends(get_linux_rehearsal_service),
+) -> LabSessionState:
+    try:
+        session = svc.get_session(session_id)
+    except LinuxRehearsalSessionNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    if session.student_username != admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    try:
+        result = svc.abort_linux_rehearsal(session_id)
+    except LinuxRehearsalSessionNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    except LinuxRehearsalSessionNotActive:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Session is not active")
+    return result.session
