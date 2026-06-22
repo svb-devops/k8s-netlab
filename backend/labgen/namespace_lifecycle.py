@@ -675,3 +675,61 @@ class K3sNamespaceLifecycleAdapter(NamespaceLifecyclePort):
                 "verifier_rolebinding_exists unexpected error: %s", _sanitize_api_error(exc)
             )
             return False
+
+
+# ---------------------------------------------------------------------------
+# LinuxContainerLifecycleAdapter  (spike skeleton — NOT production-ready)
+# ---------------------------------------------------------------------------
+
+
+class LinuxContainerLifecycleAdapter(NamespaceLifecyclePort):
+    """Skeleton adapter for the Linux domain proof (Task 2 of 7).
+
+    Maps the NamespaceLifecyclePort interface to Linux workspace concepts for
+    adapter-selection compatibility.  All methods raise NotImplementedError
+    because Linux workspace lifecycle is handled by LinuxRuntimeAdapter, not
+    through K8s namespace semantics.
+
+    This class exists to:
+    1. Prove NamespaceAdapterKind.LINUX can be selected and instantiated.
+    2. Confirm K8s adapter selection is unchanged when kind=K8S.
+    3. Unblock Tasks 3-7 (verifier, lab template, rehearsal, publish gate).
+
+    NOT learner-visible.  NOT production-ready.  Linux lab publish remains
+    blocked by StaticValidator.linux.publish_blocked_until_runtime.
+    """
+
+    def create_namespace(self, namespace: str) -> bool:
+        raise NotImplementedError(
+            "LinuxContainerLifecycleAdapter.create_namespace: "
+            "Linux domain does not use K8s namespaces. "
+            "Use LinuxRuntimeAdapter.create_session() instead."
+        )
+
+    def namespace_exists(self, namespace: str) -> bool:
+        raise NotImplementedError(
+            "LinuxContainerLifecycleAdapter.namespace_exists: not implemented in spike."
+        )
+
+    def delete_namespace(self, namespace: str) -> bool:
+        raise NotImplementedError(
+            "LinuxContainerLifecycleAdapter.delete_namespace: "
+            "Linux cleanup is handled by LinuxRuntimeAdapter.close_session()."
+        )
+
+    def is_namespace_deleted(self, namespace: str) -> bool:
+        raise NotImplementedError(
+            "LinuxContainerLifecycleAdapter.is_namespace_deleted: not implemented in spike."
+        )
+
+    def ensure_verifier_rolebinding(self, namespace: str) -> bool:
+        raise NotImplementedError(
+            "LinuxContainerLifecycleAdapter.ensure_verifier_rolebinding: "
+            "Linux verifier credentials are not implemented in Task 2. "
+            "LinuxVerifierClientPort is a future task (Task 4)."
+        )
+
+    def verifier_rolebinding_exists(self, namespace: str) -> bool:
+        raise NotImplementedError(
+            "LinuxContainerLifecycleAdapter.verifier_rolebinding_exists: not implemented."
+        )

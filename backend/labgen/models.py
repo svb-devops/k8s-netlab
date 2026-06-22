@@ -253,6 +253,26 @@ class LinuxSandboxPolicy(SchemaVersionedModel):
     allow_network: bool = False
     allow_root: bool = False
     allowed_commands: list[str] = Field(default_factory=list)
+
+    @field_validator("allow_root")
+    @classmethod
+    def _enforce_no_root(cls, v: bool) -> bool:
+        if v:
+            raise ValueError(
+                "allow_root must always be False in v0.1. "
+                "Root access is forbidden in the Linux sandbox policy."
+            )
+        return v
+
+    @field_validator("allow_network")
+    @classmethod
+    def _enforce_no_network(cls, v: bool) -> bool:
+        if v:
+            raise ValueError(
+                "allow_network must always be False in v0.1. "
+                "Network access is forbidden in the Linux sandbox policy."
+            )
+        return v
     denied_commands: list[str] = Field(default_factory=lambda: [
         "sudo", "su", "apt-get", "apt", "yum", "dnf", "systemctl", "service",
         "ssh", "scp", "curl", "wget",

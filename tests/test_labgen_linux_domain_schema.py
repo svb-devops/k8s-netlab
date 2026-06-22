@@ -290,21 +290,15 @@ class TestLinuxSandboxPolicy:
         failed = {r.check_id for r in results if r.status == ValidatorStatus.FAILED}
         assert "linux.sandbox_safe" in failed
 
-    def test_rejects_allow_root_via_validator(self):
-        """allow_root=True must fail StaticValidator."""
-        policy = LinuxSandboxPolicy(workspace_root="/home/learner/workspace", allow_root=True)
-        draft = _linux_lab_draft(sandbox=policy)
-        results = StaticValidator().validate(draft)
-        failed = {r.check_id for r in results if r.status == ValidatorStatus.FAILED}
-        assert "linux.sandbox_safe" in failed
+    def test_rejects_allow_root_via_model_validator(self):
+        """allow_root=True is rejected at model construction (Pydantic field_validator)."""
+        with pytest.raises(ValidationError, match="allow_root"):
+            LinuxSandboxPolicy(workspace_root="/home/learner/workspace", allow_root=True)
 
-    def test_rejects_allow_network_via_validator(self):
-        """allow_network=True must fail StaticValidator."""
-        policy = LinuxSandboxPolicy(workspace_root="/home/learner/workspace", allow_network=True)
-        draft = _linux_lab_draft(sandbox=policy)
-        results = StaticValidator().validate(draft)
-        failed = {r.check_id for r in results if r.status == ValidatorStatus.FAILED}
-        assert "linux.sandbox_safe" in failed
+    def test_rejects_allow_network_via_model_validator(self):
+        """allow_network=True is rejected at model construction (Pydantic field_validator)."""
+        with pytest.raises(ValidationError, match="allow_network"):
+            LinuxSandboxPolicy(workspace_root="/home/learner/workspace", allow_network=True)
 
     def test_base_image_field_present(self):
         policy = LinuxSandboxPolicy(workspace_root="/home/learner/workspace")
@@ -462,19 +456,15 @@ class TestStaticValidatorLinux:
         failed = {r.check_id for r in results if r.status == ValidatorStatus.FAILED}
         assert "linux.verifiers_safe" in failed
 
-    def test_root_required_sandbox_fails(self):
-        policy = LinuxSandboxPolicy(workspace_root="/home/learner/workspace", allow_root=True)
-        draft = _linux_lab_draft(sandbox=policy)
-        results = StaticValidator().validate(draft)
-        failed = {r.check_id for r in results if r.status == ValidatorStatus.FAILED}
-        assert "linux.sandbox_safe" in failed
+    def test_root_required_sandbox_model_enforces_false(self):
+        """allow_root=True is blocked at model layer before StaticValidator can see it."""
+        with pytest.raises(ValidationError, match="allow_root"):
+            LinuxSandboxPolicy(workspace_root="/home/learner/workspace", allow_root=True)
 
-    def test_network_required_sandbox_fails(self):
-        policy = LinuxSandboxPolicy(workspace_root="/home/learner/workspace", allow_network=True)
-        draft = _linux_lab_draft(sandbox=policy)
-        results = StaticValidator().validate(draft)
-        failed = {r.check_id for r in results if r.status == ValidatorStatus.FAILED}
-        assert "linux.sandbox_safe" in failed
+    def test_network_required_sandbox_model_enforces_false(self):
+        """allow_network=True is blocked at model layer before StaticValidator can see it."""
+        with pytest.raises(ValidationError, match="allow_network"):
+            LinuxSandboxPolicy(workspace_root="/home/learner/workspace", allow_network=True)
 
     def test_placeholder_content_fails(self):
         draft = _linux_lab_draft(title="Linux Files [TODO: add real title]")

@@ -47,6 +47,7 @@ class RuntimeMode(str, Enum):
 class NamespaceAdapterKind(str, Enum):
     STUB = "stub"
     K8S = "k8s"
+    LINUX = "linux"   # spike-level; not production-ready; not learner-visible
 
 
 # ---------------------------------------------------------------------------
@@ -176,7 +177,7 @@ class RuntimeAdapterSelectionService:
             ))
 
         if runtime_mode in _PRODUCTION_LIKE_MODES:
-            # Stub forbidden in all production-like profiles.
+            # Stub and Linux spike are forbidden in all production-like profiles.
             if adapter_kind == NamespaceAdapterKind.STUB:
                 issues.append(RuntimeAdapterSelectionIssue(
                     code=ISSUE_STUB_ADAPTER_IN_PRODUCTION,
@@ -186,6 +187,17 @@ class RuntimeAdapterSelectionService:
                         f"{runtime_mode.value} mode. "
                         "Set LABGEN_NAMESPACE_ADAPTER=k8s and provide a kubeconfig or "
                         "in-cluster config."
+                    ),
+                ))
+            elif adapter_kind == NamespaceAdapterKind.LINUX:
+                issues.append(RuntimeAdapterSelectionIssue(
+                    code=ISSUE_STUB_ADAPTER_IN_PRODUCTION,
+                    severity="blocking",
+                    message=(
+                        f"LinuxContainerLifecycleAdapter (spike) must not be used in "
+                        f"{runtime_mode.value} mode. "
+                        "Linux runtime is not production-ready. "
+                        "Set LABGEN_NAMESPACE_ADAPTER=k8s for production-like profiles."
                     ),
                 ))
             elif adapter_kind == NamespaceAdapterKind.K8S:
@@ -212,7 +224,7 @@ class RuntimeAdapterSelectionService:
                             ),
                         ))
         else:
-            # Non-production-like: stub is allowed with a warning.
+            # Non-production-like: stub and Linux spike are allowed with a warning.
             if adapter_kind == NamespaceAdapterKind.STUB:
                 issues.append(RuntimeAdapterSelectionIssue(
                     code=ISSUE_NON_PRODUCTION_STUB_ALLOWED,
@@ -220,6 +232,17 @@ class RuntimeAdapterSelectionService:
                     message=(
                         f"StubNamespaceLifecycleAdapter is active in {runtime_mode.value} mode. "
                         "No real K8s operations will occur. "
+                        "This adapter must not be used in production-like profiles."
+                    ),
+                ))
+            elif adapter_kind == NamespaceAdapterKind.LINUX:
+                issues.append(RuntimeAdapterSelectionIssue(
+                    code=ISSUE_NON_PRODUCTION_STUB_ALLOWED,
+                    severity="warning",
+                    message=(
+                        f"LinuxContainerLifecycleAdapter (spike) is active in "
+                        f"{runtime_mode.value} mode. "
+                        "Linux runtime is not production-ready and not learner-visible. "
                         "This adapter must not be used in production-like profiles."
                     ),
                 ))
@@ -270,4 +293,17 @@ class RuntimeAdapterSelectionService:
         if result.namespace_adapter_kind == NamespaceAdapterKind.K8S:
             cfg = adapter_config if adapter_config is not None else K8sAdapterConfig.from_config()
             return K3sNamespaceLifecycleAdapter(cfg)
+        if result.namespace_adapter_kind == NamespaceAdapterKind.LINUX:
+            # Hard guard: LINUX adapter must never be instantiated in production-like modes.
+            # This prevents a misconfigured LABGEN_NAMESPACE_ADAPTER=linux from silently
+            # returning a broken adapter whose every method raises NotImplementedError.
+            if result.runtime_mode in _PRODUCTION_LIKE_MODES:
+                raise RuntimeError(
+                    f"LinuxContainerLifecycleAdapter must not be used in "
+                    f"{result.runtime_mode.value} mode. "
+                    "Linux runtime is not production-ready. "
+                    "Set LABGEN_NAMESPACE_ADAPTER=k8s."
+                )
+            from backend.labgen.namespace_lifecycle import LinuxContainerLifecycleAdapter
+            return LinuxContainerLifecycleAdapter()
         return StubNamespaceLifecycleAdapter()

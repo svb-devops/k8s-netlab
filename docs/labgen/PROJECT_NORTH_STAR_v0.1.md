@@ -401,7 +401,8 @@ Every subsequent Article-to-Lab task must verify:
 | **K8s Article-linked Lab Trusted Reader Pilot** | ✅ **COMPLETE** | session a301676a, LAB_CLOSED, cleanup_verified=True, step_1+step_2 PASS, observer-confirmed no hiccups |
 | **Linux Domain Proof Design Gate** | ✅ **COMPLETE** | `LINUX_DOMAIN_PROOF_DESIGN_GATE_v0.1.md` — LINUX_DOMAIN_PROOF_DESIGN_READY_WITH_NOTES; 5 BLOCKER couplings identified and enumerated; recommended runtime: container sandbox; recommended first lab: Linux Files and Permissions Basics |
 | **Linux Domain Contract Schema Extension** | ✅ **COMPLETE** | `LINUX_DOMAIN_CONTRACT_SCHEMA_EXTENSION_RESULT_v0.1.md` — LINUX_DOMAIN_CONTRACT_SCHEMA_READY_WITH_NOTES；LabDomainType / LinuxVerifyType / LinuxVerifyTemplate / LinuxSandboxPolicy / CleanupLinuxWorkspace；StaticValidator Linux 路径；H-01+H-02 修复；60 tests；publish 仍 blocked（runtime pending） |
-| Linux Domain Proof (full, through Trusted Reader) | ⬜ NEXT | Task 2: Runtime Adapter Spike |
+| **Linux Runtime Adapter Spike** | ✅ **COMPLETE** | `LINUX_RUNTIME_ADAPTER_SPIKE_RESULT_v0.1.md` — LINUX_RUNTIME_ADAPTER_SPIKE_READY_WITH_NOTES；LinuxWorkspaceManager / LinuxCommandExecutor / LinuxCleanupAdapter / LinuxRuntimeAdapter；NamespaceAdapterKind.LINUX；LinuxContainerLifecycleAdapter 骨架；M-01+L-01+L-02+L-03 全修；88 tests；K8s 零回归；learner 不可见；publish 仍 blocked |
+| Linux Domain Proof (full, through Trusted Reader) | ⬜ NEXT | Task 3: Verifier Adapter Spike |
 | Docker Domain Proof | ⬜ PENDING | After Linux domain proof |
 
 The pipeline design (`ARTICLE_TO_LAB_PIPELINE_DESIGN_GATE_v0.1.md`) is the canonical reference for the Article-to-Lab platform architecture. All subsequent implementation must follow that design and must not harden into K8s-only.
