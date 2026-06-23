@@ -2,10 +2,10 @@
 
 **Gate**: Linux Trusted Reader Pilot Planning & Approval Gate  
 **Final Decision**: LINUX_TRUSTED_READER_PILOT_PLANNING_READY_WITH_NOTES  
-**Date**: 2026-06-23  
+**Date**: 2026-06-23 (ops notes resolved 2026-06-23 by G-50 Owner Rehearsal Prep)  
 **Executed by**: Claude Code (senior dev + ops role)  
 **Pilot started**: NO  
-**User approval**: PENDING_USER_APPROVAL  
+**User approval**: PENDING_USER_APPROVAL — Owner Rehearsal Ready  
 **LLM calls**: 0  
 
 ---
@@ -27,10 +27,11 @@
 **Final decision**: `LINUX_TRUSTED_READER_PILOT_PLANNING_READY_WITH_NOTES`
 
 **Notes**:
-- NOTE-001: VM 401 is currently stopped — ops must run `qm start 401` before pilot
-- NOTE-002: VM tracker owner needs reassignment from `pilot_reader` to new pilot account
-- LOW-002: article.html has no embedded CTA component (deep link is sufficient for pilot)
-- Approval gate: user must explicitly approve reader identity, time window, and pilot execution
+- NOTE-001: VM 401 was stopped → now running (resolved by G-50 Owner Rehearsal Prep)
+- NOTE-002: VM tracker owner was `pilot_reader` → now `lnx-rehearsal-01` (resolved)
+- NOTE-003: Service needed restart to load G-48 code (experiment_background, check_count) → resolved
+- LOW-002: article.html has no embedded CTA component (deep link is sufficient for pilot, accepted)
+- Approval gate: user must complete owner rehearsal, then explicitly approve reader identity, time window, and pilot execution
 
 ---
 

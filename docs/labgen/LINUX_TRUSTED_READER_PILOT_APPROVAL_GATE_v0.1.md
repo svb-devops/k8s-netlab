@@ -1,8 +1,8 @@
 # Linux Trusted Reader Pilot — Approval Gate v0.1
 
-**Date**: 2026-06-23  
-**Status**: PENDING_USER_APPROVAL  
-**Pilot started**: NO — awaiting explicit user approval  
+**Date**: 2026-06-23 (updated after G-50 Owner Rehearsal Prep)  
+**Status**: PENDING_USER_APPROVAL — Owner Rehearsal Ready  
+**Pilot started**: NO — awaiting owner rehearsal completion + explicit user approval  
 
 ---
 
@@ -23,11 +23,16 @@
 | User explicitly approves pilot | ⏳ PENDING | **Required before execution** |
 | Trusted reader identified | ⏳ PENDING | User to specify |
 | Test time window identified | ⏳ PENDING | User to specify |
-| VM 401 started and K3s ready | ⏳ PENDING | Ops pre-action required (VM stopped) |
-| Reader account created + VM assigned | ⏳ PENDING | Ops pre-action required |
+| VM 401 started and K3s ready | ✅ DONE | `qm start 401` executed; K3s Ready (k8s-template v1.34.4+k3s1) |
+| Owner rehearsal account created + VM assigned | ✅ DONE | `lnx-rehearsal-01` created; VM tracker owner=lnx-rehearsal-01 |
+| Owner rehearsal test steps ready | ✅ DONE | `docs/labgen/LINUX_OWNER_REHEARSAL_TEST_STEPS_v0.1.md` |
+| Owner rehearsal completed by user | ⏳ PENDING | User must complete rehearsal first |
+| User explicitly approves pilot | ⏳ PENDING | **Required after rehearsal** |
+| Trusted reader identified | ⏳ PENDING | User to specify |
+| Test time window identified | ⏳ PENDING | User to specify |
 
-**Result**: Gate items 1–10 all PASS. Items 11–15 pending user direction.  
-**Pilot cannot start until items 11–15 are resolved and user explicitly approves.**
+**Result**: Gate items 1–12 all PASS. Items 13–15 pending owner rehearsal + user approval.  
+**Pilot cannot start until owner rehearsal passes and user explicitly approves.**
 
 ---
 
@@ -78,8 +83,8 @@
 | Active Linux sessions | ✅ | 0 active sessions |
 | Stale Linux workspaces | ✅ | 0 stale workspaces (previous smoke clean) |
 | Taint state | ✅ | `data/tainted_vms.json` = `{}` |
-| **VM 401 running** | ⚠️ **STOPPED** | **Ops pre-action required: `qm start 401`** |
-| VM 401 tracker owner | ⚠️ **pilot_reader** | **Needs reassignment to `linux-trusted-reader-01`** |
+| **VM 401 running** | ✅ **running** | Started as part of Owner Rehearsal Prep (G-50); K3s Ready |
+| VM 401 tracker owner | ✅ **lnx-rehearsal-01** | Reassigned from `pilot_reader` to `lnx-rehearsal-01` |
 | Rollback path available | ✅ | Env var disable + service restart < 2 min |
 
 ### A.4 Safety
@@ -95,8 +100,8 @@
 | K8s Lab 5 unchanged | ✅ | publish_status=published, cf019133 |
 | K8s labs visible | ✅ | 5 K8s labs in catalog |
 
-**Health Check Summary**: PASS with 2 operational notes (VM 401 stopped, tracker reassignment needed).  
-These are pre-pilot ops actions, not code blockers.
+**Health Check Summary**: PASS — all ops notes resolved (VM 401 running, tracker reassigned, service restarted for G-48).  
+Owner rehearsal account `lnx-rehearsal-01` ready.
 
 ---
 
