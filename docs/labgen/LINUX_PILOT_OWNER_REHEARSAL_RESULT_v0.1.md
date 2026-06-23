@@ -26,10 +26,10 @@
 | Real pilot started | **NO — awaiting owner rehearsal completion + user approval** |
 | User may now start owner rehearsal | **YES** |
 
-**Final decision**: `LINUX_PILOT_OWNER_REHEARSAL_READY_FOR_USER`
+**Final decision**: `LINUX_PILOT_OWNER_REHEARSAL_PASSED`
 
-Owner may follow `docs/labgen/LINUX_OWNER_REHEARSAL_TEST_STEPS_v0.1.md` to complete the rehearsal.  
-**Real trusted reader pilot will NOT start until owner rehearsal passes and user provides explicit YES approval.**
+Owner rehearsal completed successfully on 2026-06-23. All 4 steps passed, LAB_CLOSED, cleanup_verified=True.  
+**Real trusted reader pilot awaiting explicit user YES approval + reader identity + time window.**
 
 > **BLOCKER resolved (2026-06-23, post-result)**: Linux learner terminal showed `credential_error` because
 > `lab_kubectl_ws.py` routed all sessions through the K8s kubeconfig path. Fix: Linux sessions
@@ -264,29 +264,28 @@ _None._
 
 ## I. Final Decision
 
-**`LINUX_PILOT_OWNER_REHEARSAL_READY_FOR_USER`**
+**`LINUX_PILOT_OWNER_REHEARSAL_PASSED`**
 
-All ops pre-actions complete. Health checks pass. Negative checks pass. Owner account ready. Test steps document ready. Service running with correct G-48 code.
+Owner rehearsal completed 2026-06-23. Session `ae3d8ed4`: LAB_CLOSED, cleanup_verified=True, all 4 steps green.
 
-The owner may now execute the full rehearsal following [LINUX_OWNER_REHEARSAL_TEST_STEPS_v0.1.md](LINUX_OWNER_REHEARSAL_TEST_STEPS_v0.1.md).
+Post-run audit: active sessions=0（终态排除后）, tainted VMs={}, K8s Lab 5 published, VMID 500-599 clean, health OK, error logs empty.
 
-**Real trusted reader pilot will NOT start until owner confirms rehearsal passed and provides explicit YES approval.**
+**Real trusted reader pilot awaiting owner's explicit YES approval + reader identity + time window.**
 
 ---
 
 ## J. Recommended Next Step
 
-**Owner Executes Linux Pilot Rehearsal**
+**Owner rehearsal PASSED. Awaiting pilot approval.**
 
-1. Owner logs in as `lnx-rehearsal-01` / `LinuxRehearsal@2026`
-2. Owner follows `docs/labgen/LINUX_OWNER_REHEARSAL_TEST_STEPS_v0.1.md` Section A–H
-3. Owner fills feedback form (Section I)
-4. Owner reports result to operator
-5. If ALL steps pass and feedback shows no blockers → owner provides YES + reader identity + time window
-6. Operator proceeds to Linux Trusted Reader Pilot Execution
+Provide the following to proceed:
+1. **明确批准**：YES / NO — 是否邀请真实 trusted reader？
+2. **Trusted reader 身份**：姓名或 handle
+3. **测试时间窗口**：日期 + 时段
 
-**If rehearsal reveals issues**:
-→ Linux Pilot Owner Rehearsal Round 2 (fix issues, re-run)
+收到以上三项后，operator 将执行 Linux Trusted Reader Pilot Execution。
+
+**在用户提供明确 YES + reader identity + time window 之前，Pilot 不会启动。**
 
 ---
 
