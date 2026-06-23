@@ -337,6 +337,7 @@ class Step(SchemaVersionedModel):
     explain: ExplainField
     verify: list[VerifyTemplate] = Field(default_factory=list)
     linux_verify: list[LinuxVerifyTemplate] = Field(default_factory=list)
+    troubleshoot: Optional[str] = ""
 
 
 # ---------------------------------------------------------------------------
@@ -429,6 +430,9 @@ class LabDraft(SchemaVersionedModel):
     # Linux domain: AI tutor context. Informs tutor persona for learner interactions.
     # None for K8s labs (no tutor context). Linux template always populates this.
     ai_tutor_context: Optional[str] = None
+    # Content quality fields (G-48). Optional; empty string = not yet authored.
+    experiment_background: Optional[str] = ""
+    completion_summary: Optional[str] = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

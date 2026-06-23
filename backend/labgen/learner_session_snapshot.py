@@ -85,6 +85,7 @@ class LearnerSessionStepStatus(BaseModel):
     # Populated only for the current step so learners know what to do
     step_do: Optional[str] = None        # rendered instruction text
     step_commands: list[str] = Field(default_factory=list)  # example kubectl commands
+    step_troubleshoot: Optional[str] = None  # hint text when learner is stuck (current step only)
 
 
 class LearnerSessionRuntimeSummary(BaseModel):
@@ -218,6 +219,7 @@ def _build_step_statuses(
             check_summary = _check_summary_for_step(session, step)
             step_do = None
             step_commands: list[str] = []
+            step_troubleshoot = None
         elif idx == current_idx:
             st = "available"
             is_current = True
@@ -229,12 +231,15 @@ def _build_step_statuses(
                 _sanitize(_substitute_namespace(cmd, ns))
                 for cmd in (step.commands or [])
             ]
+            raw_hint = (getattr(step, "troubleshoot", None) or "").strip()
+            step_troubleshoot = _sanitize(raw_hint) if raw_hint else None
         else:
             st = "locked"
             is_current = False
             check_summary = None
             step_do = None
             step_commands = []
+            step_troubleshoot = None
 
         result.append(LearnerSessionStepStatus(
             step_id=safe_id,
@@ -245,6 +250,7 @@ def _build_step_statuses(
             check_summary=check_summary,
             step_do=step_do,
             step_commands=step_commands,
+            step_troubleshoot=step_troubleshoot,
         ))
 
     return current_step_id, result

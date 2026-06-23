@@ -256,6 +256,12 @@ export function renderLabDetail({ lab, eligibility }) {
 
         ${lab?.summary ? `<p class="text-gray-600">${_safe(lab.summary)}</p>` : ''}
 
+        ${lab?.experiment_background ? `
+        <div class="bg-blue-50 border border-blue-100 rounded p-4">
+            <h3 class="text-sm font-semibold text-blue-800 mb-1">Background</h3>
+            <p class="text-sm text-blue-900">${_safe(lab.experiment_background)}</p>
+        </div>` : ''}
+
         ${eligibilityWarning}
 
         ${objectives ? `
@@ -332,6 +338,12 @@ export function renderSessionView(snapshot) {
                       s.step_commands.map(cmd => `<code class="block text-xs bg-gray-900 text-green-300 rounded px-3 py-1.5 font-mono">${_safe(cmd)}</code>`).join('')
                   }</div>`
                 : '';
+            const stepHint = isCurrent && s?.step_troubleshoot
+                ? `<details class="mt-2">
+                       <summary class="text-xs text-gray-400 cursor-pointer select-none hover:text-gray-600">Need help?</summary>
+                       <p class="text-xs text-gray-500 mt-1 pl-2 border-l-2 border-gray-200">${_safe(s.step_troubleshoot)}</p>
+                   </details>`
+                : '';
 
             return `
             <div class="flex items-start gap-3 border ${border} rounded p-3" data-step-status="${_safe(statusText)}">
@@ -340,6 +352,7 @@ export function renderSessionView(snapshot) {
                     <p class="text-sm font-medium text-gray-800">${_safe(s?.title ?? s?.step_id ?? '')}</p>
                     ${stepDo}
                     ${stepCmds}
+                    ${stepHint}
                     ${isCurrent ? _renderCheckSummary(s?.check_summary) : ''}
                 </div>
             </div>`;

@@ -112,6 +112,8 @@ class LearnerLabDetail(BaseModel):
     estimated_difficulty: Optional[str] = None
     template_id: Optional[str] = None
     start_eligibility: LearnerLabEligibility
+    experiment_background: Optional[str] = None
+    completion_summary: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -175,7 +177,7 @@ class LearnerCatalogService:
             learner_goal=sanitize_text(step.why),
             instructions_summary=sanitize_text(step.do)[:200],
             expected_outcome_summary=sanitize_text(step.observe)[:200],
-            check_count=len(step.verify),
+            check_count=len(step.verify) + len(step.linux_verify),
         )
 
     # ------------------------------------------------------------------
@@ -217,6 +219,8 @@ class LearnerCatalogService:
         steps_preview = [self._build_step_preview(s) for s in draft.steps]
         objectives = [self._sanitize(s.why) for s in draft.steps]
 
+        bg = (draft.experiment_background or "").strip()
+        summary_text = (draft.completion_summary or "").strip()
         return LearnerLabDetail(
             lab_id=draft.lab_id,
             title=self._sanitize(draft.title),
@@ -226,6 +230,8 @@ class LearnerCatalogService:
             estimated_difficulty=None,
             template_id=None,
             start_eligibility=eligibility,
+            experiment_background=self._sanitize(bg) if bg else None,
+            completion_summary=self._sanitize(summary_text) if summary_text else None,
         )
 
     def evaluate_start_eligibility(
