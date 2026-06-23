@@ -562,6 +562,53 @@ async def publish_draft(
 
 
 # ===========================================================================
+# Linux Publish Candidate Dry Run — POST /api/labgen/drafts/{id}/publish-candidate-dry-run
+# Admin-only. Evaluates all publish gates WITHOUT publishing or mutating catalog.
+# ===========================================================================
+
+from backend.labgen.publish_candidate_dry_run_service import (  # noqa: E402
+    LinuxPublishCandidateDryRunResult,
+    PublishCandidateDryRunService,
+)
+
+
+def _get_dry_run_service() -> PublishCandidateDryRunService:
+    return PublishCandidateDryRunService(validator=StaticValidator())
+
+
+@router.post(
+    "/drafts/{lab_id}/publish-candidate-dry-run",
+    response_model=LinuxPublishCandidateDryRunResult,
+    summary="Linux publish-candidate dry run (admin-only, read-only)",
+    tags=["labgen"],
+)
+async def linux_publish_candidate_dry_run(
+    lab_id: str,
+    admin: str = Depends(require_admin_user),
+    repo: LabDraftRepository = Depends(get_repository),
+    session_repo: LabSessionRepository = Depends(get_session_repository),
+    dry_run_svc: PublishCandidateDryRunService = Depends(_get_dry_run_service),
+) -> LinuxPublishCandidateDryRunResult:
+    """
+    Evaluate all Linux publish-candidate gates for the given draft.
+
+    This endpoint is ALWAYS read-only:
+      - actual_publish_performed is always False
+      - learner_catalog_changed is always False
+      - draft.publish_status is never modified
+
+    Only Linux domain drafts are supported.
+    Returns gate results for all 6 gates and a publish_candidate_ready flag.
+    """
+    draft = repo.get(lab_id)
+    if draft is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
+
+    sessions = session_repo.list_all()
+    return dry_run_svc.check_linux_publish_candidate(draft, sessions)
+
+
+# ===========================================================================
 # Runtime Adapter Status — GET /api/labgen/runtime/adapter-status  (admin-only, read-only)
 # ===========================================================================
 
