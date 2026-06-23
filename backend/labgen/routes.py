@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
@@ -23,6 +23,7 @@ from backend.labgen.lab_session_repository import LabSessionRepository
 from backend.labgen.lab_session_service import (
     LabNotReadyToComplete,
     LabSessionService,
+    LINUX_LEARNER_VM_SENTINEL,
     PrecheckFailed,
     RealVMTracker,
     SessionAlreadyTerminated,
@@ -42,6 +43,7 @@ from backend.labgen.models import (
     BlockingLevel,
     CleanupSpec,
     ImageResolutionResult,
+    LabDomainType,
     LabDraft,
     LabSessionState,
     PublishStatus,
@@ -111,6 +113,7 @@ _verifier_svc: Optional[VerifierService] = None
 _step_progression_svc: Optional[StepProgressionService] = None
 _audit_repo: Optional[RuntimeAuditRepository] = None
 _preview_svc: Optional[DraftPreviewService] = None
+_linux_runtime_adapter = None  # type: Optional[Any]
 
 
 def get_repository() -> LabDraftRepository:
@@ -176,6 +179,8 @@ def get_session_service() -> LabSessionService:
             credential_reclaim_exempt_vm_ids=frozenset(
                 str(vmid) for vmid in config.VM_CLEANUP_EXEMPT_IDS
             ),
+            linux_adapter=get_linux_runtime_adapter(),
+            linux_learner_enabled_lab_ids=config.LABGEN_LINUX_LEARNER_ENABLED_LAB_IDS,
         )
     return _session_svc
 
@@ -234,11 +239,17 @@ def get_audit_repository() -> RuntimeAuditRepository:
 def get_step_progression_service() -> StepProgressionService:
     global _step_progression_svc
     if _step_progression_svc is None:
+        linux_adapter = get_linux_runtime_adapter()
+        linux_verifier_svc = None
+        if linux_adapter is not None:
+            from backend.labgen.linux_verifier_client import LinuxVerifierService
+            linux_verifier_svc = LinuxVerifierService(linux_adapter.workspace_manager)
         _step_progression_svc = StepProgressionService(
             session_repo=get_session_repository(),
             draft_repo=get_repository(),
             verifier_svc=get_verifier_service(),
             audit_svc=RuntimeAuditService(repo=get_audit_repository()),
+            linux_verifier_svc=linux_verifier_svc,
         )
     return _step_progression_svc
 
@@ -252,6 +263,23 @@ def get_preview_service() -> DraftPreviewService:
             image_readiness_svc=ImageReadinessService(),
         )
     return _preview_svc
+
+
+def get_linux_runtime_adapter():
+    """Return a singleton LinuxRuntimeAdapter if Linux learner enablement is configured.
+
+    Returns None when LABGEN_LINUX_LEARNER_ENABLED_LAB_IDS is empty (default).
+    The same adapter instance is shared between LabSessionService and
+    StepProgressionService so workspace state persists across HTTP requests.
+    """
+    global _linux_runtime_adapter
+    if _linux_runtime_adapter is None and config.LABGEN_LINUX_LEARNER_ENABLED_LAB_IDS:
+        from backend.labgen.linux_runtime_adapter import LinuxRuntimeAdapter
+        _linux_runtime_adapter = LinuxRuntimeAdapter(
+            enabled=True,
+            sandbox_root=config.LABGEN_LINUX_SANDBOX_ROOT,
+        )
+    return _linux_runtime_adapter
 
 
 def get_catalog_service(
@@ -979,20 +1007,32 @@ async def create_lab_session(
     body: CreateSessionRequest,
     username: str = Depends(get_current_user),
     svc: LabSessionService = Depends(get_session_service),
+    repo: LabDraftRepository = Depends(get_repository),
 ) -> LabSessionState:
     vm_id = body.vm_id
     if vm_id is None:
-        owned = VMTracker().get_user_vms(username)
-        if not owned:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={
-                    "precheck_failures": [
-                        {"code": "no_vm_assigned", "message": "No VM is assigned to your account. Contact your instructor."}
-                    ]
-                },
-            )
-        vm_id = str(owned[0])
+        # Linux learner sessions require no VM — check allowlist before VM discovery
+        draft = repo.get(body.lab_id)
+        is_linux_learner = (
+            draft is not None
+            and draft.target_domain == LabDomainType.LINUX
+            and body.lab_id in config.LABGEN_LINUX_LEARNER_ENABLED_LAB_IDS
+            and get_linux_runtime_adapter() is not None
+        )
+        if is_linux_learner:
+            vm_id = LINUX_LEARNER_VM_SENTINEL
+        else:
+            owned = VMTracker().get_user_vms(username)
+            if not owned:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "precheck_failures": [
+                            {"code": "no_vm_assigned", "message": "No VM is assigned to your account. Contact your instructor."}
+                        ]
+                    },
+                )
+            vm_id = str(owned[0])
     try:
         return svc.create_session(
             lab_id=body.lab_id,

@@ -34,11 +34,15 @@ if TYPE_CHECKING:
     from backend.labgen.article_models import ArticleDraftLabContract
     from backend.labgen.image_resolver import ImageResolver
     from backend.labgen.lab_session_repository import LabSessionRepository
+    from backend.labgen.linux_runtime_adapter import LinuxRuntimeAdapter
     from backend.labgen.models import LabDraft
     from backend.labgen.repository import LabDraftRepository
     from backend.labgen.runtime_adapter_selection import RuntimeAdapterSelectionResult
     from backend.labgen.runtime_precheck import RuntimePrecheckService
     from backend.labgen.verifier_credentials import VerifierCredentialReclaimer
+
+# Sentinel vm_id used for Linux learner sessions (no Proxmox VM is involved)
+LINUX_LEARNER_VM_SENTINEL = "linux-sandbox"
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +223,8 @@ class LabSessionService:
         ns_delete_poll_interval: float = 1.0,
         ns_delete_max_retries: int = 5,
         credential_reclaim_exempt_vm_ids: frozenset = frozenset(),
+        linux_adapter: Optional["LinuxRuntimeAdapter"] = None,
+        linux_learner_enabled_lab_ids: frozenset = frozenset(),
     ) -> None:
         self._session_repo = session_repo
         self._draft_repo = draft_repo
@@ -232,6 +238,8 @@ class LabSessionService:
         self._ns_delete_poll_interval = ns_delete_poll_interval
         self._ns_delete_max_retries = ns_delete_max_retries
         self._credential_reclaim_exempt_vm_ids = credential_reclaim_exempt_vm_ids
+        self._linux_adapter = linux_adapter
+        self._linux_learner_enabled_lab_ids = linux_learner_enabled_lab_ids
 
     def _audit(
         self,
@@ -256,22 +264,33 @@ class LabSessionService:
         failures: list[str] = []
 
         draft = self._draft_repo.get(lab_id)
+        _is_linux_learner = False
         if draft is None:
             failures.append(FailureReason.PRECHECK_DRAFT_NOT_FOUND.value)
         else:
             if draft.publish_status != PublishStatus.PUBLISHED:
                 failures.append(FailureReason.PRECHECK_DRAFT_NOT_PUBLISHED.value)
             if draft.target_domain == LabDomainType.LINUX:
-                failures.append(FailureReason.PRECHECK_LINUX_LEARNER_NOT_SUPPORTED.value)
+                # Check feature flag allowlist — controlled enablement only
+                if (
+                    lab_id in self._linux_learner_enabled_lab_ids
+                    and self._linux_adapter is not None
+                ):
+                    _is_linux_learner = True
+                    # Linux sessions have no K8s cleanup; sandbox cleanup is via linux_adapter
+                else:
+                    failures.append(FailureReason.PRECHECK_LINUX_LEARNER_NOT_SUPPORTED.value)
             elif draft.cleanup is None:
                 failures.append(FailureReason.PRECHECK_CLEANUP_NOT_DECLARED.value)
 
-        if not self._vm_tracker.vm_exists(vm_id):
-            failures.append(FailureReason.PRECHECK_VM_NOT_FOUND.value)
-        elif not self._vm_tracker.is_vm_owned_by(vm_id, student_username):
-            failures.append(FailureReason.PRECHECK_VM_NOT_OWNED_BY_STUDENT.value)
-        elif self._vm_tracker.is_vm_tainted(vm_id):
-            failures.append(FailureReason.PRECHECK_VM_TAINTED.value)
+        # Linux learner sessions require no VM — skip VM tracker checks
+        if not _is_linux_learner:
+            if not self._vm_tracker.vm_exists(vm_id):
+                failures.append(FailureReason.PRECHECK_VM_NOT_FOUND.value)
+            elif not self._vm_tracker.is_vm_owned_by(vm_id, student_username):
+                failures.append(FailureReason.PRECHECK_VM_NOT_OWNED_BY_STUDENT.value)
+            elif self._vm_tracker.is_vm_tainted(vm_id):
+                failures.append(FailureReason.PRECHECK_VM_TAINTED.value)
 
         existing = self._session_repo.list_by_student(student_username)
         if any(
@@ -319,6 +338,16 @@ class LabSessionService:
         result = self.run_precheck(lab_id, vm_id, student_username)
         if not result.passed:
             raise PrecheckFailed(result.failures)
+
+        # Linux learner path — bypass K8s namespace/credential/runtime-precheck flow
+        draft = self._draft_repo.get(lab_id)
+        if (
+            draft is not None
+            and draft.target_domain == LabDomainType.LINUX
+            and lab_id in self._linux_learner_enabled_lab_ids
+            and self._linux_adapter is not None
+        ):
+            return self._do_create_linux_session(lab_id, student_username, SessionType.LEARNER)
 
         # Contract §11 conditions 4 and 6 — runtime state checks that require
         # namespace lifecycle and session history.  Must run before any K8s
@@ -451,6 +480,50 @@ class LabSessionService:
             session_type=SessionType.INTERNAL_REHEARSAL,
             article_draft_id=article_draft_id,
         )
+
+    def _do_create_linux_session(
+        self,
+        lab_id: str,
+        username: str,
+        session_type: SessionType,
+    ) -> LabSessionState:
+        """Create a Linux learner session using LinuxRuntimeAdapter.
+
+        No K8s namespace, no verifier rolebinding, no image check.
+        Workspace is created on the host filesystem under LABGEN_LINUX_SANDBOX_ROOT.
+        vm_id is set to LINUX_LEARNER_VM_SENTINEL.
+        """
+        assert self._linux_adapter is not None
+        draft = self._draft_repo.get(lab_id)
+
+        session = LabSessionState(
+            lab_id=lab_id,
+            vm_id=LINUX_LEARNER_VM_SENTINEL,
+            student_username=username,
+            lab_session_status=LabSessionStatus.LAB_ACTIVE,
+            session_type=session_type,
+        )
+
+        try:
+            self._linux_adapter.create_session(
+                session.session_id,
+                draft.linux_sandbox_policy if draft is not None else None,
+            )
+        except Exception:
+            session.lab_session_status = LabSessionStatus.LAB_START_FAILED
+            session.failure_reason = FailureReason.LINUX_LEARNER_WORKSPACE_CREATE_FAILED.value
+            session = self._session_repo.create(session)
+            self._audit(
+                session.session_id,
+                RuntimeAuditEventType.LAB_START_FAILED,
+                failure_reason=session.failure_reason,
+            )
+            return session
+
+        session.started_at = datetime.now(tz=timezone.utc)
+        session = self._session_repo.create(session)
+        self._audit(session.session_id, RuntimeAuditEventType.LAB_START_SUCCESS)
+        return session
 
     def _do_create_session(
         self,
@@ -636,7 +709,60 @@ class LabSessionService:
 
         return True, None, updated_images, any_rechecked
 
+    def _do_cleanup_linux(self, session: LabSessionState) -> LabSessionState:
+        """Cleanup a Linux learner session workspace via LinuxRuntimeAdapter.
+
+        On success: LAB_CLOSED, cleanup_verified=True.
+        On failure: LAB_CLEANUP_FAILED, cleanup_verified=False.
+        No K8s namespace or verifier credential operations.
+        The sentinel vm_id (linux-sandbox) is never marked tainted in the VM tracker.
+        """
+        assert self._linux_adapter is not None
+        try:
+            cleanup_ok = self._linux_adapter.close_session(session.session_id).success
+        except Exception:
+            cleanup_ok = False
+
+        if cleanup_ok:
+            session.lab_session_status = LabSessionStatus.LAB_CLOSED
+            session.cleanup_verified = True
+            session = self._session_repo.update(session)
+            self._audit(session.session_id, RuntimeAuditEventType.CLEANUP_SUCCESS)
+            return session
+
+        failure_reason = FailureReason.LINUX_LEARNER_CLEANUP_FAILED.value
+        session.lab_session_status = LabSessionStatus.LAB_CLEANUP_FAILED
+        session.failure_reason = failure_reason
+        session.cleanup_verified = False
+        session = self._session_repo.update(session)
+        self._audit(
+            session.session_id,
+            RuntimeAuditEventType.CLEANUP_FAILED,
+            failure_reason=failure_reason,
+        )
+        return session
+
     def _do_cleanup(self, session: LabSessionState) -> LabSessionState:
+        # Linux learner sessions: always route by sentinel vm_id, never by draft state.
+        # Anchoring on vm_id prevents draft mutations from rerouting K8s sessions.
+        # If the adapter is unavailable (e.g., env toggled after sessions were created),
+        # record a cleanup failure rather than falling through to the K8s/VM path,
+        # which cannot handle a sentinel vm_id.
+        if session.vm_id == LINUX_LEARNER_VM_SENTINEL:
+            if self._linux_adapter is not None:
+                return self._do_cleanup_linux(session)
+            # Adapter gone (config change / restart) — fail closed, never enter K8s path.
+            session.lab_session_status = LabSessionStatus.LAB_CLEANUP_FAILED
+            session.failure_reason = FailureReason.LINUX_LEARNER_CLEANUP_FAILED.value
+            session.cleanup_verified = False
+            session = self._session_repo.update(session)
+            self._audit(
+                session.session_id,
+                RuntimeAuditEventType.CLEANUP_FAILED,
+                failure_reason=session.failure_reason,
+            )
+            return session
+
         # Phase 1: namespace deletion (skipped when session has no namespace)
         namespace_ok = True
         namespace_failure_reason: Optional[str] = None

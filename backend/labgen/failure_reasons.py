@@ -89,6 +89,10 @@ class FailureReason(str, Enum):
     LINUX_VERIFY_TYPE_NOT_SUPPORTED = "linux.verify_type_not_supported"
     LINUX_VERIFIER_NOT_CONFIGURED = "linux.verifier_not_configured"
 
+    # -- Linux learner session -----------------------------------------------
+    LINUX_LEARNER_WORKSPACE_CREATE_FAILED = "linux_learner.workspace_create_failed"
+    LINUX_LEARNER_CLEANUP_FAILED = "linux_learner.cleanup_failed"
+
     # -- Linux internal rehearsal bridge -------------------------------------
     LINUX_REHEARSAL_DRAFT_NOT_FOUND = "linux_rehearsal.draft_not_found"
     LINUX_REHEARSAL_NOT_LINUX_DOMAIN = "linux_rehearsal.not_linux_domain"

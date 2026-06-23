@@ -319,6 +319,24 @@ LABGEN_NS_DELETE_POLL_INTERVAL_S: float = float(
     os.getenv("LABGEN_NS_DELETE_POLL_INTERVAL_S", "2.0")
 )
 
+# --- LabGen Linux Learner Runtime Configuration ---
+# LABGEN_LINUX_LEARNER_ENABLED_LAB_IDS: comma-separated list of lab IDs (full UUIDs)
+# that are enabled for learner sessions. Empty = all Linux labs blocked (default).
+# Set only the lab IDs that have passed the Linux Learner Runtime Enablement Gate.
+def _parse_lab_id_set(raw: str) -> frozenset:
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    return frozenset(parts)
+
+
+LABGEN_LINUX_LEARNER_ENABLED_LAB_IDS: frozenset = _parse_lab_id_set(
+    os.getenv("LABGEN_LINUX_LEARNER_ENABLED_LAB_IDS", "")
+)
+
+# Sandbox root directory for Linux learner workspaces.
+LABGEN_LINUX_SANDBOX_ROOT: str = os.getenv(
+    "LABGEN_LINUX_SANDBOX_ROOT", "/tmp/labgen-linux-sandboxes"
+)
+
 # --- LabGen LLM Provider Configuration ---
 # Controls the provider boundary for LabGen draft generation.
 # Default: fake_only — no real LLM, no API keys, no network calls.
