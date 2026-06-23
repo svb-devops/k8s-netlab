@@ -210,9 +210,6 @@ class StaticValidator:
                 "Linux sandbox policy missing — pollution level cannot be derived",
             ))
 
-        # Publish gate: Linux runtime not yet implemented in v0.1
-        results.extend(self._check_linux_publish_blocked_until_runtime(draft))
-
         return results
 
     # ------------------------------------------------------------------
@@ -736,20 +733,6 @@ class StaticValidator:
             ))
 
         return failures or [_pass("linux.cleanup_safe", "linux_cleanup")]
-
-    def _check_linux_publish_blocked_until_runtime(
-        self, draft: LabDraft
-    ) -> list[ValidatorResult]:
-        """Linux runtime is not yet implemented in v0.1 — all Linux labs are publish-blocked."""
-        return [_fail(
-            "linux.publish_blocked_until_runtime",
-            BlockingLevel.PUBLISH_BLOCKING,
-            "target_domain",
-            "Linux domain runtime is not yet implemented (v0.1 schema-only). "
-            "Publishing Linux labs requires: runtime adapter, verifier execution, "
-            "cleanup execution, and internal rehearsal. "
-            "This gate will be lifted when Task 2-7 of the Linux domain proof are complete.",
-        )]
 
     # ------------------------------------------------------------------
     # Derived: shared_namespace_candidate  (§8, 9 conditions)

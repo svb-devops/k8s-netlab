@@ -813,9 +813,9 @@ class TestRegressionK8sUnchanged:
         assert not blocking
         assert not result.production_safe
 
-    def test_linux_publish_still_blocked_by_static_validator(self):
-        """StaticValidator must block Linux lab publish regardless of adapter."""
-        from backend.labgen.models import LabDomainType
+    def test_linux_publish_gate_lifted_by_static_validator(self):
+        """After G-44 gate lift, StaticValidator must NOT block a complete Linux draft."""
+        from backend.labgen.models import BlockingLevel, LabDomainType, ValidatorStatus
         from backend.labgen.static_validator import StaticValidator
         from tests.test_labgen_linux_domain_schema import _linux_lab_draft
 
@@ -825,13 +825,17 @@ class TestRegressionK8sUnchanged:
         validator = StaticValidator()
         results = validator.validate(draft)
 
-        # Must find the publish_blocked check as PUBLISH_BLOCKING
-        from backend.labgen.models import BlockingLevel
+        # linux.publish_blocked_until_runtime must NOT exist after gate lift
         blocked_check = next(
             (r for r in results if r.check_id == "linux.publish_blocked_until_runtime"), None
         )
-        assert blocked_check is not None, "linux.publish_blocked_until_runtime check must exist"
-        assert blocked_check.blocking_level == BlockingLevel.PUBLISH_BLOCKING
+        assert blocked_check is None, "linux.publish_blocked_until_runtime must be removed after G-44"
+        # And no other blocking failures for a complete Linux draft
+        other_blocking = [
+            r for r in results
+            if r.status == ValidatorStatus.FAILED and r.blocking_level == BlockingLevel.PUBLISH_BLOCKING
+        ]
+        assert other_blocking == [], f"Unexpected: {[(r.check_id, r.message) for r in other_blocking]}"
 
     def test_no_linux_lab_in_catalog(self):
         """Linux domain draft cannot be published — catalog remains K8s only."""

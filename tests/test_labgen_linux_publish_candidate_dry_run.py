@@ -166,15 +166,15 @@ class TestAdminGate:
 
 
 class TestValidationGate:
-    def test_linux_boundary_recognised(self):
+    def test_linux_boundary_not_recognised_after_gate_lift(self):
+        """After G-44 gate lift, linux.publish_blocked_until_runtime is gone → boundary=False."""
         draft = _linux_draft()
         session = _rehearsal_session(draft)
         result = _svc().check_linux_publish_candidate(draft, [session])
-        assert result.linux_publish_boundary_recognized is True
-        assert _check(result, "validation_gate") is True
+        assert result.linux_publish_boundary_recognized is False
 
-    def test_validation_gate_passes_with_only_boundary(self):
-        """Only linux.publish_blocked_until_runtime is PUBLISH_BLOCKING → gate passes."""
+    def test_validation_gate_passes_with_zero_blocking_failures(self):
+        """After gate lift, complete Linux draft has zero PUBLISH_BLOCKING failures → gate passes."""
         draft = _linux_draft()
         session = _rehearsal_session(draft)
         result = _svc().check_linux_publish_candidate(draft, [session])
@@ -669,7 +669,7 @@ class TestHTTPEndpoint:
         assert body["actual_publish_performed"] is False
         assert body["learner_catalog_changed"] is False
         assert body["dry_run"] is True
-        assert body["linux_publish_boundary_recognized"] is True
+        assert body["linux_publish_boundary_recognized"] is False  # gate lifted in G-44
 
     def test_non_admin_returns_403(self, non_admin_client):
         client, draft = non_admin_client

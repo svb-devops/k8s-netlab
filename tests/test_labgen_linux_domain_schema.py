@@ -421,10 +421,9 @@ class TestStaticValidatorLinux:
         )
         draft = _linux_lab_draft(steps=[step])
         results = StaticValidator().validate(draft)
-        # Only the publish-blocked check should fail
+        # After G-44 gate lift, a complete Linux draft has zero failures
         failed = [r for r in results if r.status == ValidatorStatus.FAILED]
-        check_ids = {r.check_id for r in failed}
-        assert check_ids == {"linux.publish_blocked_until_runtime"}
+        assert failed == [], f"Unexpected failures: {[(r.check_id, r.message) for r in failed]}"
 
     def test_missing_sandbox_policy_fails(self):
         draft = _linux_lab_draft(sandbox=None)
@@ -472,14 +471,12 @@ class TestStaticValidatorLinux:
         failed = {r.check_id for r in results if r.status == ValidatorStatus.FAILED}
         assert "content.no_placeholders" in failed
 
-    def test_linux_publish_gate_always_blocked(self):
-        """linux.publish_blocked_until_runtime always fails regardless of contract quality."""
+    def test_linux_publish_gate_lifted_for_complete_draft(self):
+        """linux.publish_blocked_until_runtime must NOT appear after G-44 gate lift."""
         draft = _linux_lab_draft()
         results = StaticValidator().validate(draft)
         blocked = [r for r in results if r.check_id == "linux.publish_blocked_until_runtime"]
-        assert len(blocked) == 1
-        assert blocked[0].status == ValidatorStatus.FAILED
-        assert blocked[0].blocking_level == BlockingLevel.PUBLISH_BLOCKING
+        assert len(blocked) == 0
 
     def test_missing_expected_content_for_content_matcher_fails(self):
         step = _linux_step(linux_verify=[
@@ -608,9 +605,8 @@ class TestStaticValidatorLinux:
         )
         results = StaticValidator().validate(draft)
         failed = [r for r in results if r.status == ValidatorStatus.FAILED]
-        # Only the runtime publish gate should fail
-        assert len(failed) == 1
-        assert failed[0].check_id == "linux.publish_blocked_until_runtime"
+        # After G-44 gate lift, a complete Linux draft has no failures
+        assert failed == [], f"Unexpected failures: {[(r.check_id, r.message) for r in failed]}"
 
 
 # ---------------------------------------------------------------------------

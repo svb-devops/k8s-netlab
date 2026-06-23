@@ -673,8 +673,8 @@ class TestLinuxRehearsalSafety:
         assert not result.passed
         assert result.failure_reason == FailureReason.LINUX_PATH_ESCAPE.value
 
-    def test_linux_publish_blocked_after_rehearsal(self):
-        """Linux publish remains blocked by StaticValidator after rehearsal."""
+    def test_linux_publish_unblocked_after_rehearsal(self):
+        """After G-44 gate lift, StaticValidator must NOT block Linux publish after rehearsal."""
         draft = _make_full_linux_draft()
         svc, draft_repo, _ = _make_svc([draft])
         session = svc.create_linux_rehearsal_session(draft.lab_id, "admin")
@@ -682,7 +682,7 @@ class TestLinuxRehearsalSafety:
             svc.execute_linux_step(session.session_id, step_id)
         svc.complete_linux_rehearsal(session.session_id)
 
-        # StaticValidator must still block Linux publish
+        # StaticValidator must NOT block Linux publish anymore
         validator = StaticValidator()
         updated_draft = draft_repo.get(draft.lab_id)
         assert updated_draft is not None
@@ -690,7 +690,7 @@ class TestLinuxRehearsalSafety:
         publish_blockers = [
             r for r in result if r.check_id == "linux.publish_blocked_until_runtime"
         ]
-        assert len(publish_blockers) == 1
+        assert len(publish_blockers) == 0
 
     def test_linux_draft_not_in_learner_catalog(self):
         """Linux draft never appears in learner catalog."""
@@ -906,8 +906,8 @@ class TestLinuxCatalogIsolation:
         linux_items = [i for i in catalog if i.lab_id == draft.lab_id]
         assert len(linux_items) == 0
 
-    def test_linux_publish_blocked_after_rehearsal(self):
-        """StaticValidator still blocks Linux publish after rehearsal completes."""
+    def test_linux_publish_unblocked_after_rehearsal(self):
+        """After G-44 gate lift, StaticValidator must NOT block Linux publish after rehearsal."""
         draft = _make_full_linux_draft()
         svc, draft_repo, _ = _make_svc([draft])
         session = svc.create_linux_rehearsal_session(draft.lab_id, "admin")
@@ -919,7 +919,7 @@ class TestLinuxCatalogIsolation:
         validator = StaticValidator()
         results = validator.validate(updated_draft)
         linux_blocked = [r for r in results if r.check_id == "linux.publish_blocked_until_runtime"]
-        assert len(linux_blocked) == 1
+        assert len(linux_blocked) == 0
 
     def test_k8s_lab_5_not_affected(self):
         """Creating a Linux rehearsal session does not affect catalog of K8s labs."""
@@ -1042,13 +1042,13 @@ class TestLinuxRehearsalRegression:
         assert not result.passed
         assert FailureReason.LINUX_REHEARSAL_NOT_LINUX_DOMAIN.value in result.failures
 
-    def test_static_validator_linux_publish_block_unchanged(self):
-        """StaticValidator linux.publish_blocked_until_runtime check is unchanged."""
+    def test_static_validator_linux_publish_gate_lifted(self):
+        """After G-44 gate lift, linux.publish_blocked_until_runtime must not appear."""
         draft = _make_full_linux_draft()
         validator = StaticValidator()
         results = validator.validate(draft)
         blocked = [r for r in results if r.check_id == "linux.publish_blocked_until_runtime"]
-        assert len(blocked) == 1
+        assert len(blocked) == 0
 
     def test_workspace_manager_property_returns_same_instance(self):
         """LinuxRuntimeAdapter.workspace_manager returns the internal workspace manager."""

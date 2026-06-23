@@ -387,14 +387,13 @@ class TestStaticValidatorLinuxGuidedPractice:
         from backend.labgen.models import ValidatorStatus
         return {r.check_id for r in results if r.status == ValidatorStatus.PASSED}
 
-    def test_valid_linux_draft_passes_all_checks_except_publish(self, validator):
+    def test_valid_linux_draft_passes_all_checks(self, validator):
+        """After G-44 gate lift, a complete Linux draft must pass ALL checks with zero failures."""
         from backend.labgen.models import ValidatorStatus
         draft = _valid_linux_draft()
         results = validator.validate(draft)
         failed = [r for r in results if r.status == ValidatorStatus.FAILED]
-        # Only publish-blocked gate should fail
-        assert len(failed) == 1
-        assert failed[0].check_id == "linux.publish_blocked_until_runtime"
+        assert failed == [], f"Unexpected failures: {[(r.check_id, r.message) for r in failed]}"
 
     def test_missing_sandbox_policy_fails(self, validator):
         draft = _valid_linux_draft()
@@ -463,7 +462,8 @@ class TestStaticValidatorLinuxGuidedPractice:
                 allow_network=True,
             )
 
-    def test_linux_publish_always_blocked(self, validator):
+    def test_linux_publish_gate_lifted_for_complete_draft(self, validator):
+        """After G-44 gate lift, a complete Linux draft must not be blocked by runtime gate."""
         from backend.labgen.models import ValidatorStatus
         draft = _valid_linux_draft()
         results = validator.validate(draft)
@@ -472,7 +472,7 @@ class TestStaticValidatorLinuxGuidedPractice:
             if r.check_id == "linux.publish_blocked_until_runtime"
             and r.status == ValidatorStatus.FAILED
         ]
-        assert len(publish_blocked) == 1
+        assert len(publish_blocked) == 0
 
     def test_missing_expected_content_for_content_matcher_fails(self, validator):
         from backend.labgen.models import LinuxVerifyTemplate, LinuxVerifyType
@@ -545,7 +545,8 @@ class TestStaticValidatorLinuxGuidedPractice:
 
 
 class TestLinuxCatalogAndPublishIsolation:
-    def test_linux_draft_publish_blocked_by_static_validator(self, validator):
+    def test_complete_linux_draft_has_no_publish_blocking_failures(self, validator):
+        """After G-44 gate lift, a complete Linux draft has zero PUBLISH_BLOCKING failures."""
         from backend.labgen.models import BlockingLevel, ValidatorStatus
         draft = _valid_linux_draft()
         results = validator.validate(draft)
@@ -554,9 +555,9 @@ class TestLinuxCatalogAndPublishIsolation:
             if r.status == ValidatorStatus.FAILED
             and r.blocking_level == BlockingLevel.PUBLISH_BLOCKING
         ]
-        assert publish_blocking_failures, "Expected at least one publish-blocking failure"
-        check_ids = {r.check_id for r in publish_blocking_failures}
-        assert "linux.publish_blocked_until_runtime" in check_ids
+        assert publish_blocking_failures == [], (
+            f"Unexpected PUBLISH_BLOCKING failures: {[(r.check_id, r.message) for r in publish_blocking_failures]}"
+        )
 
     def test_linux_draft_not_in_learner_catalog(self):
         from backend.labgen.learner_catalog import LearnerCatalogService
@@ -586,8 +587,8 @@ class TestLinuxCatalogAndPublishIsolation:
         draft = _valid_linux_draft()
         assert draft.publish_status == PublishStatus.DRAFT
 
-    def test_publish_gate_blocks_linux_draft_via_static_validator(self):
-        """StaticValidator (the publish gate) always blocks Linux labs."""
+    def test_publish_gate_allows_complete_linux_draft_via_static_validator(self):
+        """After G-44 gate lift, StaticValidator must NOT block a complete Linux draft."""
         from backend.labgen.static_validator import StaticValidator
         from backend.labgen.models import BlockingLevel, ValidatorStatus
 
@@ -598,9 +599,9 @@ class TestLinuxCatalogAndPublishIsolation:
             if r.status == ValidatorStatus.FAILED
             and r.blocking_level == BlockingLevel.PUBLISH_BLOCKING
         ]
-        assert publish_blocking, "StaticValidator must return at least one publish-blocking failure"
-        check_ids = {r.check_id for r in publish_blocking}
-        assert "linux.publish_blocked_until_runtime" in check_ids
+        assert not publish_blocking, (
+            f"StaticValidator must not block a complete Linux draft. Got: {[(r.check_id, r.message) for r in publish_blocking]}"
+        )
 
     def test_linux_draft_target_domain_linux_not_k8s(self):
         """Linux draft target_domain must be LINUX, never K8S."""

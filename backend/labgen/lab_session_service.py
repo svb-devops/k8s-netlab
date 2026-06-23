@@ -17,6 +17,7 @@ from backend.labgen.models import (
     ConnectionState,
     ImageResolutionResult,
     ImageStatus,
+    LabDomainType,
     LabSessionState,
     LabSessionStatus,
     PublishStatus,
@@ -260,7 +261,9 @@ class LabSessionService:
         else:
             if draft.publish_status != PublishStatus.PUBLISHED:
                 failures.append(FailureReason.PRECHECK_DRAFT_NOT_PUBLISHED.value)
-            if draft.cleanup is None:
+            if draft.target_domain == LabDomainType.LINUX:
+                failures.append(FailureReason.PRECHECK_LINUX_LEARNER_NOT_SUPPORTED.value)
+            elif draft.cleanup is None:
                 failures.append(FailureReason.PRECHECK_CLEANUP_NOT_DECLARED.value)
 
         if not self._vm_tracker.vm_exists(vm_id):

@@ -10,7 +10,7 @@ Calling this service:
 
 Six gates are evaluated in order:
   1. admin_gate               — draft state prereqs for publish candidate
-  2. validation_gate          — StaticValidator pass, linux boundary recognized
+  2. validation_gate          — StaticValidator pass, zero PUBLISH_BLOCKING failures (G-44: linux.publish_blocked_until_runtime gate removed)
   3. internal_rehearsal_gate  — rehearsal_completed + closed/verified session found
   4. runtime_verifier_cleanup_gate — Linux-specific schema fields present and valid
   5. content_quality_gate     — no placeholders, quality fields populated
@@ -203,36 +203,27 @@ class PublishCandidateDryRunService:
         checks: list[DryRunCheckResult] = []
         results = self._validator.validate(draft)
 
-        # Separate the expected Linux boundary from unexpected failures
-        boundary_found = False
-        other_blocking: list[str] = []
+        # After G-44 gate lift: linux.publish_blocked_until_runtime is removed.
+        # boundary_found=False is now the expected (correct) state for a complete Linux draft.
+        boundary_found = any(
+            r.check_id == "linux.publish_blocked_until_runtime"
+            for r in results
+        )
+        blocking: list[str] = [
+            r.check_id
+            for r in results
+            if r.status == ValidatorStatus.FAILED
+            and r.blocking_level == BlockingLevel.PUBLISH_BLOCKING
+        ]
 
-        for r in results:
-            if r.check_id == "linux.publish_blocked_until_runtime":
-                boundary_found = True
-                # This is the expected current boundary — not a gate failure
-                continue
-            if (
-                r.status == ValidatorStatus.FAILED
-                and r.blocking_level == BlockingLevel.PUBLISH_BLOCKING
-            ):
-                other_blocking.append(r.check_id)
-
-        # Linux boundary must be present (confirms StaticValidator is working)
-        checks.append(DryRunCheckResult(
-            check_id="validation.linux_boundary_recognized",
-            passed=boundary_found,
-            detail=None if boundary_found
-            else "linux.publish_blocked_until_runtime not found — unexpected",
-        ))
-
-        # No other PUBLISH_BLOCKING failures
-        no_other = len(other_blocking) == 0
+        # Gate passes when there are ZERO PUBLISH_BLOCKING failures.
+        # After gate lift, the boundary check is gone — no blocking failures is the expected state.
+        no_blocking = len(blocking) == 0
         checks.append(DryRunCheckResult(
             check_id="validation.no_unexpected_blocking_failures",
-            passed=no_other,
-            detail=None if no_other
-            else f"Unexpected PUBLISH_BLOCKING failures: {other_blocking}",
+            passed=no_blocking,
+            detail=None if no_blocking
+            else f"PUBLISH_BLOCKING failures: {blocking}",
         ))
 
         return DryRunGateResult(

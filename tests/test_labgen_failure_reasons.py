@@ -338,10 +338,11 @@ class TestPrecheckEmitsFailureReasonValues:
     def test_vm_tainted_uses_enum(self):
         from unittest.mock import MagicMock
 
-        from backend.labgen.models import CleanupNamespace, CleanupSpec, LabDraft, PublishStatus
+        from backend.labgen.models import CleanupNamespace, CleanupSpec, LabDomainType, LabDraft, PublishStatus
 
         draft = MagicMock(spec=LabDraft)
         draft.publish_status = PublishStatus.PUBLISHED
+        draft.target_domain = LabDomainType.K8S
         draft.cleanup = CleanupSpec(namespace_cleanup=CleanupNamespace())
         svc = self._make_svc(draft=draft, vm_tainted=True)
         result = svc.run_precheck("lab-1", "vm-500", "alice")
