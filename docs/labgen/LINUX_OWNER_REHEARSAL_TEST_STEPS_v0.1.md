@@ -16,7 +16,7 @@
 Before starting, confirm:
 
 - [ ] Browser: Chrome or Firefox (recommended). Safari should also work.
-- [ ] No existing active session on `lnx-rehearsal-01` — check [Session page](https://lab.cloudnetops.tech/app) if in doubt
+- [ ] No existing active session on `lnx-rehearsal-01` — check [Catalog](https://lab.cloudnetops.tech/labgen-catalog.html) if in doubt
 - [ ] You are logged out, or in a private/incognito window to ensure a clean session
 - [ ] The staging service is healthy: `curl -s https://lab.cloudnetops.tech/api/health` → `{"status":"healthy","proxmox":{"connected":true}}`
 - [ ] VM 401 is running: `qm status 401` → `status: running`
@@ -35,14 +35,14 @@ Three ways to enter the Linux lab. Use whichever you want to test:
 ### B.1 Direct deep link (simplest — recommended for rehearsal)
 
 ```
-https://lab.cloudnetops.tech/app?lab=6c439064-4cad-4229-addb-36927128d565
+https://lab.cloudnetops.tech/labgen-lab.html?labId=6c439064-4cad-4229-addb-36927128d565
 ```
 
 This link logs you in first (if not already), then takes you directly to the Linux lab detail page.
 
 ### B.2 Catalog route
 
-1. Go to `https://lab.cloudnetops.tech/app`
+1. Go to `https://lab.cloudnetops.tech/labgen-catalog.html`
 2. Log in as `lnx-rehearsal-01` (password: `LinuxRehearsal@2026`)
 3. You will see the experiment catalog — **6 labs total** (5 Kubernetes + 1 Linux)
 4. Scroll to "Linux Files and Permissions Basics" and click it
@@ -125,7 +125,7 @@ Stop here. Do not retry. Report to operator.
 
 ```bash
 mkdir -p demo
-printf 'hello labgen\n' > demo/message.txt
+echo 'hello labgen' > demo/message.txt
 cat demo/message.txt
 ```
 
@@ -148,8 +148,8 @@ Click **"Check"** for Step 1.
 **If Check fails**:
 
 - "Permission denied" on mkdir → do NOT add sudo; contact operator
-- File not found → re-run: `printf 'hello labgen\n' > demo/message.txt`
-- Content mismatch → check for typos; re-run `printf 'hello labgen\n' > demo/message.txt`
+- File not found → re-run: `echo 'hello labgen' > demo/message.txt`
+- Content mismatch → check for typos; re-run `echo 'hello labgen' > demo/message.txt`
 - Check the "Need help?" hint for step-specific guidance
 
 ```

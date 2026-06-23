@@ -31,6 +31,12 @@
 Owner may follow `docs/labgen/LINUX_OWNER_REHEARSAL_TEST_STEPS_v0.1.md` to complete the rehearsal.  
 **Real trusted reader pilot will NOT start until owner rehearsal passes and user provides explicit YES approval.**
 
+> **BLOCKER resolved (2026-06-23, post-result)**: Linux learner terminal showed `credential_error` because
+> `lab_kubectl_ws.py` routed all sessions through the K8s kubeconfig path. Fix: Linux sessions
+> (`vm_id='linux-sandbox'`) now route to `_handle_linux_terminal()` which uses `LinuxRuntimeAdapter`
+> for policy-enforced local command execution with `>` redirection support.
+> 24 regression tests added. Full suite: 4335 passed, 92.26% coverage. Service restarted.
+
 ---
 
 ## B. North Star Alignment
@@ -133,7 +139,7 @@ Service restarted (`systemctl restart k8s-netlab`). Health check passed immediat
 | Base URL | `https://lab.cloudnetops.tech` |
 | Login page | `https://lab.cloudnetops.tech/app` |
 | Catalog page | `https://lab.cloudnetops.tech/app` (post-login) |
-| Linux lab deep link | `https://lab.cloudnetops.tech/app?lab=6c439064-4cad-4229-addb-36927128d565` |
+| Linux lab deep link | `https://lab.cloudnetops.tech/labgen-lab.html?labId=6c439064-4cad-4229-addb-36927128d565` |
 | Mock article CTA | Same as deep link (LOW-002: no embedded CTA in article.html — accepted) |
 | Feedback form | Questions listed in `LINUX_OWNER_REHEARSAL_TEST_STEPS_v0.1.md` Section I |
 
@@ -144,7 +150,7 @@ Login (lnx-rehearsal-01)
   → Catalog or deep link → Linux lab detail page
   → Verify: title, background card, 4 objectives, 4 step previews, Start button enabled
   → Start Lab → LAB_ACTIVE
-  → Step 1: mkdir -p demo; printf 'hello labgen\n' > demo/message.txt; cat demo/message.txt
+  → Step 1: mkdir -p demo; echo 'hello labgen' > demo/message.txt; cat demo/message.txt
     → Check: 3 verifiers (directory/file/content) → all PASS
   → Step 2: cat demo/message.txt
     → Check: 1 verifier (content) → PASS
@@ -160,7 +166,7 @@ Login (lnx-rehearsal-01)
 
 | Step | Commands | Check Count | Expected |
 |------|----------|-------------|----------|
-| 1 | `mkdir -p demo` + `printf 'hello labgen\n' > demo/message.txt` | 3 | dir/file/content PASS |
+| 1 | `mkdir -p demo` + `echo 'hello labgen' > demo/message.txt` | 3 | dir/file/content PASS |
 | 2 | `cat demo/message.txt` | 1 | content PASS |
 | 3 | `chmod 600 demo/message.txt` + `stat -c "%a" demo/message.txt` | 1 | mode=600 PASS |
 | 4 | none | 0 | Complete button enabled → LAB_CLOSED |
@@ -224,8 +230,11 @@ No real reader has been contacted. No reader account exists. No pilot is running
 
 ## H. Issue Triage
 
-### BLOCKER
-_None._
+### BLOCKER (resolved)
+
+| ID | Description | Resolution |
+|----|-------------|------------|
+| BLOCKER-001 | Linux terminal shows `credential_error` — `lab_kubectl_ws.py` routed Linux sessions through K8s kubeconfig path | Fixed: Linux sessions now route to `_handle_linux_terminal()` via `LinuxRuntimeAdapter`. 24 regression tests. |
 
 ### HIGH
 _None._
@@ -249,6 +258,7 @@ _None._
 | NOTE-004 | VM 401 real IP is 172.16.100.90 (not .153 as in stale memory); SSH via QEMU agent works |
 | NOTE-005 | `linux-owner-rehearsal-01` (24 chars) rejected by API; renamed to `lnx-rehearsal-01` (16 chars) |
 | NOTE-006 | Step 4 has 0 verify checks — intentional completion step, no commands |
+| NOTE-007 | Step 1 command changed from `printf 'hello labgen\n'` to `echo 'hello labgen'` — `printf` contains `\n` (backslash) which is a `DENIED_COMMANDS` metacharacter; `echo` produces identical output and is in `ALLOWED_COMMANDS` |
 
 ---
 
