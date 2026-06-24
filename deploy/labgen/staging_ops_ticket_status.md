@@ -182,3 +182,42 @@ This gate remains aligned with PROJECT_NORTH_STAR_v0.1: Article-to-Lab / Technic
 | No skipped cleanup | YES |
 | No premature public launch expansion | YES |
 | No home_lab_mvp → production promotion | YES |
+
+---
+
+## G-57 Admin-curated Article-to-Lab Flow Final Alignment & P0 Gap Plan v0.1
+
+**Date**: 2026-06-24
+**Task**: G-57
+**Decision**: ADMIN_CURATED_ARTICLE_TO_LAB_FLOW_ALIGNED_WITH_NOTES
+
+### Summary
+
+Phase 1 产品方向对齐完成。
+
+- ✅ Phase 1 = Admin-curated Article-to-Lab（普通用户不上传文章）
+- ✅ 现有 6 个 published labs 确认为标准模板资产（K8s ×5 + Linux ×1）
+- ✅ 网站首页文章系统已存在（landing.html + Directus CMS + articles_routes.py）
+- ✅ Admin→Publish 完整流程已实现（G-34, G-51 真实读者验证）
+- ⚠️ P0 Gap 1：LabDraft 无 article_url 字段
+- ⚠️ P0 Gap 2：无 Admin CTA 标准工具
+- ⚠️ P1 Gap：无邮箱注册字段（非 Article→Lab 闭环阻塞点）
+
+### Artifacts
+
+- `docs/labgen/ADMIN_CURATED_ARTICLE_TO_LAB_FLOW_v0.1.md`
+- `docs/labgen/EXISTING_LAB_TEMPLATE_EXTRACTION_v0.1.md`
+- `docs/labgen/PHASE1_GAP_PRIORITIZATION_v0.1.md`
+- `docs/labgen/ADMIN_CURATED_FLOW_ALIGNMENT_RESULT_v0.1.md`
+
+### Health Check (pre-commit)
+
+- Tests: no change（docs only）
+- BLOCKER=0 HIGH=0 MEDIUM=0
+- Placeholder/secret/TODO scan: CLEAN
+- pre-commit: PASS
+- No code changes
+
+### Recommended Next Step
+
+Article URL + CTA Tool Implementation（P0 gap 1 + gap 2 联合实现）
