@@ -35,6 +35,13 @@ class K8SNetLabApp {
     async init() {
         console.log('K8S NetLab - Initializing...');
 
+        // Redirect ?lab= deep-links to the LabGen lab page
+        const labId = new URLSearchParams(window.location.search).get('lab');
+        if (labId) {
+            window.location.replace('/labgen-lab.html?labId=' + encodeURIComponent(labId));
+            return;
+        }
+
         // Check authentication
         await this.checkAuth();
 
