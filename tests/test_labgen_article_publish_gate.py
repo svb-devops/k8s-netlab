@@ -918,7 +918,7 @@ def learner_client(tmp_path):
 
     with TestClient(app) as client:
         # Register + login
-        client.post("/api/auth/register", json={"username": "gate_learner", "password": "pass123!"})
+        client.post("/api/auth/register", json={"username": "gate_learner", "password": "pass123!", "email": "gate_learner@example.com"})
         resp = client.post("/api/auth/login", json={"username": "gate_learner", "password": "pass123!"})
         yield client
 

@@ -17,6 +17,7 @@ websockets==12.0
 
 # Data Validation
 pydantic==2.12.5
+email-validator==2.3.0
 
 # Configuration
 python-dotenv==1.0.0

@@ -51,7 +51,7 @@ def auth_setup(tmp_path):
 class TestRegister:
     def test_success_returns_201(self, auth_setup):
         client, _, _ = auth_setup
-        resp = client.post("/api/auth/register", json={"username": "alice", "password": "secret1"})
+        resp = client.post("/api/auth/register", json={"username": "alice", "password": "secret1", "email": "alice@example.com"})
         assert resp.status_code == 201
         assert resp.json()["success"] is True
         assert resp.json()["username"] == "alice"
@@ -59,7 +59,7 @@ class TestRegister:
     def test_duplicate_username_returns_400(self, auth_setup):
         client, mgr, _ = auth_setup
         mgr.register_user("alice", "secret1")
-        resp = client.post("/api/auth/register", json={"username": "alice", "password": "secret2"})
+        resp = client.post("/api/auth/register", json={"username": "alice", "password": "secret2", "email": "alice2@example.com"})
         assert resp.status_code == 400
         assert "already exists" in resp.json()["detail"]
 
@@ -89,7 +89,7 @@ class TestRegister:
         mock_rl.is_over_limit.return_value = True
         mock_rl.retry_after.return_value = 60
 
-        resp = client.post("/api/auth/register", json={"username": "alice", "password": "secret1"})
+        resp = client.post("/api/auth/register", json={"username": "alice", "password": "secret1", "email": "alice@example.com"})
         assert resp.status_code == 429, (
             f"Expected 429 when register rate limit exceeded, got {resp.status_code}"
         )
@@ -100,7 +100,7 @@ class TestRegister:
         client, _, mock_rl = auth_setup
         mock_rl.is_over_limit.return_value = False
 
-        client.post("/api/auth/register", json={"username": "alice", "password": "secret1"})
+        client.post("/api/auth/register", json={"username": "alice", "password": "secret1", "email": "alice@example.com"})
         mock_rl.record.assert_called_once()
         call_key = mock_rl.record.call_args[0][0]
         assert call_key.startswith("register:"), (
@@ -113,7 +113,7 @@ class TestRegister:
         mock_rl.is_over_limit.return_value = False
         mgr.register_user("alice", "secret1")  # pre-create the user
 
-        resp = client.post("/api/auth/register", json={"username": "alice", "password": "secret2"})
+        resp = client.post("/api/auth/register", json={"username": "alice", "password": "secret2", "email": "alice2@example.com"})
         assert resp.status_code == 400
         assert mock_rl.record.call_count == 1, (
             "rate_limiter.record() must be called even when registration fails — "
@@ -430,7 +430,7 @@ class TestUnexpectedErrorHandling:
             mock_mgr.register_user.side_effect = RuntimeError("db crash")
             resp = client.post(
                 "/api/auth/register",
-                json={"username": "alice", "password": "secret1"},
+                json={"username": "alice", "password": "secret1", "email": "alice@example.com"},
             )
         assert resp.status_code == 500
 

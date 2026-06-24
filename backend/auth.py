@@ -46,16 +46,17 @@ class AuthManager:
         """Load sessions from file."""
         return safe_read_json(SESSIONS_FILE, default={})
 
-    def register_user(self, username: str, password: str) -> bool:
+    def register_user(self, username: str, password: str, email: Optional[str] = None) -> bool:
         """
         Register a new user with bcrypt password hash.
 
         Args:
             username: Username (unique)
             password: Plain password
+            email: Optional email (must be unique if provided; already normalized by caller)
 
         Returns:
-            True if successful, False if username exists
+            True if successful, False if username or email already exists
         """
         registered = False
 
@@ -63,10 +64,18 @@ class AuthManager:
             nonlocal registered
             if username in users:
                 return users
-            users[username] = {
+            # Duplicate email check (case-insensitive, already lowercased by caller)
+            if email:
+                for u in users.values():
+                    if u.get("email") and u["email"] == email:
+                        return users
+            record: Dict = {
                 "password_hash": hash_password(password),
                 "created_at": datetime.now().isoformat(),
             }
+            if email:
+                record["email"] = email
+            users[username] = record
             registered = True
             return users
 
@@ -75,8 +84,13 @@ class AuthManager:
         if registered:
             logger.info(f"User '{username}' registered successfully (bcrypt)")
         else:
-            logger.warning(f"Username '{username}' already exists")
+            logger.warning(f"Registration failed for '{username}' (username or email conflict)")
         return registered
+
+    def is_email_taken(self, email: str) -> bool:
+        """Return True if any existing user already has this email (case-insensitive)."""
+        users = self._load_users()
+        return any(u.get("email") == email for u in users.values())
 
     def verify_credentials(self, username: str, password: str) -> bool:
         """

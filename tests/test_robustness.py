@@ -121,7 +121,7 @@ class TestBoundaryValues:
     def test_username_exactly_max_length_accepted(self, auth_client):
         client, _ = auth_client
         resp = client.post("/api/auth/register",
-                           json={"username": "a" * 20, "password": "secret1"})
+                           json={"username": "a" * 20, "password": "secret1", "email": "maxlen@example.com"})
         assert resp.status_code == 201
 
     def test_username_one_over_max_length_rejected(self, auth_client):
@@ -133,7 +133,7 @@ class TestBoundaryValues:
     def test_password_exactly_min_length_accepted(self, auth_client):
         client, _ = auth_client
         resp = client.post("/api/auth/register",
-                           json={"username": "userabc", "password": "a" * 6})
+                           json={"username": "userabc", "password": "a" * 6, "email": "minpw@example.com"})
         assert resp.status_code == 201
 
     def test_password_one_under_min_length_rejected(self, auth_client):
@@ -145,7 +145,7 @@ class TestBoundaryValues:
     def test_password_at_max_length_accepted(self, auth_client):
         client, _ = auth_client
         resp = client.post("/api/auth/register",
-                           json={"username": "usermax", "password": "a" * 72})  # bcrypt max
+                           json={"username": "usermax", "password": "a" * 72, "email": "maxpw@example.com"})  # bcrypt max
         assert resp.status_code == 201
 
     def test_password_over_max_length_rejected(self, auth_client):
@@ -274,9 +274,9 @@ class TestIdempotency:
         """同用户名注册两次：第一次 201，第二次 400。"""
         client, _ = auth_client
         resp1 = client.post("/api/auth/register",
-                            json={"username": "alice", "password": "secret1"})
+                            json={"username": "alice", "password": "secret1", "email": "alice@example.com"})
         resp2 = client.post("/api/auth/register",
-                            json={"username": "alice", "password": "secret1"})
+                            json={"username": "alice", "password": "secret1", "email": "alice2@example.com"})
         assert resp1.status_code == 201
         assert resp2.status_code == 400
 

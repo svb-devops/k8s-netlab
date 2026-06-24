@@ -104,7 +104,7 @@ class TestAuthContract:
     def test_register_response_schema(self, auth_client):
         client, _ = auth_client
         resp = client.post("/api/auth/register",
-                           json={"username": "alice", "password": "secret1"})
+                           json={"username": "alice", "password": "secret1", "email": "alice@example.com"})
         assert resp.status_code == 201
         data = resp.json()
         assert_schema(data, self.AUTH_RESPONSE_SCHEMA, "register")

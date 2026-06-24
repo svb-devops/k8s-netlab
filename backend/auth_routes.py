@@ -5,10 +5,11 @@ User registration, login, and session management.
 """
 
 import logging
+import re
 from typing import Optional
 
 from fastapi import APIRouter, Cookie, HTTPException, Request, Response, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from backend.auth import auth_manager
 from backend.config import SESSION_COOKIE_SECURE
@@ -26,10 +27,24 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 # Request/Response Models
 # ============================================================
 
+_EMAIL_CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
 class RegisterRequest(BaseModel):
     """User registration request."""
     username: str = Field(..., min_length=3, max_length=20, pattern="^[a-zA-Z0-9_-]+$")
     password: str = Field(..., min_length=6, max_length=72)  # bcrypt max is 72 bytes
+    email: EmailStr = Field(..., max_length=254)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def _normalize_email(cls, v: str) -> str:
+        if not isinstance(v, str):
+            raise ValueError("email must be a string")
+        normalized = v.strip().lower()
+        if _EMAIL_CONTROL_RE.search(normalized):
+            raise ValueError("email contains invalid characters")
+        return normalized
 
 
 class LoginRequest(BaseModel):
@@ -137,7 +152,8 @@ async def register(http_request: Request, request: RegisterRequest) -> AuthRespo
 
         success = auth_manager.register_user(
             username=request.username,
-            password=request.password
+            password=request.password,
+            email=request.email,
         )
 
         if success:

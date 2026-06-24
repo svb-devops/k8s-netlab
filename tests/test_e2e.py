@@ -77,7 +77,7 @@ def test_e2e_main_user_journey(full_app):
 
     # 1. 注册
     resp = client.post("/api/auth/register",
-                       json={"username": "alice", "password": "secret1"})
+                       json={"username": "alice", "password": "secret1", "email": "alice@example.com"})
     assert resp.status_code == 201, resp.text
 
     # 2. 登录

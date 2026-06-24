@@ -96,6 +96,7 @@ registerForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const username = document.getElementById('register-username').value;
+    const email = document.getElementById('register-email').value.trim().toLowerCase();
     const password = document.getElementById('register-password').value;
     const passwordConfirm = document.getElementById('register-password-confirm').value;
 
@@ -104,11 +105,16 @@ registerForm.addEventListener('submit', async (e) => {
         return;
     }
 
+    if (!email) {
+        showMessage('请填写邮箱', true);
+        return;
+    }
+
     try {
         const response = await fetch('/api/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password }),
+            body: JSON.stringify({ username, email, password }),
         });
 
         const result = await response.json();
