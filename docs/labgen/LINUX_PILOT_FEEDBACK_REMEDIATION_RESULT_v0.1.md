@@ -341,6 +341,15 @@ What is NOT acceptable:
 
 ---
 
+## N. Attestation Follow-up
+
+**G-54 Linux Pilot Feedback Attestation & Shutdown Result**: `LINUX_PILOT_FEEDBACK_ATTESTATION_AND_SHUTDOWN_READY_WITH_NOTES`
+
+Owner-attested feedback recorded (USER_ONSITE_ATTESTATION). MEDIUM-001 closed as NOTE. MEDIUM-002 reclassified to LOW. Environment confirmed clean. Second trusted reader planning prepared.
+See: `docs/labgen/LINUX_PILOT_FEEDBACK_ATTESTATION_AND_SHUTDOWN_RESULT_v0.1.md`
+
+---
+
 ## M. Artifacts Produced / Updated
 
 | File | Action |

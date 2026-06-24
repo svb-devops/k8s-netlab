@@ -344,5 +344,14 @@ Alternative if feedback remediation is not pursued:
 
 **G-53 Linux Pilot Feedback Remediation Result**: `LINUX_PILOT_FEEDBACK_REMEDIATION_NEEDS_ITERATION`
 
-No qualitative feedback was obtainable by Claude Code. MEDIUM-001 and MEDIUM-002 remain open. Expansion blocked.
+No qualitative feedback was obtainable by Claude Code. MEDIUM-001 and MEDIUM-002 remained open. Expansion blocked.
 See: `docs/labgen/LINUX_PILOT_FEEDBACK_REMEDIATION_RESULT_v0.1.md`
+
+---
+
+## M. Feedback Attestation Follow-up
+
+**G-54 Linux Pilot Feedback Attestation & Shutdown Result**: `LINUX_PILOT_FEEDBACK_ATTESTATION_AND_SHUTDOWN_READY_WITH_NOTES`
+
+Owner onsite attestation recorded (USER_ONSITE_ATTESTATION: "测试非常顺利"). MEDIUM-001 closed as NOTE. MEDIUM-002 reclassified to LOW. Environment confirmed clean. Second trusted reader planning prepared.
+See: `docs/labgen/LINUX_PILOT_FEEDBACK_ATTESTATION_AND_SHUTDOWN_RESULT_v0.1.md`
