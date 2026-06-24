@@ -149,7 +149,7 @@
 | Article thematic mismatch | Article used (`welcome-to-k8s-netlab`) is the platform intro/welcome article, not a Linux-specific article. The binding is real and persisted, but the article content is K8s-generic. A purpose-authored Linux Files & Permissions article would be the correct long-term match. |
 | Email registration remains P1 | Not implemented in this task; username+password only. Noted as P1 gap. |
 | article.html embedded CTA | `article.html` does not auto-render lab-cta-block from API data. Admin must copy CTA from admin UI and embed manually. |
-| Step chmod: expected=600 not 644 | Step 3 initially failed with chmod 644 (lab spec requires 600). Corrected during E2E, no code change needed. Note for readers: step DO instruction says "chmod 644" but verify template expects 600 — a minor content inconsistency. |
+| Step chmod: expected=600 not 644 | **CORRECTED BY G-60**: G-59 E2E operator manually ran `chmod 644` by mistake; actual lab data has `chmod 600` in all fields (commands/do/observe/troubleshoot/verifier). This was a documentation error in this result doc, not a code/data bug. See G-60 ARTICLE_LAB_CONTENT_CONSISTENCY_REMEDIATION_RESULT_v0.1.md. |
 | No live LLM | Stub mode only |
 | No customer pilot | Phase 1 operator-controlled only |
 
@@ -161,7 +161,7 @@
 |-------|-------|--------|
 | BLOCKER | — | None |
 | HIGH | — | None |
-| MEDIUM | `chmod 644` in step DO but verify expects `600` — content inconsistency | NOTE — E2E worked after using correct `chmod 600`; reader would hit the verify failure once, then self-correct from the failure_hint |
+| MEDIUM | `chmod 644` in step DO but verify expects `600` — **CORRECTED BY G-60**: G-59 documentation was wrong; actual data has chmod 600 in all fields. This MEDIUM is CLOSED. | CLOSED (G-60) |
 | LOW | article.html has no embedded CTA component | NOTE — admin copies from admin UI manually; pre-existing limitation |
 | NOTE | Article used is not Linux-specific | NOTED — real URL, real article, not fake; thematic alignment is content work, not engineering blocker |
 

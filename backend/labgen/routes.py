@@ -76,6 +76,7 @@ from backend.labgen.verifier_credentials import VerifierCredentialReclaimer, Ver
 from backend.labgen.draft_preview import DraftPreviewService, DraftPreviewSnapshot
 from backend.labgen.image_readiness import ImageReadinessService
 from backend.labgen.publish_decision import PublishDecision, PublishDecisionService, PublishDecisionStatus
+from backend.labgen.topic_consistency import check_article_lab_consistency
 from backend.labgen.learner_catalog import (
     LearnerCatalogService,
     LearnerLabCatalogItem,
@@ -409,6 +410,7 @@ class LabDraftCTAResponse(BaseModel):
     copyable_text: str
     is_published: bool
     cta_enabled: bool
+    topic_consistency_warning: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -682,6 +684,12 @@ def _build_cta(draft: LabDraft) -> LabDraftCTAResponse:
         f"实验完成后环境自动销毁，数据不保留。"
     )
 
+    topic_warning = check_article_lab_consistency(
+        target_domain=draft.target_domain.value if draft.target_domain else None,
+        article_title=draft.article_title,
+        article_url=draft.article_url,
+    )
+
     return LabDraftCTAResponse(
         lab_id=lab_id,
         lab_url=lab_url,
@@ -694,6 +702,7 @@ def _build_cta(draft: LabDraft) -> LabDraftCTAResponse:
         copyable_text=copyable_text,
         is_published=draft.publish_status == PublishStatus.PUBLISHED,
         cta_enabled=draft.cta_enabled,
+        topic_consistency_warning=topic_warning,
     )
 
 

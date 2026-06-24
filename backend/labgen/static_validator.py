@@ -23,6 +23,7 @@ from backend.labgen.models import (
     ValidatorResult,
     ValidatorStatus,
 )
+from backend.labgen.topic_consistency import check_article_lab_consistency
 
 # Placeholder patterns that block publish — trusted reader sees real content, not stubs
 _PLACEHOLDER_RE = re.compile(
@@ -162,6 +163,7 @@ class StaticValidator:
         results.extend(self._check_operator_crd(draft))
         # K8s domain must not contain Linux verifiers
         results.extend(self._check_k8s_no_linux_verifiers(draft))
+        results.extend(self._check_article_lab_topic_consistency(draft))
 
         # Derived fields — computed after all structural checks
         pollution = self._derive_pollution_level(draft)
@@ -195,6 +197,7 @@ class StaticValidator:
         results.extend(self._check_linux_verifiers_safe(draft))
         results.extend(self._check_linux_sandbox_safe(draft))
         results.extend(self._check_linux_cleanup_safe(draft))
+        results.extend(self._check_article_lab_topic_consistency(draft))
 
         # Pollution level: workspace-only for Linux container labs
         if draft.linux_sandbox_policy is not None:
@@ -733,6 +736,27 @@ class StaticValidator:
             ))
 
         return failures or [_pass("linux.cleanup_safe", "linux_cleanup")]
+
+    # ------------------------------------------------------------------
+    # Article-lab topic consistency (G-60)
+    # ------------------------------------------------------------------
+
+    def _check_article_lab_topic_consistency(self, draft: LabDraft) -> list[ValidatorResult]:
+        """Warn (non-blocking) if article title/url keywords don't match lab domain."""
+        domain = draft.target_domain.value if draft.target_domain else None
+        warning = check_article_lab_consistency(
+            target_domain=domain,
+            article_title=draft.article_title,
+            article_url=draft.article_url,
+        )
+        if warning is not None:
+            return [_fail(
+                "content.article_lab_topic_consistency",
+                BlockingLevel.DRAFT_WARNING,
+                "article_title/article_url",
+                warning,
+            )]
+        return [_pass("content.article_lab_topic_consistency", "article_title/article_url")]
 
     # ------------------------------------------------------------------
     # Derived: shared_namespace_candidate  (§8, 9 conditions)
