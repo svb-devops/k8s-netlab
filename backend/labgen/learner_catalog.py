@@ -114,6 +114,11 @@ class LearnerLabDetail(BaseModel):
     start_eligibility: LearnerLabEligibility
     experiment_background: Optional[str] = None
     completion_summary: Optional[str] = None
+    # Article binding (G-58) — only present when cta_enabled=True on the published lab.
+    # source_article_id and raw article text are NEVER included.
+    article_url: Optional[str] = None
+    article_title: Optional[str] = None
+    article_channel: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +226,15 @@ class LearnerCatalogService:
 
         bg = (draft.experiment_background or "").strip()
         summary_text = (draft.completion_summary or "").strip()
+
+        # Only expose article binding when admin has explicitly enabled CTA.
+        # source_article_id is NEVER included — internal tracking only.
+        art_url = art_title = art_channel = None
+        if getattr(draft, "cta_enabled", False):
+            art_url = self._sanitize(draft.article_url or "")[:2000] or None
+            art_title = self._sanitize(draft.article_title or "")[:500] or None
+            art_channel = self._sanitize(draft.article_channel or "")[:50] or None
+
         return LearnerLabDetail(
             lab_id=draft.lab_id,
             title=self._sanitize(draft.title),
@@ -232,6 +246,9 @@ class LearnerCatalogService:
             start_eligibility=eligibility,
             experiment_background=self._sanitize(bg) if bg else None,
             completion_summary=self._sanitize(summary_text) if summary_text else None,
+            article_url=art_url,
+            article_title=art_title,
+            article_channel=art_channel,
         )
 
     def evaluate_start_eligibility(

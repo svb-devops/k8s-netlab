@@ -354,6 +354,61 @@ class PatchDraftRequest(BaseModel):
     # publish_status may be set to draft/review_required/publish_blocked;
     # setting to "published" is rejected (use the publish endpoint instead).
     publish_status: Optional[PublishStatus] = None
+    # Article binding metadata (G-58)
+    article_url: Optional[str] = None
+    article_title: Optional[str] = None
+    article_channel: Optional[str] = None
+    article_published_at: Optional[datetime] = None
+    cta_enabled: Optional[bool] = None
+
+    @field_validator("article_url")
+    @classmethod
+    def _validate_article_url(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        v = v.strip()
+        if not (v.startswith("http://") or v.startswith("https://")):
+            raise ValueError("article_url must start with http:// or https://")
+        if len(v) > 2000:
+            raise ValueError("article_url must be at most 2000 characters")
+        return v
+
+    @field_validator("article_title")
+    @classmethod
+    def _validate_article_title(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        v = v.strip()
+        if len(v) > 500:
+            raise ValueError("article_title must be at most 500 characters")
+        if "<" in v or ">" in v:
+            raise ValueError("article_title must not contain HTML tags")
+        return v
+
+    @field_validator("article_channel")
+    @classmethod
+    def _validate_article_channel(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        _ALLOWED = {"official_site", "wechat", "zhihu", "csdn", "github", "other"}
+        if v not in _ALLOWED:
+            raise ValueError(f"article_channel must be one of: {', '.join(sorted(_ALLOWED))}")
+        return v
+
+
+class LabDraftCTAResponse(BaseModel):
+    """Admin-only CTA generation response — never exposed to learners."""
+    lab_id: str
+    lab_url: str
+    deep_link: str
+    article_url: Optional[str]
+    article_title: Optional[str]
+    plain_cta: str
+    markdown_cta: str
+    html_cta: str
+    copyable_text: str
+    is_published: bool
+    cta_enabled: bool
 
 
 # ---------------------------------------------------------------------------
@@ -587,6 +642,78 @@ async def publish_draft(
         )
 
     return saved
+
+
+# ===========================================================================
+# Admin CTA Generation — GET /api/labgen/drafts/{id}/cta  (G-58)
+# Admin-only. Returns all CTA formats for a draft or published lab.
+# NEVER exposed to learners. source_article_id and raw text NOT included.
+# ===========================================================================
+
+_SITE_BASE_URL = "https://lab.cloudnetops.tech"
+
+
+def _build_cta(draft: LabDraft) -> LabDraftCTAResponse:
+    lab_id = draft.lab_id
+    title = draft.article_title or draft.title
+    deep_link = f"/labgen-lab.html?labId={lab_id}"
+    lab_url = f"{_SITE_BASE_URL}{deep_link}"
+    article_url = draft.article_url
+
+    plain_cta = lab_url
+
+    markdown_cta = (
+        f"> **配套实验**：[{title}]({lab_url})\n"
+        "> 无需本地环境，浏览器直接练习，完成后自动销毁。"
+    )
+
+    html_cta = (
+        f'<div class="lab-cta-block">'
+        f'<p>本文配套实操实验已上线：</p>'
+        f'<a href="{deep_link}" class="btn-start-lab">{title}</a>'
+        f'<small>无需安装环境，完成后自动销毁</small>'
+        f'</div>'
+    )
+
+    copyable_text = (
+        f"本文配套实操实验已上线，无需安装任何环境，在浏览器中直接练习：\n"
+        f"点击进入实验 → {title}\n"
+        f"{lab_url}\n"
+        f"实验完成后环境自动销毁，数据不保留。"
+    )
+
+    return LabDraftCTAResponse(
+        lab_id=lab_id,
+        lab_url=lab_url,
+        deep_link=deep_link,
+        article_url=article_url,
+        article_title=title,
+        plain_cta=plain_cta,
+        markdown_cta=markdown_cta,
+        html_cta=html_cta,
+        copyable_text=copyable_text,
+        is_published=draft.publish_status == PublishStatus.PUBLISHED,
+        cta_enabled=draft.cta_enabled,
+    )
+
+
+@router.get("/drafts/{lab_id}/cta", response_model=LabDraftCTAResponse)
+async def get_draft_cta(
+    lab_id: str,
+    admin: str = Depends(require_admin_user),
+    repo: LabDraftRepository = Depends(get_repository),
+) -> LabDraftCTAResponse:
+    """
+    Admin-only CTA generation endpoint.
+    Returns all CTA formats (plain / markdown / html / copyable text).
+    Never exposes source_article_id or raw article content.
+    Available for any draft status (admin preview tool).
+    cta_enabled=False on draft means reader-facing CTA is not live yet.
+    """
+    draft = repo.get(lab_id)
+    if draft is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft not found")
+    return _build_cta(draft)
 
 
 # ===========================================================================

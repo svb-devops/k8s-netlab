@@ -20,9 +20,128 @@
 </header>
 
 <!-- ── Main ── -->
-<main class="max-w-3xl mx-auto px-6 py-8">
+<main class="max-w-3xl mx-auto px-6 py-8 space-y-8">
     <div id="root">
         <!-- Loading spinner injected by renderLoading() -->
+    </div>
+
+    <!-- Article Metadata Section (hidden until draft loaded) -->
+    <div id="article-meta-section" class="hidden">
+        <div class="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
+            <h3 class="font-semibold text-gray-800">Article Binding</h3>
+            <p class="text-xs text-gray-500">
+                Link this lab to an externally published article.
+                Article URL is stored only — it is never fetched or scraped.
+                Enable CTA only after the article is live.
+            </p>
+
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Article URL</label>
+                    <input id="inp-article-url" type="url"
+                        placeholder="https://..."
+                        class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <p class="text-xs text-gray-400 mt-1">Must start with http:// or https://. Max 2000 chars.</p>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Article Title</label>
+                    <input id="inp-article-title" type="text"
+                        placeholder="Title as it appears in the article"
+                        maxlength="500"
+                        class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Channel</label>
+                    <select id="inp-article-channel"
+                        class="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">— not set —</option>
+                        <option value="official_site">Official Site</option>
+                        <option value="wechat">WeChat</option>
+                        <option value="zhihu">Zhihu</option>
+                        <option value="csdn">CSDN</option>
+                        <option value="github">GitHub</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Published At (optional)</label>
+                    <input id="inp-article-published-at" type="date"
+                        class="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <input id="inp-cta-enabled" type="checkbox" class="h-4 w-4 text-blue-600 rounded border-gray-300" />
+                    <label for="inp-cta-enabled" class="text-sm font-medium text-gray-700">
+                        CTA Enabled (readers see article link in lab detail)
+                    </label>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3 pt-2">
+                <button id="btn-save-meta"
+                    class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded transition-colors">
+                    Save Article Metadata
+                </button>
+                <span id="meta-save-status" class="text-sm"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- CTA Section (hidden until draft loaded) -->
+    <div id="cta-section" class="hidden">
+        <div class="bg-white border border-gray-200 rounded-lg p-6 space-y-4">
+            <h3 class="font-semibold text-gray-800">CTA Copy</h3>
+            <p class="text-xs text-gray-500">
+                Admin-only. Copy and paste into your article publish channel.
+                CTA wording: lab is for this article's readers, no local setup needed, auto-destroyed on completion.
+                Do NOT claim: any article generates a lab, user upload available, live AI enabled, or production launch.
+            </p>
+
+            <div class="space-y-3">
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs font-medium text-gray-600">Plain Link</span>
+                        <button class="btn-copy text-xs text-blue-600 hover:underline" data-target="cta-plain">Copy</button>
+                    </div>
+                    <pre id="cta-plain" class="bg-gray-50 border border-gray-200 rounded p-2 text-xs overflow-x-auto whitespace-pre-wrap break-all"></pre>
+                </div>
+
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs font-medium text-gray-600">Chinese Copyable Text (WeChat / Zhihu)</span>
+                        <button class="btn-copy text-xs text-blue-600 hover:underline" data-target="cta-copyable">Copy</button>
+                    </div>
+                    <pre id="cta-copyable" class="bg-gray-50 border border-gray-200 rounded p-2 text-xs overflow-x-auto whitespace-pre-wrap"></pre>
+                </div>
+
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs font-medium text-gray-600">Markdown (GitHub / Blog)</span>
+                        <button class="btn-copy text-xs text-blue-600 hover:underline" data-target="cta-markdown">Copy</button>
+                    </div>
+                    <pre id="cta-markdown" class="bg-gray-50 border border-gray-200 rounded p-2 text-xs overflow-x-auto whitespace-pre-wrap"></pre>
+                </div>
+
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs font-medium text-gray-600">HTML Block (article.html embed)</span>
+                        <button class="btn-copy text-xs text-blue-600 hover:underline" data-target="cta-html">Copy</button>
+                    </div>
+                    <pre id="cta-html" class="bg-gray-50 border border-gray-200 rounded p-2 text-xs overflow-x-auto whitespace-pre-wrap"></pre>
+                </div>
+            </div>
+
+            <div class="pt-1">
+                <button id="btn-refresh-cta"
+                    class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium px-4 py-2 rounded transition-colors">
+                    Refresh CTA
+                </button>
+                <span id="cta-status" class="text-xs text-gray-400 ml-2"></span>
+            </div>
+        </div>
     </div>
 </main>
 
@@ -37,11 +156,16 @@ import {
 
 const root = document.getElementById('root');
 const devInfo = document.getElementById('dev-user-info');
+const articleMetaSection = document.getElementById('article-meta-section');
+const ctaSection = document.getElementById('cta-section');
+
+function _safe(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
 async function init() {
     root.innerHTML = renderLoading();
 
-    // Auth guard — redirect to login if not authenticated
     const client = new LabGenClient();
     const me = await client.getMe();
     if (!me) {
@@ -54,7 +178,6 @@ async function init() {
     }
     devInfo.textContent = me.username + ' (admin)';
 
-    // Draft ID from URL param
     const params = new URLSearchParams(window.location.search);
     const draftId = params.get('draftId');
     if (!draftId) {
@@ -63,12 +186,20 @@ async function init() {
     }
 
     try {
-        const [preview, decision] = await Promise.all([
+        const [preview, decision, draft] = await Promise.all([
             client.getDraftPreview(draftId),
             client.getPublishDecision(draftId),
+            client.getDraft(draftId),
         ]);
         root.innerHTML = renderAdminDraftView({ preview, decision });
         attachPublishAction(client, draftId);
+        populateArticleMeta(draft);
+        articleMetaSection.classList.remove('hidden');
+        attachMetaSaveAction(client, draftId);
+
+        await refreshCta(client, draftId);
+        ctaSection.classList.remove('hidden');
+        attachCtaActions(client, draftId);
     } catch (e) {
         if (e instanceof LabGenApiError && e.status === 404) {
             root.innerHTML = renderNotFound('Draft');
@@ -101,6 +232,80 @@ function attachPublishAction(client, draftId) {
             errDiv.textContent = msg;
             btn.insertAdjacentElement('afterend', errDiv);
         }
+    });
+}
+
+function populateArticleMeta(draft) {
+    document.getElementById('inp-article-url').value = draft.article_url ?? '';
+    document.getElementById('inp-article-title').value = draft.article_title ?? '';
+    const chan = document.getElementById('inp-article-channel');
+    chan.value = draft.article_channel ?? '';
+    if (draft.article_published_at) {
+        const d = new Date(draft.article_published_at);
+        document.getElementById('inp-article-published-at').value = d.toISOString().split('T')[0];
+    }
+    document.getElementById('inp-cta-enabled').checked = !!draft.cta_enabled;
+}
+
+function attachMetaSaveAction(client, draftId) {
+    document.getElementById('btn-save-meta').addEventListener('click', async () => {
+        const statusEl = document.getElementById('meta-save-status');
+        statusEl.textContent = 'Saving…';
+        statusEl.className = 'text-sm text-gray-500';
+
+        const pubAt = document.getElementById('inp-article-published-at').value;
+        const body = {
+            article_url: document.getElementById('inp-article-url').value.trim() || null,
+            article_title: document.getElementById('inp-article-title').value.trim() || null,
+            article_channel: document.getElementById('inp-article-channel').value || null,
+            article_published_at: pubAt ? new Date(pubAt).toISOString() : null,
+            cta_enabled: document.getElementById('inp-cta-enabled').checked,
+        };
+
+        try {
+            await client.patchDraft(draftId, body);
+            statusEl.textContent = 'Saved ✓';
+            statusEl.className = 'text-sm text-green-600';
+            await refreshCta(client, draftId);
+        } catch (e) {
+            const msg = e instanceof LabGenApiError ? e.message : 'Save failed.';
+            statusEl.textContent = 'Error: ' + msg;
+            statusEl.className = 'text-sm text-red-600';
+        }
+    });
+}
+
+async function refreshCta(client, draftId) {
+    try {
+        const cta = await client.getDraftCta(draftId);
+        document.getElementById('cta-plain').textContent = cta.plain_cta ?? '';
+        document.getElementById('cta-copyable').textContent = cta.copyable_text ?? '';
+        document.getElementById('cta-markdown').textContent = cta.markdown_cta ?? '';
+        document.getElementById('cta-html').textContent = cta.html_cta ?? '';
+        const statusEl = document.getElementById('cta-status');
+        statusEl.textContent = cta.is_published
+            ? (cta.cta_enabled ? 'Published · CTA enabled' : 'Published · CTA disabled')
+            : 'Draft · not yet published';
+    } catch (e) {
+        document.getElementById('cta-status').textContent = 'CTA load failed';
+    }
+}
+
+function attachCtaActions(client, draftId) {
+    document.querySelectorAll('.btn-copy').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetId = btn.dataset.target;
+            const text = document.getElementById(targetId)?.textContent ?? '';
+            navigator.clipboard.writeText(text).then(() => {
+                const orig = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => { btn.textContent = orig; }, 1500);
+            });
+        });
+    });
+
+    document.getElementById('btn-refresh-cta').addEventListener('click', async () => {
+        await refreshCta(client, draftId);
     });
 }
 

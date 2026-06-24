@@ -207,9 +207,9 @@ Article → Lab 的完整闭环是：
 
 | Level | Issue | Status |
 |-------|-------|--------|
-| P0 | `article_url` 字段缺失 → Admin 无法记录外部文章链接 | ⚠️ Gap — 下一步实现 |
-| P0 | Admin CTA 工具缺失 → 发布文章需手工拼 URL | ⚠️ Gap — 下一步实现 |
-| P1 | 邮箱字段缺失 → 无法推送通知/找回密码 | ⚠️ Gap — P0 完成后实现 |
+| P0 | `article_url` 字段缺失 → Admin 无法记录外部文章链接 | ✅ CLOSED — G-58 实现 |
+| P0 | Admin CTA 工具缺失 → 发布文章需手工拼 URL | ✅ CLOSED — G-58 实现 |
+| P1 | 邮箱字段缺失 → 无法推送通知/找回密码 | ⚠️ Gap — 待规划 |
 | MEDIUM | K8s labs 缺 `experiment_background`、`completion_summary`、`ai_tutor_context` | NOTE — 内容遗留，可在下次 lab 迭代补充 |
 | MEDIUM | K8s labs 步骤缺 `troubleshoot` 字段 | NOTE — 内容遗留 |
 | LOW | Linux lab 6c439064 `experiment_background` 内容完整 | ✅ 已有 |

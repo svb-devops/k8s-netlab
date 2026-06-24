@@ -433,8 +433,50 @@ class LabDraft(SchemaVersionedModel):
     # Content quality fields (G-48). Optional; empty string = not yet authored.
     experiment_background: Optional[str] = ""
     completion_summary: Optional[str] = ""
+    # Article binding metadata (G-58) — admin sets these after external publish.
+    # article_url: external article link (website / wechat / zhihu / csdn / github).
+    # Never used to fetch or scrape article content — storage only.
+    article_url: Optional[str] = None
+    article_title: Optional[str] = None
+    article_channel: Optional[str] = None       # e.g. official_site/wechat/zhihu/csdn/github/other
+    article_published_at: Optional[datetime] = None
+    cta_enabled: bool = False                   # admin must explicitly enable before reader-facing CTA is live
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    @field_validator("article_url")
+    @classmethod
+    def _validate_article_url(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        v = v.strip()
+        if not (v.startswith("http://") or v.startswith("https://")):
+            raise ValueError("article_url must start with http:// or https://")
+        if len(v) > 2000:
+            raise ValueError("article_url must be at most 2000 characters")
+        return v
+
+    @field_validator("article_title")
+    @classmethod
+    def _validate_article_title(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        v = v.strip()
+        if len(v) > 500:
+            raise ValueError("article_title must be at most 500 characters")
+        if "<" in v or ">" in v:
+            raise ValueError("article_title must not contain HTML tags")
+        return v
+
+    @field_validator("article_channel")
+    @classmethod
+    def _validate_article_channel(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        _ALLOWED = {"official_site", "wechat", "zhihu", "csdn", "github", "other"}
+        if v not in _ALLOWED:
+            raise ValueError(f"article_channel must be one of: {', '.join(sorted(_ALLOWED))}")
+        return v
 
 
 # ---------------------------------------------------------------------------

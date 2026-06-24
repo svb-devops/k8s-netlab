@@ -17,6 +17,9 @@ const PATHS = {
     llmProviderValidateConfig: '/api/labgen/llm-provider/validate-config',
     runtimeAdapterStatus:     '/api/labgen/runtime/adapter-status',
     generateDraft:   '/api/lab-drafts/generate',
+    getDraft:        '/api/labgen/drafts/:lab_id',
+    patchDraft:      '/api/labgen/drafts/:lab_id',
+    getDraftCta:     '/api/labgen/drafts/:lab_id/cta',
     draftPreview:    '/api/labgen/drafts/:lab_id/preview',
     publishDecision: '/api/labgen/drafts/:lab_id/publish-decision',
     publishDraft:    '/api/labgen/drafts/:lab_id/publish',
@@ -116,6 +119,21 @@ export class LabGenClient {
     /** POST /api/lab-drafts/generate */
     async generateDraft(articleText, hints = {}) {
         return this._request('POST', PATHS.generateDraft, { article_text: articleText, ...hints });
+    }
+
+    /** GET /api/labgen/drafts/:lab_id */
+    async getDraft(labId) {
+        return this._request('GET', _fill(PATHS.getDraft, { lab_id: labId }));
+    }
+
+    /** PATCH /api/labgen/drafts/:lab_id  — admin only */
+    async patchDraft(labId, body) {
+        return this._request('PATCH', _fill(PATHS.patchDraft, { lab_id: labId }), body);
+    }
+
+    /** GET /api/labgen/drafts/:lab_id/cta  — admin only */
+    async getDraftCta(labId) {
+        return this._request('GET', _fill(PATHS.getDraftCta, { lab_id: labId }));
     }
 
     /** GET /api/labgen/drafts/:lab_id/preview */

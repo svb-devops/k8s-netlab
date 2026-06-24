@@ -221,3 +221,34 @@ Phase 1 产品方向对齐完成。
 ### Recommended Next Step
 
 Article URL + CTA Tool Implementation（P0 gap 1 + gap 2 联合实现）
+
+---
+
+## G-58 — Article URL + CTA Tool Implementation v0.1
+
+**Date**: 2026-06-24
+**Decision**: `ARTICLE_URL_AND_CTA_TOOL_READY`
+**Operator**: Claude Code (senior dev + ops)
+
+### Summary
+
+Implemented P0 Gap 1 (article_url binding) + P0 Gap 2 (Admin CTA tool).
+
+- `LabDraft` model: 5 new article binding fields with server-side validators
+- New admin endpoint: `GET /api/labgen/drafts/{id}/cta` — 4 CTA formats (plain/markdown/html/copyable)
+- `PATCH /api/labgen/drafts/{id}` extended to support article metadata
+- Learner API: article_url/title/channel exposed only when cta_enabled=True; source_article_id never exposed
+- Admin UI: article metadata form + 4-format CTA copy buttons
+- 42 new tests; full suite 4382+ PASS; coverage 92.26%
+- safety-reviewer APPROVED_WITH_NOTES → MEDIUM fixed (article_channel enum allowlist)
+
+### Health Check
+
+- Tests: 4382+ PASS, 92.26% coverage
+- BLOCKER=0 HIGH=0 MEDIUM=0 (after fix)
+- pre-commit: PASS
+- No live LLM; no public upload; no new lab published; no VMID 500-599 touched
+
+### Recommended Next Step
+
+Admin Article Input MVP — wire one existing published lab to one external article via article_url, test complete CTA → Register → Start Lab → Complete flow.
