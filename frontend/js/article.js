@@ -158,6 +158,106 @@ async function loadArticle() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Lab CTA block — rendered when article has a linked published lab
+// ---------------------------------------------------------------------------
+
+async function loadLabCTA() {
+    const container = document.getElementById('lab-cta-container');
+    if (!container || !slug) return;
+    try {
+        const r = await fetch(`/api/articles/${encodeURIComponent(slug)}/lab-cta`);
+        if (!r.ok) return;
+        const data = await r.json();
+        if (!data.has_cta) return;
+        renderLabCTA(container, data);
+    } catch (_) {
+        // Silent: no CTA is the safe fallback; never surface internal errors to reader
+        console.debug('[LabCTA] no CTA available or fetch failed');
+    }
+}
+
+function _validateCtaUrl(raw) {
+    // Only allow our own lab deep links — reject anything else
+    if (typeof raw === 'string' && raw.startsWith('/labgen-lab.html?labId=')) return raw;
+    return null;
+}
+
+function renderLabCTA(container, data) {
+    const ctaUrl = _validateCtaUrl(data.cta_url);
+    if (!ctaUrl) {
+        console.debug('[LabCTA] cta_url did not pass validation, skipping render');
+        return;
+    }
+
+    const block = document.createElement('div');
+    block.id = 'lab-cta-block';
+    block.className = 'bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-6 my-8';
+
+    // Header row: badge + label
+    const header = document.createElement('div');
+    header.className = 'flex items-center gap-2 mb-3';
+    const badge = document.createElement('span');
+    badge.className = 'bg-blue-600 text-white text-xs font-semibold px-2.5 py-0.5 rounded-full';
+    badge.textContent = '配套实验';
+    const label = document.createElement('span');
+    label.className = 'text-xs text-blue-700 font-medium';
+    label.textContent = '读完这篇，可以立即动手实践';
+    header.appendChild(badge);
+    header.appendChild(label);
+
+    // Lab title
+    const title = document.createElement('h3');
+    title.className = 'text-lg font-bold text-gray-900 mb-2';
+    title.textContent = data.lab_title || '配套实验';
+
+    // Subtitle
+    const subtitle = document.createElement('p');
+    subtitle.className = 'text-sm text-gray-600 mb-3';
+    subtitle.textContent = '无需安装本地环境，在浏览器中直接操练，完成后自动销毁。';
+
+    // Meta row: domain + duration
+    const meta = document.createElement('div');
+    meta.className = 'flex flex-wrap items-center gap-3 text-xs text-gray-500 mb-5';
+    if (data.domain) {
+        const domainPill = document.createElement('span');
+        domainPill.className = 'bg-white border border-gray-200 px-2 py-0.5 rounded-md';
+        domainPill.textContent = data.domain.toUpperCase();
+        meta.appendChild(domainPill);
+    }
+    if (data.estimated_duration) {
+        const dur = document.createElement('span');
+        dur.textContent = '约 ' + data.estimated_duration + ' 分钟';
+        meta.appendChild(dur);
+    }
+
+    // CTA button
+    const btn = document.createElement('a');
+    btn.className = 'inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm px-6 py-2.5 rounded-xl transition-colors';
+    if (currentUser) {
+        btn.href = ctaUrl;
+        btn.textContent = data.cta_text || '进入实验';
+    } else {
+        btn.href = '/login.html';
+        btn.textContent = '登录后开始实验';
+    }
+
+    // Safety note
+    const note = document.createElement('p');
+    note.className = 'mt-4 text-xs text-gray-400';
+    note.textContent = data.sandbox_note || '实验运行在临时隔离环境中，完成后自动销毁。';
+
+    block.appendChild(header);
+    block.appendChild(title);
+    block.appendChild(subtitle);
+    block.appendChild(meta);
+    block.appendChild(btn);
+    block.appendChild(note);
+
+    container.appendChild(block);
+}
+
 initAuth().then(() => {
     loadArticle();
+    loadLabCTA();
 });
