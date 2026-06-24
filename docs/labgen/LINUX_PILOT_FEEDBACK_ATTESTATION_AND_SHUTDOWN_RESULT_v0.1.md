@@ -356,3 +356,17 @@ What must NOT happen before user approval:
 | `docs/labgen/LINUX_TRUSTED_READER_PILOT_EXIT_REVIEW_RESULT_v0.1.md` | ✅ Updated — Section M (Attestation Follow-up) |
 | `deploy/labgen/staging_ops_ticket_status.md` | ✅ Updated (G-54 row) |
 | `CHANGELOG.md` | ✅ Updated ([Unreleased]) |
+
+---
+
+## N. Planning Review Follow-up (G-55, 2026-06-24)
+
+Second Linux Trusted Reader Pilot Planning Review completed.
+
+| Item | Status |
+|------|--------|
+| Planning review | ✅ SECOND_LINUX_TRUSTED_READER_PILOT_PLANNING_REVIEW_READY_WITH_NOTES |
+| Plan updated | ✅ reader identity format, test window format, independence tracking added |
+| Second reader started | ❌ No — awaiting user inputs |
+| Account created | ❌ No |
+| Full result | `docs/labgen/SECOND_LINUX_TRUSTED_READER_PILOT_PLANNING_REVIEW_RESULT_v0.1.md` |

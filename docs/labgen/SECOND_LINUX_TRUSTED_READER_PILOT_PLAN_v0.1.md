@@ -3,7 +3,7 @@
 **Document Type**: Planning Document (Preparation Only — NOT Execution Authorization)  
 **Gate**: Second Linux Trusted Reader Pilot Planning  
 **Date**: 2026-06-23  
-**Status**: PLANNING_ONLY — execution requires explicit user approval  
+**Status**: PLANNING_REVIEW_READY_WITH_NOTES — reviewed G-55 2026-06-24; execution requires explicit user approval  
 **Prepared by**: Claude Code (senior dev + ops role)  
 
 ---
@@ -46,11 +46,41 @@ A second trusted reader is needed before any cohort or expansion is considered. 
 
 | Requirement | Detail |
 |-------------|--------|
-| Identity | Provided by user when ready (not pre-assigned in this plan) |
+| Identity | Provided by user when ready (see D.1 format) |
 | Has NOT seen the lab before | Must be a first-time reader of this specific lab |
 | Technical background | Basic Linux familiarity expected (the lab covers file/permission basics) |
 | Independence | Must complete lab without operator coaching during session |
 | Not current operator / Claude Code | Reader must be a real external person, not the project owner in disguise |
+
+### D.1 Required Identity Format (user must provide all fields)
+
+```
+reader_identity:
+  name_or_handle: <real name or preferred handle — NOT "someone" or vague>
+  contact_channel: <e.g. WeChat, email, Signal>
+  linux_terminal_familiarity: <beginner / comfortable / advanced>
+  availability: <when they are available to run the pilot>
+```
+
+### D.2 Required Test Window Format
+
+```
+test_window:
+  date: <YYYY-MM-DD>
+  start_time: <HH:MM>
+  expected_duration: <e.g. 30-60 minutes>
+  timezone: <e.g. Asia/Shanghai, UTC+8>
+```
+
+Note: If more than 3 days pass between planning approval and execution, a fresh health check is required.
+
+### D.3 Required YES Approval Phrase
+
+```
+YES, approve Second Linux Trusted Reader Pilot Execution.
+```
+
+No paraphrase accepted. Claude Code MUST NOT create account, invite reader, or start any pilot execution without this exact phrase.
 
 ---
 
@@ -114,6 +144,28 @@ Adapted from `LINUX_TRUSTED_READER_PILOT_PLAN_v0.1.md`:
 | Q10 | 如果这是你第一次使用这个平台，你是否愿意继续做类似实验？有什么建议？ |
 
 Closure requirement: ≥8/10 questions answered with substantive responses.
+
+### F.3 Independence and Intervention Tracking (G-55 addition)
+
+The operator must record the following during the session (addresses LOW-004 gap):
+
+```
+pilot_metrics:
+  start_time: <HH:MM>
+  complete_time: <HH:MM>
+  operator_intervention_count: <number of times operator spoke/typed to reader>
+  operator_intervention_detail: <brief description of each, or "none">
+  need_help_opened: <true / false>
+  need_help_steps_opened: <list of step IDs, or []>
+  retry_count: <observed re-runs of commands>
+  failure_step_ids: <steps where reader appeared stuck or failed first attempt>
+  independence_classification: <INDEPENDENT_COMPLETION / ASSISTED_COMPLETION / OPERATOR_GUIDED>
+  completion_confidence: <reader's expressed confidence, if stated>
+```
+
+`INDEPENDENT_COMPLETION` = all 4 steps completed with no operator coaching on commands or steps.
+`ASSISTED_COMPLETION` = operator provided one or more hints.
+`OPERATOR_GUIDED` = operator actively walked reader through steps.
 
 ---
 
