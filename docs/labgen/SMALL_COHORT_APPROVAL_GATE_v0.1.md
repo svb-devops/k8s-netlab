@@ -111,16 +111,18 @@ Owner 提供完整 input + 明确 YES 后，Claude Code 将：
 
 ## F. Owner Input 接收记录
 
-**当前状态**: ⏳ 等待 owner 提供
+**当前状态**: ✅ APPROVED — 2026-06-25
 
-| 字段 | 状态 |
-|------|------|
-| cohort_size | ⏳ 待提供 |
-| learner_identities | ⏳ 待提供 |
-| test_window | ⏳ 待提供 |
-| lab_assignment | ✅ 已确定（linux-files-permissions-basics → 6c439064）|
-| execution_mode | ✅ 推荐 staggered |
-| explicit_approval YES | ⏳ 待提供 |
+| 字段 | 状态 | 值 |
+|------|------|----|
+| cohort_size | ✅ 已提供 | 3 |
+| learner_identities | ✅ 已提供 | learner01, learner02, learner03 |
+| test_window | ✅ 已提供 | 2026-06-25，立即开始 |
+| lab_assignment | ✅ 已确定 | linux-files-permissions-basics → 6c439064 |
+| execution_mode | ✅ | staggered |
+| explicit_approval YES | ✅ 已提供 | `YES, approve Small Cohort Execution.` |
+
+**账号状态**: ✅ 已创建（learner01 / learner02 / learner03，凭证已通过 operator session 传递）
 
 ---
 
