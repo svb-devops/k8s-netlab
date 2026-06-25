@@ -1,9 +1,9 @@
 # Real External Article Binding Gate & E2E Validation v0.1
 
-**Date**: 2026-06-24
+**Date**: 2026-06-24 / 2026-06-25 (E2E executed)
 **Operator**: Claude Code — senior dev + ops
 **Task ref**: G-63
-**Status**: REAL_EXTERNAL_ARTICLE_BINDING_NEEDS_OWNER_INPUT
+**Status**: REAL_EXTERNAL_ARTICLE_BINDING_READY_WITH_NOTES
 
 ---
 
@@ -11,17 +11,19 @@
 
 | 项目 | 结论 |
 |------|------|
-| Owner 是否提供真实外部文章 URL？ | **否** — 本次任务消息无 `real_article:` 输入块 |
-| 真实外部文章绑定是否完成？ | **否** — 缺少 owner 输入，不得伪造 |
-| mock_admin_article 限制是否关闭？ | **否** — 仍为 mock/platform-internal article |
-| E2E validation 是否执行？ | **否** — 路径 B，无真实外部文章，不得执行 real E2E |
+| Owner 是否提供真实外部文章 URL？ | **是** — owner 实时确认，`article_channel: official_site` |
+| 真实外部文章绑定是否完成？ | **是** ✅ |
+| mock_admin_article 限制是否关闭？ | **是** ✅ — owner 确认平台自身文章为官方渠道真实发布 |
+| E2E validation 是否执行？ | **是** ✅ — owner 亲自操作完整 E2E |
 | 无 public upload 是否保持？ | **是** ✅ |
 | 无 live LLM 是否保持？ | **是** ✅ |
 | 无 URL scraping 是否保持？ | **是** ✅ |
 
-**Owner Input Gate 结论**：本次消息中未包含 `real_article:` 输入块，无 `article_url`。
-按照严格规则（路径 B），不得伪造真实外部文章 URL，不得将现有 platform-internal article 当作 real external article。
-Final decision: **REAL_EXTERNAL_ARTICLE_BINDING_NEEDS_OWNER_INPUT**。
+**Owner 确认**（2026-06-25 实时交互）：
+`lab.cloudnetops.tech/article.html?slug=linux-files-permissions-basics` 即为官方渠道（`official_site`）真实发布文章。
+系统中现有绑定元数据完全正确，无需修改代码或数据。
+E2E 由 owner 亲自操作，4 步全通过，LAB_CLOSED，cleanup_verified=True。
+Final decision: **REAL_EXTERNAL_ARTICLE_BINDING_READY_WITH_NOTES**。
 
 ---
 
@@ -66,35 +68,53 @@ official_site | wechat | zhihu | csdn | github | other
 
 ## D. Binding Result
 
-本次未执行绑定（缺少 owner 输入）。
-
 | 项目 | 状态 |
 |------|------|
-| metadata 更新 | 未执行 |
-| CTA 重新生成 | 未执行 |
-| article.html embedded CTA 验证 | 未执行 |
-| external platform CTA 处理 | 未执行 |
-| mock 标记状态 | 仍为 platform-internal（mock_admin_article 历史分类） |
+| Owner 确认 article_channel: official_site | ✅ 实时交互确认 |
+| metadata 已正确设置（无需变更） | ✅ |
+| CTA 验证 | ✅ has_cta=true，lab_id 正确，cta_url 正确 |
+| article.html embedded CTA 验证 | ✅ owner 亲眼确认渲染正确 |
+| external platform：N/A（official_site） | ✅ 平台自身即为发布渠道 |
+| mock 标记状态 | ✅ **已关闭** — owner 确认为真实官方渠道文章 |
 
-### 当前系统中的文章状态（参考）
+### 绑定元数据（已生效）
 
 ```
-draft id:        (lab 6c439064 的 draft)
+draft key:       6c439064-4cad-4229-addb-36927128d565
 article_url:     https://lab.cloudnetops.tech/article.html?slug=linux-files-permissions-basics
 article_channel: official_site
 article_title:   Linux 文件与权限基础：创建、查看并修改权限
-article_type:    None (历史分类: mock_admin_article)
+article_published_at: 2026-06-24T00:00:00Z
+article_type:    real_external_article (official_site, owner-confirmed 2026-06-25)
 cta_enabled:     True
-source_article_id: art-linux-files-permissions-001
 ```
 
-此 URL 指向平台自身 article 页（Directus 管理），**不符合** real external article 要求。
+注：LabDraft 数据模型无 article_type 字段，owner 确认记录于本文档及 CHANGELOG。
 
 ---
 
 ## E. Reader E2E Result
 
-未执行（缺少真实外部文章输入，不得伪造）。
+**执行者**：owner（使用已有账号 lnx-trusted-02，实时交互操作）
+
+| 项目 | 结果 |
+|------|------|
+| reader account | lnx-trusted-02 |
+| session_id | 85e13c1d-2a49-465c-9951-dd3f422b8a64 |
+| lab_id | 6c439064-4cad-4229-addb-36927128d565 |
+| article → CTA 渲染 | ✅ owner 截图确认 |
+| 登录跳转 | ✅ 已有 session 直达 lab detail |
+| Start Lab | ✅ LAB_ACTIVE |
+| Step 1 (mkdir + echo) | ✅ PASS |
+| Step 2 (cat) | ✅ PASS |
+| Step 3 (chmod 600) | ✅ PASS |
+| Step 4 (auto-pass) | ✅ PASS |
+| Complete Lab | ✅ LAB_CLOSED |
+| cleanup_verified | **True** ✅ |
+| residual | **0** ✅ |
+| tainted_vms | `{}` ✅ |
+| 总耗时 | ~7 分钟（05:16 → 05:23 UTC）|
+| health after run | `{"status":"healthy","proxmox":{"connected":true}}` ✅ |
 
 ---
 
@@ -116,29 +136,29 @@ source_article_id: art-linux-files-permissions-001
 
 ## G. Negative Checks
 
-已验证（readiness checks，路径 B）：
-
 | 检查 | 状态 |
 |------|------|
-| docs 中无 mock 被声称为 real external article | ✅ PASS |
-| 代码中无 `mock_admin_article` 字符串（作为 real） | ✅ PASS — 仅为历史文档分类标注 |
-| docs 中的 zhihu/weixin URL 为注释示例，非声称的真实绑定 | ✅ PASS |
-| 无伪造的外部文章 URL | ✅ PASS — 本次无 owner 输入，未伪造 |
-| owner input template 已创建 | ✅ 见下方 Section K |
+| N1: source_article_id not in CTA response | ✅ PASS |
+| N2: article_url not in CTA response | ✅ PASS |
+| N3: email not exposed in API | ✅ PASS（lnx-trusted-02 为 legacy 账号无 email，API 不返回）|
+| N4: password_hash not exposed | ✅ PASS |
+| N5: welcome article has_cta=false（draft/internal 不暴露）| ✅ PASS |
+| N6: learner 无法 PATCH draft（401 blocked）| ✅ PASS |
+| 无 mock 被声称为 real（文档一致性）| ✅ PASS |
+| 无伪造外部 URL | ✅ PASS |
 | pre-commit PASS | ✅（文档变更，无代码变更）|
 
 ---
 
 ## H. Known Limitations
 
-- **Owner 未提供真实外部文章 URL** — 这是本次任务停止在 NEEDS_OWNER_INPUT 的唯一原因。
-- 当前 Linux 文章系统存在于平台自身（Directus，`lab.cloudnetops.tech/article.html`），内容质量完整，但不是预先在外部独立平台发布的文章。
-- `official_site` 渠道原则上有效（若 owner 确认平台自身文章即为"官方渠道"发布的真实文章），但必须由 owner 明确确认，Claude Code 不得自行认定。
+- article_type 字段在 LabDraft 数据模型中不存在（无 schema 字段）；owner 确认记录于本文档，不修改 schema。
+- 文章托管在平台自身（Directus + `lab.cloudnetops.tech`），非第三方外部平台；owner 确认 official_site 为合法渠道。
+- Reader 账号 lnx-trusted-02 为 legacy 账号（pre-G-62，无 email）；E2E 正常通过，注册流程需用新账号验证 email 字段。
 - email verification 仍在 Phase 1 范围外。
 - forgot password 仍在 Phase 1 范围外。
 - 无 customer pilot。
 - 无 public launch。
-- 无并发提升。
 
 ---
 
@@ -157,60 +177,47 @@ source_article_id: art-linux-files-permissions-001
 ## J. Final Decision
 
 ```
-REAL_EXTERNAL_ARTICLE_BINDING_NEEDS_OWNER_INPUT
+REAL_EXTERNAL_ARTICLE_BINDING_READY_WITH_NOTES
 ```
 
 原因：
-1. 本次任务消息中无 `real_article:` 输入块
-2. 无 `article_url`（外部平台）由 owner 明确提供
-3. 不得伪造，不得将 platform-internal article 声称为 real external article
-4. 所有 readiness checks (path B) PASS
-5. Owner input template 已创建（见 Section K）
+1. Owner 实时确认 `official_site` 为真实发布渠道（路径 A）
+2. 元数据绑定已正确生效（无需代码变更）
+3. article.html embedded CTA 渲染正确（owner 截图验证）
+4. E2E 完整通过：4 步全绿，LAB_CLOSED，cleanup_verified=True，residual=0
+5. 全部 Negative Checks PASS
+6. WITH_NOTES：article_type 无 schema 字段（owner 确认记录于文档）；reader 账号为 legacy（无 email）
 
 ---
 
-## K. Owner Input Template
+## K. Owner Confirmation Record
 
-**请 owner 填写以下信息后，重新提交执行 Real External Article Binding：**
+**Owner 确认（2026-06-25，实时交互）**：
 
 ```
 real_article:
-  article_url: <完整 URL，http/https 开头，外部平台地址>
-  article_title: <文章在外部平台显示的标题>
-  article_channel: <official_site | wechat | zhihu | csdn | github | other>
-  article_published_at: <发布时间，格式 YYYY-MM-DDTHH:MM:SSZ>
-  target_lab_id: <要绑定的 lab ID，推荐 6c439064>
-  topic_match_confirmation: <yes | no>
+  article_url: https://lab.cloudnetops.tech/article.html?slug=linux-files-permissions-basics
+  article_title: Linux 文件与权限基础：创建、查看并修改权限
+  article_channel: official_site
+  article_published_at: 2026-06-24T00:00:00Z
+  target_lab_id: 6c439064-4cad-4229-addb-36927128d565
+  topic_match_confirmation: yes
 ```
 
-**填写说明**：
-
-| 字段 | 说明 | 示例 |
-|------|------|------|
-| `article_url` | 文章在外部平台的完整访问地址 | `https://zhuanlan.zhihu.com/p/123456` 或 `https://lab.cloudnetops.tech/article.html?slug=linux-files-permissions-basics`（若确认以官方站点为发布渠道） |
-| `article_title` | 文章在外部平台显示的标题，不含 HTML 标签 | `Linux 文件与权限基础：创建、查看并修改权限` |
-| `article_channel` | 发布渠道枚举（official_site = 平台/官网） | `official_site` |
-| `article_published_at` | 发布时间 | `2026-06-24T00:00:00Z` |
-| `target_lab_id` | 推荐绑定 Linux lab | `6c439064` |
-| `topic_match_confirmation` | 文章主题是否与 lab 匹配 | `yes` |
-
-**特殊说明**：
-若 owner 确认 `lab.cloudnetops.tech/article.html?slug=linux-files-permissions-basics` 即为官方渠道
-（`article_channel: official_site`）的真实发布文章，则 article_url 可填该地址，并需在
-`topic_match_confirmation: yes` 确认主题匹配。Claude Code 收到此确认后即可执行绑定。
+Owner 表述：「情况 A」（平台自身文章即为官方渠道真实发布文章）。
+E2E 由 owner 亲自操作，全程通过。
 
 ---
 
 ## L. Recommended Next Step
 
 ```
-Real External Article Binding Round 2
+Small Cohort Planning Gate
 ```
 
-前提：Owner 填写 Section K 的 owner input template 并重新提交。
+Real External Article Binding 已完成。Phase 1 Article → CTA → Register/Login → Lab → Cleanup 闭环验证完毕。
 
-其他候选（若 owner 决定暂缓 article binding）：
-- Small Cohort Planning Gate
+其他候选：
 - Email Verification / Password Recovery Planning
 - Admin Article Input MVP Round 2
 - Hold Expansion
@@ -257,10 +264,10 @@ Real External Article Binding Round 2
 
 | 文件 | 变更 |
 |------|------|
-| `docs/labgen/REAL_EXTERNAL_ARTICLE_BINDING_RESULT_v0.1.md` | 本文件（新增）|
-| `deploy/labgen/staging_ops_ticket_status.md` | G-63 条目追加 |
+| `docs/labgen/REAL_EXTERNAL_ARTICLE_BINDING_RESULT_v0.1.md` | 本文件（新增 + E2E 结果更新）|
+| `deploy/labgen/staging_ops_ticket_status.md` | G-63 条目更新（READY_WITH_NOTES）|
 | `CHANGELOG.md` | [Unreleased] 更新 |
 
 ---
 
-*Artifact created: 2026-06-24. No code changes. Path B executed.*
+*Artifact created: 2026-06-24. E2E executed: 2026-06-25. Path A (owner confirmed official_site). No code changes.*
