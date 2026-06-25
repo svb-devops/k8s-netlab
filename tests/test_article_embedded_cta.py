@@ -407,6 +407,24 @@ class TestArticleHtmlStaticSafety:
         fn = match.group(0)
         assert "catch" in fn
 
+    def test_article_js_unauthenticated_cta_includes_next_param(self):
+        # Regression: CTA button for unauthenticated users must include ?next= redirect
+        # so learners are sent back to the lab after registration/login.
+        # Without this, new learners land on /app after register, breaking the
+        # Article → CTA → Register → Lab UX flow.
+        js = open("/root/k8s-netlab/frontend/js/article.js").read()
+        match = re.search(r'function renderLabCTA\(.*?\n}', js, re.DOTALL)
+        assert match, "renderLabCTA function not found"
+        fn_body = match.group(0)
+        # Must redirect to /login.html with ?next= param, not bare /login.html
+        assert "'/login.html?next='" in fn_body or '"/login.html?next="' in fn_body, (
+            "Unauthenticated CTA button must link to '/login.html?next=...' to preserve "
+            "the Article → CTA → Register → Lab redirect chain."
+        )
+        assert "encodeURIComponent" in fn_body, (
+            "The ?next= value must be URL-encoded via encodeURIComponent."
+        )
+
 
 # ---------------------------------------------------------------------------
 # E. Exposure rules (API contract safety)

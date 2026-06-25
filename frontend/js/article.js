@@ -238,7 +238,7 @@ function renderLabCTA(container, data) {
         btn.href = ctaUrl;
         btn.textContent = data.cta_text || '进入实验';
     } else {
-        btn.href = '/login.html';
+        btn.href = '/login.html?next=' + encodeURIComponent(ctaUrl);
         btn.textContent = '登录后开始实验';
     }
 
