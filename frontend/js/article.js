@@ -22,7 +22,7 @@ async function initAuth() {
             currentUser = data.username;
             nav.innerHTML = `
                 <span class="text-gray-600 text-sm">${escapeHtml(data.username)}</span>
-                <a href="/app" class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-1.5 rounded-lg transition">进入实验室</a>
+                <a href="/app" data-lab-nav class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-1.5 rounded-lg transition">进入实验室</a>
             `;
         } else {
             nav.innerHTML = `
@@ -255,6 +255,13 @@ function renderLabCTA(container, data) {
     block.appendChild(note);
 
     container.appendChild(block);
+
+    // Unify header nav with embedded CTA so article page has one lab entry point
+    const navLabLink = document.querySelector('#nav-actions [data-lab-nav]');
+    if (navLabLink) {
+        navLabLink.href = ctaUrl;
+        navLabLink.textContent = '进入配套实验';
+    }
 }
 
 initAuth().then(() => {

@@ -425,6 +425,64 @@ class TestArticleHtmlStaticSafety:
             "The ?next= value must be URL-encoded via encodeURIComponent."
         )
 
+    # G-66: MEDIUM-002 fix — header nav must be unified with embedded CTA on article page
+    def test_article_js_init_auth_marks_lab_nav_with_stable_data_attribute(self):
+        # initAuth must add data-lab-nav to the "进入实验室" anchor so renderLabCTA
+        # can locate it with a selector that remains stable after href mutation.
+        js = open("/root/k8s-netlab/frontend/js/article.js").read()
+        match = re.search(r'async function initAuth\(\).*?^}', js, re.DOTALL | re.MULTILINE)
+        assert match, "initAuth function not found"
+        fn_body = match.group(0)
+        assert "data-lab-nav" in fn_body, (
+            "initAuth must add data-lab-nav attribute to the lab entry anchor. "
+            "renderLabCTA uses this stable selector instead of the mutable href."
+        )
+
+    def test_article_js_header_nav_updated_to_linked_lab_when_cta_loaded(self):
+        js = open("/root/k8s-netlab/frontend/js/article.js").read()
+        match = re.search(r'function renderLabCTA\(.*?\n}', js, re.DOTALL)
+        assert match, "renderLabCTA function not found"
+        fn_body = match.group(0)
+        # renderLabCTA must use stable data-lab-nav selector (not mutable href)
+        assert "data-lab-nav" in fn_body, (
+            "renderLabCTA must locate header nav link via [data-lab-nav] stable attribute, "
+            "not a[href='/app'] which becomes stale after the first href mutation. "
+            "MEDIUM-002: 2/3 cohort learners were diverted by header nav competing with CTA."
+        )
+
+    def test_article_js_header_nav_update_uses_pre_validated_cta_url(self):
+        js = open("/root/k8s-netlab/frontend/js/article.js").read()
+        match = re.search(r'function renderLabCTA\(.*?\n}', js, re.DOTALL)
+        assert match, "renderLabCTA function not found"
+        fn_body = match.group(0)
+        # Must assign pre-validated ctaUrl (not raw data) to nav link href
+        assert "navLabLink.href = ctaUrl" in fn_body, (
+            "Header nav href must be set to the already-validated ctaUrl, "
+            "never to raw data.cta_url or any other unvalidated string."
+        )
+
+    def test_article_js_header_nav_text_changes_to_配套实验(self):
+        js = open("/root/k8s-netlab/frontend/js/article.js").read()
+        match = re.search(r'function renderLabCTA\(.*?\n}', js, re.DOTALL)
+        assert match, "renderLabCTA function not found"
+        fn_body = match.group(0)
+        # Text must change to '进入配套实验' to distinguish from catalog entry point
+        assert "进入配套实验" in fn_body, (
+            "Header nav text must change to '进入配套实验' when CTA is loaded "
+            "so readers can distinguish it from the general catalog link."
+        )
+
+    def test_article_js_header_nav_update_uses_safe_dom_textcontent(self):
+        js = open("/root/k8s-netlab/frontend/js/article.js").read()
+        match = re.search(r'function renderLabCTA\(.*?\n}', js, re.DOTALL)
+        assert match, "renderLabCTA function not found"
+        fn_body = match.group(0)
+        # Must update text via .textContent, never .innerHTML
+        assert "navLabLink.textContent" in fn_body, (
+            "Header nav text update must use .textContent, not .innerHTML, "
+            "to avoid XSS risk when setting nav button text."
+        )
+
 
 # ---------------------------------------------------------------------------
 # E. Exposure rules (API contract safety)
