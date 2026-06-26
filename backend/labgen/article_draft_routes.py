@@ -30,6 +30,9 @@ from backend.labgen.article_draft_service import (
     ArticleDraftNotFound,
     ArticleDraftService,
     ArticleDraftTransitionForbidden,
+    ArticleOperabilityRejected,
+    LLMGenerationFailed,
+    LLMDraftParseError,
 )
 from backend.labgen.article_models import (
     AdminDecisionValue,
@@ -80,12 +83,24 @@ def get_article_draft_service() -> ArticleDraftService:
 # ---------------------------------------------------------------------------
 
 
+_ALLOWED_PUBLISH_CHANNELS = frozenset({
+    "official_site", "wechat", "zhihu", "csdn", "github", "other"
+})
+
+_ALLOWED_TARGET_DOMAINS = frozenset({"k8s", "linux"})
+
+
 class CreateArticleDraftRequest(BaseModel):
     """
     Admin submits article text for feasibility assessment and draft creation.
 
     raw_text is processed and classified; it is NEVER persisted.
     source_metadata.raw_text_persisted must be False (default).
+
+    Phase 1 Soft Launch additions:
+      - target_domain: k8s | linux (required for operability gate accuracy)
+      - copyright_confirmed: must be True before submission is accepted
+      - intended_reader, publish_channel, safety_notes, desired_lab_title
     """
 
     raw_text: str
@@ -96,6 +111,13 @@ class CreateArticleDraftRequest(BaseModel):
     language: Optional[str] = None
     user_confirmed_right_to_use: bool = False
     user_confirmed_no_secrets: bool = False
+    # Phase 1 Soft Launch fields
+    target_domain: Optional[str] = None          # k8s | linux (hints feasibility classifier)
+    intended_reader: Optional[str] = None        # e.g. "intermediate k8s practitioner"
+    publish_channel: Optional[str] = None        # official_site | wechat | zhihu | csdn | github | other
+    copyright_confirmed: bool = False            # admin confirms right to use content
+    safety_notes: Optional[str] = None          # admin safety notes (not stored in raw form)
+    desired_lab_title: Optional[str] = None     # admin-suggested lab title for LLM generation
 
 
 class PatchArticleDraftRequest(BaseModel):
@@ -185,12 +207,38 @@ async def create_article_draft(
 
     raw_text is used for classification only and is never persisted.
     content_hash is computed here and stored in source_metadata.
+
+    Phase 1 Soft Launch: copyright_confirmed=True is required.
+    target_domain (k8s|linux) improves operability gate accuracy.
     """
     if not req.raw_text or not req.raw_text.strip():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="raw_text must not be empty",
         )
+
+    # copyright_confirmed gate (Phase 1 Soft Launch requirement)
+    if not req.copyright_confirmed:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="copyright_confirmed must be True — confirm right to use article content",
+        )
+
+    # target_domain validation
+    if req.target_domain is not None:
+        if req.target_domain.lower() not in _ALLOWED_TARGET_DOMAINS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"target_domain must be one of: {sorted(_ALLOWED_TARGET_DOMAINS)}",
+            )
+
+    # publish_channel validation
+    if req.publish_channel is not None:
+        if req.publish_channel.lower() not in _ALLOWED_PUBLISH_CHANNELS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"publish_channel must be one of: {sorted(_ALLOWED_PUBLISH_CHANNELS)}",
+            )
 
     content_hash = compute_content_hash(req.raw_text)
 
@@ -351,6 +399,117 @@ async def convert_to_lab_draft(
         raise _not_found(draft_id)
     except ArticleDraftTransitionForbidden as exc:
         raise _forbidden(str(exc))
+
+
+class GenerateLabFromArticleRequest(BaseModel):
+    """
+    Admin re-submits article text to trigger LLM-based LabDraft generation.
+
+    article_text is used for LLM generation only — it is NEVER persisted.
+    The feasibility result from the stored ArticleDraftLabContract gates generation.
+
+    LABGEN_LLM_MODE controls whether fake or live LLM is used:
+      fake_only       — deterministic template-based generation (default)
+      live_admin_only — calls real LLM (requires LABGEN_LLM_OPENAI_* config)
+    """
+
+    article_text: str
+    desired_lab_title: Optional[str] = None
+
+
+class GenerateLabFromArticleResponse(BaseModel):
+    lab_draft_id: str
+    operability_status: str          # directly_lab_ready | partially_lab_ready
+    validation_passed: bool          # no PUBLISH_BLOCKING validator results
+    warnings: list[str]
+    audit_id: str
+    llm_mode: str                    # fake_only | live_admin_only (active mode)
+
+
+@router.post(
+    "/{draft_id}/generate-lab",
+    response_model=GenerateLabFromArticleResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def generate_lab_from_article(
+    draft_id: str,
+    req: GenerateLabFromArticleRequest,
+    admin: str = Depends(_require_admin),
+    svc: ArticleDraftService = Depends(get_article_draft_service),
+) -> GenerateLabFromArticleResponse:
+    """
+    Generate a LabDraft from an article using the configured LLM mode.
+
+    Requires:
+      - Admin authentication
+      - Existing ArticleDraftLabContract (from POST /api/labgen/article-drafts)
+      - Article feasibility NOT_LAB_READY → 422
+      - article_text re-submitted (never stored, used for generation only)
+
+    Generated LabDraft is always DRAFT status. Admin must:
+      - Review / edit via PATCH /api/labgen/drafts/{lab_id}
+      - Run StaticValidator via POST /api/labgen/drafts/{lab_id}/validate
+      - Run Internal Rehearsal
+      - Publish via POST /api/labgen/drafts/{lab_id}/publish
+
+    LABGEN_LLM_MODE env var controls generation mode:
+      fake_only       — deterministic, no real LLM (default, safe for tests)
+      live_admin_only — calls real LLM (requires LABGEN_LLM_OPENAI_* configuration)
+    """
+    from backend import config as cfg
+
+    if not req.article_text or not req.article_text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="article_text must not be empty",
+        )
+
+    try:
+        result = svc.generate_lab_from_article(
+            draft_id=draft_id,
+            article_text=req.article_text,
+            admin_user=admin,
+            desired_lab_title=req.desired_lab_title,
+        )
+    except ArticleDraftNotFound:
+        raise _not_found(draft_id)
+    except ArticleOperabilityRejected as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "operability_rejected",
+                "rejection_code": exc.rejection_code,
+                "reasons": exc.reasons,
+                "message": "Article is NOT_LAB_READY — LLM generation not allowed",
+            },
+        )
+    except LLMGenerationFailed as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={
+                "error": "llm_generation_failed",
+                "reason": exc.reason,
+                "message": "LLM generation failed — check LABGEN_LLM_MODE and provider config",
+            },
+        )
+    except LLMDraftParseError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "error": "draft_parse_error",
+                "parse_errors": exc.errors,
+                "message": "LLM output could not be parsed as a valid LabDraft",
+            },
+        )
+
+    return GenerateLabFromArticleResponse(
+        lab_draft_id=result.lab_draft.lab_id,
+        operability_status=result.operability_status,
+        validation_passed=result.validation_passed,
+        warnings=result.warnings,
+        audit_id=result.audit_id,
+        llm_mode=cfg.LABGEN_LLM_MODE,
+    )
 
 
 @router.delete("/{draft_id}", status_code=status.HTTP_204_NO_CONTENT)

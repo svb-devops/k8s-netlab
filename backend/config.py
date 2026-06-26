@@ -338,6 +338,14 @@ LABGEN_LINUX_SANDBOX_ROOT: str = os.getenv(
 )
 
 # --- LabGen LLM Provider Configuration ---
+# LABGEN_LLM_MODE: high-level mode switch for article-to-lab draft generation.
+#   fake_only        — deterministic template-based generation (default, no LLM, no API keys)
+#   live_admin_only  — calls real LLM; enforced admin-only at route level;
+#                      requires LABGEN_LLM_OPENAI_* vars and LABGEN_LLM_PROVIDER_MODE=live_enabled
+# Default MUST remain fake_only — live mode requires explicit opt-in.
+LABGEN_LLM_MODE: str = os.getenv("LABGEN_LLM_MODE", "fake_only")
+
+# Low-level provider boundary (used by LabDraftGenerationService / LLMProviderBoundaryService).
 # Controls the provider boundary for LabGen draft generation.
 # Default: fake_only — no real LLM, no API keys, no network calls.
 # Changing to a live provider requires separate credential injection (not implemented here).

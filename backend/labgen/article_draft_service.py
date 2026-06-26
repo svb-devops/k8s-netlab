@@ -7,6 +7,7 @@ Responsibilities:
   - Enforce status transitions (with ArticleDraftValidator guardrails)
   - Admin review decision recording
   - Convert approved_for_publish_candidate → LabDraft (does NOT auto-publish)
+  - generate_lab_from_article: LLM-based LabDraft generation (admin-only, LABGEN_LLM_MODE gated)
 
 Status transition rules:
   draft → (admin review) → needs_changes | rejected |
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -77,6 +79,42 @@ class ArticleDraftGuardrailBlocked(ArticleDraftServiceError):
     def __init__(self, message: str, blocked_checks: list[str]) -> None:
         super().__init__(message)
         self.blocked_checks = blocked_checks
+
+
+class ArticleOperabilityRejected(ArticleDraftServiceError):
+    """Article is NOT_LAB_READY — LLM generation not allowed."""
+    def __init__(self, rejection_code: Optional[str], reasons: list[str]) -> None:
+        self.rejection_code = rejection_code
+        self.reasons = reasons
+        super().__init__(f"operability_rejected: {rejection_code} — {reasons}")
+
+
+class LLMModeDisabled(ArticleDraftServiceError):
+    """live_admin_only requested but LABGEN_LLM_MODE=fake_only."""
+
+
+class LLMGenerationFailed(ArticleDraftServiceError):
+    """LLM call failed or returned a rejected result."""
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(reason)
+
+
+class LLMDraftParseError(ArticleDraftServiceError):
+    """LLM output could not be parsed as a LabDraft."""
+    def __init__(self, errors: list[dict]) -> None:
+        self.errors = errors
+        super().__init__(str(errors))
+
+
+@dataclass
+class GenerateLabResult:
+    """Result of generate_lab_from_article()."""
+    lab_draft: LabDraft
+    audit_id: str
+    operability_status: str   # directly_lab_ready | partially_lab_ready
+    warnings: list[str]
+    validation_passed: bool   # True if no PUBLISH_BLOCKING validator results
 
 
 class ArticleDraftService:
@@ -351,6 +389,256 @@ class ArticleDraftService:
         return lab_draft
 
     # ------------------------------------------------------------------
+    # LLM-based LabDraft generation from article
+    # ------------------------------------------------------------------
+
+    def generate_lab_from_article(
+        self,
+        draft_id: str,
+        article_text: str,
+        admin_user: str,
+        desired_lab_title: Optional[str] = None,
+        audit_repo=None,  # Optional[LLMAuditRepository]
+    ) -> "GenerateLabResult":
+        """
+        Generate a LabDraft from an article using the configured LLM mode.
+
+        Flow:
+          1. Load ArticleDraftLabContract → get feasibility result
+          2. NOT_LAB_READY → raise ArticleOperabilityRejected
+          3. Check LABGEN_LLM_MODE → fake_only or live_admin_only
+          4. Build article-to-lab prompt
+          5. Call LLM (fake or live)
+          6. Parse + validate → LabDraft
+          7. Persist LabDraft (NEVER PUBLISHED; StaticValidator may set publish_blocked/review_required)
+          8. Write audit log entry (guaranteed via finally, even on persist failure)
+          9. Return GenerateLabResult
+
+        Postcondition: persisted LabDraft.publish_status is NEVER "published".
+        It may be "draft", "publish_blocked", or "review_required" depending on StaticValidator.
+        rehearsal_required=True is always set.
+
+        Raises:
+          ArticleDraftNotFound       — draft_id does not exist
+          ArticleOperabilityRejected — article is NOT_LAB_READY
+          LLMGenerationFailed        — LLM call failed
+          LLMDraftParseError         — LLM output could not be parsed
+        """
+        from backend import config as cfg
+        from backend.labgen.article_models import FeasibilityStatus
+        from backend.labgen.llm_audit import LLMAuditEntry, LLMAuditRepository
+        from backend.labgen.article_lab_prompt_builder import build_article_to_lab_messages
+        from backend.labgen.static_validator import StaticValidator
+        from backend.labgen.models import PublishStatus, ValidatorStatus, BlockingLevel
+
+        audit = audit_repo or LLMAuditRepository()
+        contract = self.get_draft(draft_id)
+
+        # --- 1. Operability gate ---
+        feasibility = contract.feasibility_result
+        if feasibility.status == FeasibilityStatus.NOT_LAB_READY:
+            audit.append(LLMAuditEntry(
+                admin_user=admin_user,
+                article_draft_id=draft_id,
+                article_title=contract.source_metadata.title or "",
+                target_domain=contract.target_domain.value,
+                llm_mode=cfg.LABGEN_LLM_MODE,
+                model_name="n/a",
+                success=False,
+                failure_reason="operability_rejected",
+                operability_status="not_lab_ready",
+            ))
+            raise ArticleOperabilityRejected(
+                feasibility.rejection_code,
+                feasibility.reasons,
+            )
+
+        operability_status = (
+            "directly_lab_ready"
+            if feasibility.status == FeasibilityStatus.DIRECTLY_LAB_READY
+            else "partially_lab_ready"
+        )
+
+        target_domain = contract.target_domain.value
+        article_title = contract.source_metadata.title or ""
+
+        # --- 2. Determine LLM mode ---
+        llm_mode = cfg.LABGEN_LLM_MODE
+        if llm_mode not in ("fake_only", "live_admin_only"):
+            llm_mode = "fake_only"  # fail-closed
+
+        # --- 3. Generate candidate ---
+        model_name = "fake"
+        candidate: Optional[dict] = None
+        warnings: list[str] = []
+        generation_failed = False
+        failure_reason: Optional[str] = None
+
+        if llm_mode == "live_admin_only":
+            # Delegate to LLMProviderBoundaryService in live mode
+            # Requires LABGEN_LLM_PROVIDER_MODE=live_enabled + LABGEN_LLM_OPENAI_* vars
+            from backend.labgen.llm_provider_boundary import (
+                LLMProviderBoundaryService,
+                LLMProviderRequest,
+            )
+            from backend.labgen.llm_openai_compatible import OpenAICompatibleProviderConfig
+
+            boundary = LLMProviderBoundaryService.create_from_env()
+            if not boundary.live_enabled:
+                # Live mode requested but config is invalid — fail closed
+                config_issues = boundary.live_adapter_config_issues
+                audit.append(LLMAuditEntry(
+                    admin_user=admin_user,
+                    article_draft_id=draft_id,
+                    article_title=article_title,
+                    target_domain=target_domain,
+                    llm_mode=llm_mode,
+                    model_name="n/a",
+                    success=False,
+                    failure_reason="live_provider_config_error",
+                    operability_status=operability_status,
+                ))
+                raise LLMGenerationFailed(
+                    "live_provider_config_error: "
+                    + ("; ".join(config_issues) if config_issues else "unknown config issue")
+                )
+
+            # Get model name safely for audit
+            model_name = cfg.LABGEN_LLM_OPENAI_MODEL or "openai_compatible"
+
+            system_msg, user_msg = build_article_to_lab_messages(
+                article_text,
+                article_title=article_title,
+                target_domain=target_domain,
+                desired_lab_title=desired_lab_title,
+                operability_status=operability_status,
+            )
+
+            pr = LLMProviderRequest(
+                purpose="draft_generation",
+                sanitized_user_prompt=f"Article: {article_title[:200]}",
+                constraints_summary=f"domain={target_domain} operability={operability_status}",
+            )
+
+            try:
+                # Use live adapter directly for article-to-lab (custom prompt)
+                raw_candidate = boundary._live_adapter.call_generate(system_msg, user_msg)
+                candidate = raw_candidate
+            except Exception as exc:
+                generation_failed = True
+                failure_reason = "llm_call_failed"
+                warnings.append(f"LLM generation failed: {type(exc).__name__}")
+
+        else:
+            # fake_only — use template-based generation
+            from backend.labgen.llm_generation import FakeDraftGenerationAdapter, LabDraftGenerationRequest
+            adapter = FakeDraftGenerationAdapter(inject_mode="valid")
+            req = LabDraftGenerationRequest(
+                user_prompt=f"Article: {article_title[:200]} | Domain: {target_domain}",
+                requester_user_id=admin_user,
+                constraints={"domain": target_domain, "mode": "article_to_lab"},
+            )
+            result = adapter.generate_lab_draft_candidate(req)
+            if result.rejected_reason:
+                generation_failed = True
+                failure_reason = "adapter_rejected"
+            else:
+                candidate = result.candidate
+                warnings = result.warnings or [
+                    "fake generator: content is placeholder, admin review required"
+                ]
+
+        if generation_failed or candidate is None:
+            audit.append(LLMAuditEntry(
+                admin_user=admin_user,
+                article_draft_id=draft_id,
+                article_title=article_title,
+                target_domain=target_domain,
+                llm_mode=llm_mode,
+                model_name=model_name,
+                success=False,
+                failure_reason=failure_reason or "generation_failed",
+                operability_status=operability_status,
+            ))
+            raise LLMGenerationFailed(failure_reason or "generation_failed")
+
+        # --- 4. Pydantic parse ---
+        try:
+            lab_draft = LabDraft.model_validate(candidate)
+        except Exception as exc:
+            errors = _extract_pydantic_errors(exc)
+            audit.append(LLMAuditEntry(
+                admin_user=admin_user,
+                article_draft_id=draft_id,
+                article_title=article_title,
+                target_domain=target_domain,
+                llm_mode=llm_mode,
+                model_name=model_name,
+                success=False,
+                failure_reason="draft_parse_error",
+                operability_status=operability_status,
+            ))
+            raise LLMDraftParseError(errors) from exc
+
+        # --- 5. Force DRAFT status, set source_article_id, apply desired title ---
+        lab_draft = lab_draft.model_copy(update={
+            "publish_status": PublishStatus.DRAFT,
+            "source_article_id": draft_id,
+            "rehearsal_required": True,
+        })
+        if desired_lab_title:
+            lab_draft = lab_draft.model_copy(update={"title": desired_lab_title[:200]})
+
+        # --- 6. StaticValidator ---
+        validator = StaticValidator()
+        validator_results = validator.validate(lab_draft)
+        has_blocking = any(
+            r.status == ValidatorStatus.FAILED
+            and r.blocking_level == BlockingLevel.PUBLISH_BLOCKING
+            for r in validator_results
+        )
+        from backend.labgen.llm_generation import _compute_publish_status
+        lab_draft = lab_draft.model_copy(
+            update={"publish_status": _compute_publish_status(validator_results)}
+        )
+        lab_draft.validator_results = validator_results
+
+        # --- 7. Persist + 8. Audit (audit written in finally to survive persist failure) ---
+        audit_entry = LLMAuditEntry(
+            admin_user=admin_user,
+            article_draft_id=draft_id,
+            article_title=article_title,
+            target_domain=target_domain,
+            llm_mode=llm_mode,
+            model_name=model_name,
+            success=False,  # set True only after successful persist
+            lab_draft_id=lab_draft.lab_id,
+            operability_status=operability_status,
+        )
+        try:
+            self._lab_repo.create(lab_draft)
+            audit_entry.success = True
+        finally:
+            audit.append(audit_entry)
+
+        logger.info(
+            "ArticleDraftService.generate_lab_from_article: "
+            "article_draft=%s → lab_draft=%s domain=%s mode=%s",
+            draft_id,
+            lab_draft.lab_id,
+            target_domain,
+            llm_mode,
+        )
+
+        return GenerateLabResult(
+            lab_draft=lab_draft,
+            audit_id=audit_entry.audit_id,
+            operability_status=operability_status,
+            warnings=warnings,
+            validation_passed=not has_blocking,
+        )
+
+    # ------------------------------------------------------------------
     # Delete
     # ------------------------------------------------------------------
 
@@ -382,6 +670,19 @@ class ArticleDraftService:
 # ---------------------------------------------------------------------------
 # Module-level helpers
 # ---------------------------------------------------------------------------
+
+
+def _extract_pydantic_errors(exc: Exception) -> list[dict]:
+    try:
+        from pydantic import ValidationError
+        if isinstance(exc, ValidationError):
+            return [
+                {"loc": list(e["loc"]), "msg": e["msg"], "type": e["type"]}
+                for e in exc.errors()
+            ]
+    except Exception:
+        pass
+    return [{"msg": "candidate parse failed", "type": "parse_error"}]
 
 
 def _pick_target_domain(feasibility: FeasibilityResult) -> TargetDomain:

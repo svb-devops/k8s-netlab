@@ -112,6 +112,7 @@ def _create_payload(raw_text: str, **extra) -> dict:
         "raw_text": raw_text,
         "user_confirmed_right_to_use": True,
         "user_confirmed_no_secrets": True,
+        "copyright_confirmed": True,
         **extra,
     }
 
@@ -200,6 +201,7 @@ class TestAdminAuthGate:
                 "raw_text": K8S_DIRECTLY_READY,
                 "user_confirmed_right_to_use": True,
                 "user_confirmed_no_secrets": True,
+                "copyright_confirmed": True,
             },
         )
         assert resp.status_code == 201, f"Admin should create draft: {resp.text}"
@@ -997,7 +999,7 @@ class TestInvariants:
         """
         resp = admin_client.post(
             "/api/labgen/article-drafts",
-            json={"raw_text": cloud_article},
+            json={"raw_text": cloud_article, "copyright_confirmed": True},
         )
         assert resp.status_code == 201
         feasibility = resp.json()["feasibility_result"]

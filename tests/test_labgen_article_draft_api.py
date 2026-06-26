@@ -715,6 +715,7 @@ class TestArticleDraftEndpoints:
                 "title": "K8s ConfigMap Lab",
                 "user_confirmed_right_to_use": True,
                 "user_confirmed_no_secrets": True,
+                "copyright_confirmed": True,
             },
         )
         assert resp.status_code == 201
@@ -738,7 +739,7 @@ class TestArticleDraftEndpoints:
     def test_get_draft_200(self, app_client):
         create_resp = app_client.post(
             "/api/labgen/article-drafts",
-            json={"raw_text": K8S_ARTICLE},
+            json={"raw_text": K8S_ARTICLE, "copyright_confirmed": True},
         )
         draft_id = create_resp.json()["draft_id"]
         resp = app_client.get(f"/api/labgen/article-drafts/{draft_id}")
@@ -752,7 +753,7 @@ class TestArticleDraftEndpoints:
     def test_patch_draft_200(self, app_client):
         create_resp = app_client.post(
             "/api/labgen/article-drafts",
-            json={"raw_text": K8S_ARTICLE},
+            json={"raw_text": K8S_ARTICLE, "copyright_confirmed": True},
         )
         draft_id = create_resp.json()["draft_id"]
         resp = app_client.patch(
@@ -765,7 +766,7 @@ class TestArticleDraftEndpoints:
     def test_validate_draft_200(self, app_client):
         create_resp = app_client.post(
             "/api/labgen/article-drafts",
-            json={"raw_text": K8S_ARTICLE},
+            json={"raw_text": K8S_ARTICLE, "copyright_confirmed": True},
         )
         draft_id = create_resp.json()["draft_id"]
         resp = app_client.post(f"/api/labgen/article-drafts/{draft_id}/validate")
@@ -775,7 +776,7 @@ class TestArticleDraftEndpoints:
     def test_review_request_changes_200(self, app_client):
         create_resp = app_client.post(
             "/api/labgen/article-drafts",
-            json={"raw_text": K8S_ARTICLE},
+            json={"raw_text": K8S_ARTICLE, "copyright_confirmed": True},
         )
         draft_id = create_resp.json()["draft_id"]
         resp = app_client.post(
@@ -791,7 +792,7 @@ class TestArticleDraftEndpoints:
     def test_review_reject_200(self, app_client):
         create_resp = app_client.post(
             "/api/labgen/article-drafts",
-            json={"raw_text": K8S_ARTICLE},
+            json={"raw_text": K8S_ARTICLE, "copyright_confirmed": True},
         )
         draft_id = create_resp.json()["draft_id"]
         resp = app_client.post(
@@ -804,7 +805,7 @@ class TestArticleDraftEndpoints:
     def test_review_approve_without_confirmations_403(self, app_client):
         create_resp = app_client.post(
             "/api/labgen/article-drafts",
-            json={"raw_text": K8S_ARTICLE},
+            json={"raw_text": K8S_ARTICLE, "copyright_confirmed": True},
         )
         draft_id = create_resp.json()["draft_id"]
         resp = app_client.post(
@@ -816,7 +817,7 @@ class TestArticleDraftEndpoints:
     def test_advance_wrong_status_403(self, app_client):
         create_resp = app_client.post(
             "/api/labgen/article-drafts",
-            json={"raw_text": K8S_ARTICLE},
+            json={"raw_text": K8S_ARTICLE, "copyright_confirmed": True},
         )
         draft_id = create_resp.json()["draft_id"]
         resp = app_client.post(
@@ -828,7 +829,7 @@ class TestArticleDraftEndpoints:
     def test_convert_wrong_status_403(self, app_client):
         create_resp = app_client.post(
             "/api/labgen/article-drafts",
-            json={"raw_text": K8S_ARTICLE},
+            json={"raw_text": K8S_ARTICLE, "copyright_confirmed": True},
         )
         draft_id = create_resp.json()["draft_id"]
         resp = app_client.post(f"/api/labgen/article-drafts/{draft_id}/convert")
@@ -837,7 +838,7 @@ class TestArticleDraftEndpoints:
     def test_delete_draft_204(self, app_client):
         create_resp = app_client.post(
             "/api/labgen/article-drafts",
-            json={"raw_text": K8S_ARTICLE},
+            json={"raw_text": K8S_ARTICLE, "copyright_confirmed": True},
         )
         draft_id = create_resp.json()["draft_id"]
         resp = app_client.delete(f"/api/labgen/article-drafts/{draft_id}")
@@ -850,7 +851,7 @@ class TestArticleDraftEndpoints:
         secret_text = "api_key=AKIAIOSFODNN7EXAMPLE\nkubectl apply -f deploy.yaml"
         resp = app_client.post(
             "/api/labgen/article-drafts",
-            json={"raw_text": secret_text},
+            json={"raw_text": secret_text, "copyright_confirmed": True},
         )
         assert resp.status_code == 201
         data = resp.json()
@@ -860,7 +861,7 @@ class TestArticleDraftEndpoints:
         """Response must not contain raw article text body anywhere."""
         resp = app_client.post(
             "/api/labgen/article-drafts",
-            json={"raw_text": K8S_ARTICLE},
+            json={"raw_text": K8S_ARTICLE, "copyright_confirmed": True},
         )
         assert resp.status_code == 201
         response_text = resp.text
