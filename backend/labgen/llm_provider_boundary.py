@@ -309,6 +309,15 @@ def _build_dry_run_candidate(
 
 
 # ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+
+class LLMProviderConfigError(Exception):
+    """Raised by call_live_with_messages() when live adapter is not configured."""
+
+
+# ---------------------------------------------------------------------------
 # Provider boundary service
 # ---------------------------------------------------------------------------
 
@@ -536,3 +545,34 @@ class LLMProviderBoundaryService:
             warnings=[],
             usage_summary="live: openai-compatible provider",
         )
+
+    def call_live_with_messages(self, system_msg: str, user_msg: str) -> dict:
+        """
+        Call the live adapter with custom system and user messages.
+
+        Intended for the article-to-lab pipeline where the caller builds its own
+        prompt (article_lab_prompt_builder) rather than using the standard generation
+        prompt. The caller is responsible for admin-only access enforcement.
+
+        Raises:
+          LLMProviderConfigError            — live adapter not configured
+          OpenAICompatibleProviderError     — provider call failed (propagates)
+
+        Never returns: API key, raw HTTP body, chain-of-thought, hidden_prompt.
+        """
+        if not self.live_enabled:
+            issues = self.live_adapter_config_issues
+            msg = (
+                "; ".join(issues) if issues
+                else "LABGEN_LLM_PROVIDER_MODE not set to live_enabled or config invalid"
+            )
+            raise LLMProviderConfigError(msg)
+        from backend.labgen.llm_openai_compatible import OpenAICompatibleProviderError
+        try:
+            return self._live_adapter.call_generate(system_msg, user_msg)
+        except OpenAICompatibleProviderError as exc:
+            raise OpenAICompatibleProviderError(
+                code=exc.code,
+                message=_redact(exc.message),
+                is_retriable=exc.is_retriable,
+            ) from exc

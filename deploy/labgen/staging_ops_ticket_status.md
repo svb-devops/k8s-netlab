@@ -252,3 +252,40 @@ Implemented P0 Gap 1 (article_url binding) + P0 Gap 2 (Admin CTA tool).
 ### Recommended Next Step
 
 Admin Article Input MVP — wire one existing published lab to one external article via article_url, test complete CTA → Register → Start Lab → Complete flow.
+
+---
+
+## G-68 — Live LLM Admin-only Internal Trial & Rehearsal Gate v0.1
+
+**Date**: 2026-06-26
+**Decision**: `LIVE_LLM_ADMIN_TRIAL_READY_WITH_NOTES`
+**Operator**: Claude Code
+
+### Summary
+
+Live LLM admin-only internal trial complete. Used internal sample K8s article, triggered real gpt-4o-mini generation, validated full pipeline.
+
+- New `call_live_with_messages()` public method on `LLMProviderBoundaryService`
+- New `LLMProviderConfigError` exception (env missing → fail-closed)
+- Updated `article_draft_service.py` to use public API (no private attribute access)
+- 40 tests (A-G categories): 39 PASS, 1 skipped (live trial, requires RUN_LIVE_LLM_TRIAL=1)
+- Live trial result: 5-step draft, StaticValidator PASS, publish_status=draft, rehearsal_required=True
+- All security invariants confirmed: no API key in audit, no raw body in audit, never publish direct, env missing → LLMProviderConfigError
+
+### Health Check
+
+- Tests: 4602 PASS, 1 skipped, 92.16% coverage
+- BLOCKER=0 HIGH=0 MEDIUM=0
+- Live trial: PASS (gpt-4o-mini, internal sample article, 5 steps generated)
+- pre-push: PASS
+- VMID 500-599 untouched; no public upload; no URL scraping; no live LLM for learners
+
+### NOTES (not degraded to BLOCKER)
+
+1. Internal sample article used (not real owner article) — caps decision to READY_WITH_NOTES
+2. operability_status=partially_lab_ready (expected for ConfigMap tutorial content)
+3. No actual K8s rehearsal session run against generated draft
+
+### Recommended Next Step
+
+Use real owner-authored article for live trial to reach LIVE_LLM_ADMIN_TRIAL_READY_FOR_PUBLISH_GATE, OR run Internal Rehearsal against the generated draft.

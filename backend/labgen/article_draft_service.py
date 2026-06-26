@@ -479,9 +479,8 @@ class ArticleDraftService:
             # Requires LABGEN_LLM_PROVIDER_MODE=live_enabled + LABGEN_LLM_OPENAI_* vars
             from backend.labgen.llm_provider_boundary import (
                 LLMProviderBoundaryService,
-                LLMProviderRequest,
+                LLMProviderConfigError,
             )
-            from backend.labgen.llm_openai_compatible import OpenAICompatibleProviderConfig
 
             boundary = LLMProviderBoundaryService.create_from_env()
             if not boundary.live_enabled:
@@ -514,15 +513,8 @@ class ArticleDraftService:
                 operability_status=operability_status,
             )
 
-            pr = LLMProviderRequest(
-                purpose="draft_generation",
-                sanitized_user_prompt=f"Article: {article_title[:200]}",
-                constraints_summary=f"domain={target_domain} operability={operability_status}",
-            )
-
             try:
-                # Use live adapter directly for article-to-lab (custom prompt)
-                raw_candidate = boundary._live_adapter.call_generate(system_msg, user_msg)
+                raw_candidate = boundary.call_live_with_messages(system_msg, user_msg)
                 candidate = raw_candidate
             except Exception as exc:
                 generation_failed = True
