@@ -224,6 +224,14 @@ async def create_article_draft(
             detail="copyright_confirmed must be True — confirm right to use article content",
         )
 
+    # Internal sample marker blocker — prevents test/trial articles from entering the
+    # production publish pipeline.  Real owner articles must not carry this prefix.
+    if req.title and req.title.strip().upper().startswith("[INTERNAL SAMPLE]"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Article title must not use [INTERNAL SAMPLE] marker — submit a real owner-authored article",
+        )
+
     # target_domain validation
     if req.target_domain is not None:
         if req.target_domain.lower() not in _ALLOWED_TARGET_DOMAINS:
