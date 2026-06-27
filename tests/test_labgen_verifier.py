@@ -632,8 +632,11 @@ class TestMakeDetail:
 
 
 class TestSupportedTypesSet:
-    def test_six_types_supported(self) -> None:
-        assert len(_SUPPORTED_TYPES) == 6
+    def test_supported_types_count(self) -> None:
+        # 6 original + 2 added for CrashLoopBackOff and cleanup verification
+        assert len(_SUPPORTED_TYPES) == 8
+        assert VerifyType.DEPLOYMENT_UNAVAILABLE in _SUPPORTED_TYPES
+        assert VerifyType.NAMESPACE_NOT_EXISTS in _SUPPORTED_TYPES
 
     def test_shell_not_supported(self) -> None:
         unsupported = {

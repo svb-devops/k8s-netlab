@@ -114,7 +114,8 @@ class TestVerifyType:
     def test_all_mvp_types_present(self):
         expected = {
             "pod_running", "pod_ready", "service_exists", "deployment_ready",
-            "configmap_exists", "secret_exists", "namespace_exists",
+            "deployment_unavailable", "configmap_exists", "secret_exists",
+            "namespace_exists", "namespace_not_exists",
             "node_ready", "pvc_bound", "job_completed",
         }
         actual = {v.value for v in VerifyType}

@@ -62,6 +62,12 @@ class K8sVerifierClientPort(ABC):
     @abstractmethod
     def secret_exists(self, namespace: str, name: str) -> bool: ...
 
+    @abstractmethod
+    def deployment_unavailable(self, namespace: str, name: str) -> bool: ...
+
+    @abstractmethod
+    def namespace_not_exists(self, namespace: str) -> bool: ...
+
 
 # ---------------------------------------------------------------------------
 # Fake client (tests only)
@@ -106,6 +112,12 @@ class FakeK8sVerifierClient(K8sVerifierClientPort):
     def secret_exists(self, namespace: str, name: str) -> bool:
         return self._get(("secret_exists", namespace, name))
 
+    def deployment_unavailable(self, namespace: str, name: str) -> bool:
+        return self._get(("deployment_unavailable", namespace, name))
+
+    def namespace_not_exists(self, namespace: str) -> bool:
+        return self._get(("namespace_not_exists", namespace))
+
 
 # ---------------------------------------------------------------------------
 # Supported verify types
@@ -113,8 +125,10 @@ class FakeK8sVerifierClient(K8sVerifierClientPort):
 
 _SUPPORTED_TYPES: frozenset[VerifyType] = frozenset({
     VerifyType.NAMESPACE_EXISTS,
+    VerifyType.NAMESPACE_NOT_EXISTS,
     VerifyType.POD_RUNNING,
     VerifyType.DEPLOYMENT_READY,
+    VerifyType.DEPLOYMENT_UNAVAILABLE,
     VerifyType.SERVICE_EXISTS,
     VerifyType.CONFIGMAP_EXISTS,
     VerifyType.SECRET_EXISTS,
@@ -249,6 +263,21 @@ class VerifierService:
                 if passed
                 else f'Service "{name}" was not found. Check the service name and namespace.'
             )
+        if vtype == VerifyType.DEPLOYMENT_UNAVAILABLE:
+            return (
+                f'Deployment "{name}" has no available replicas — '
+                "CrashLoopBackOff or pending state confirmed. You may proceed to inspect the failure."
+                if passed
+                else f'Deployment "{name}" has available replicas — pods are not in a crashing state. '
+                "Check that the deployment was created correctly with a failing command."
+            )
+        if vtype == VerifyType.NAMESPACE_NOT_EXISTS:
+            return (
+                "Namespace cleanup confirmed — the lab namespace no longer exists on the cluster."
+                if passed
+                else "Namespace still exists. Make sure kubectl delete namespace completed successfully "
+                "and wait a moment before checking again."
+            )
         return ""
 
     @staticmethod
@@ -271,4 +300,8 @@ class VerifierService:
             return client.configmap_exists(namespace, name)
         if vtype == VerifyType.SECRET_EXISTS:
             return client.secret_exists(namespace, name)
+        if vtype == VerifyType.DEPLOYMENT_UNAVAILABLE:
+            return client.deployment_unavailable(namespace, name)
+        if vtype == VerifyType.NAMESPACE_NOT_EXISTS:
+            return client.namespace_not_exists(namespace)
         raise AssertionError(f"_dispatch called for unsupported type {vtype!r}")  # pragma: no cover

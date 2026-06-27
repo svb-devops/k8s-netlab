@@ -191,6 +191,39 @@ class K8sVerifierClientAdapter(K8sVerifierClientPort):
                 return False
             raise
 
+    def deployment_unavailable(self, namespace: str, name: str) -> bool:
+        """Return True if the deployment exists AND has 0 available replicas (pods are crashing).
+
+        Uses list_namespaced_deployment with field_selector — does not require 'get' RBAC.
+        Returns False if the deployment does not exist (not found or empty list).
+        This is the semantic inverse of deployment_ready: confirms pods are NOT ready.
+        """
+        try:
+            result = self._apps.list_namespaced_deployment(
+                namespace, field_selector=f"metadata.name={name}"
+            )
+            if not result.items:
+                return False
+            dep = result.items[0]
+            available = (
+                dep.status.available_replicas
+                if dep.status and dep.status.available_replicas is not None
+                else 0
+            )
+            return available == 0
+        except ApiException as exc:
+            if exc.status == 404:
+                return False
+            raise
+
+    def namespace_not_exists(self, namespace: str) -> bool:
+        """Return True if the namespace does NOT exist.
+
+        Delegates to namespace_exists and inverts the result.
+        Used to verify cleanup completion after kubectl delete namespace.
+        """
+        return not self.namespace_exists(namespace)
+
 
 # ---------------------------------------------------------------------------
 # K8sVerifierClientFactory  (module-level factory function for routes.py)
