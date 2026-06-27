@@ -69,20 +69,22 @@ class TestLLMProviderConfigDefaults:
 
     def test_invalid_mode_name_safe_fallback(self):
         """create_from_env falls back to FAKE_ONLY on invalid LABGEN_LLM_PROVIDER_MODE."""
-        import os
         from unittest.mock import patch
 
-        with patch.dict(os.environ, {"LABGEN_LLM_PROVIDER_MODE": "INVALID_MODE"}):
-            from backend.labgen.llm_provider_boundary import LLMProviderBoundaryService, LLMProviderMode
+        import backend.config as cfg
+        from backend.labgen.llm_provider_boundary import LLMProviderBoundaryService, LLMProviderMode
+
+        with patch.object(cfg, "LABGEN_LLM_PROVIDER_MODE", "INVALID_MODE"):
             svc = LLMProviderBoundaryService.create_from_env()
             assert svc.config.mode == LLMProviderMode.FAKE_ONLY
 
     def test_invalid_provider_name_safe_fallback(self):
-        import os
         from unittest.mock import patch
 
-        with patch.dict(os.environ, {"LABGEN_LLM_PROVIDER_NAME": "gpt-99-turbo"}):
-            from backend.labgen.llm_provider_boundary import LLMProviderBoundaryService, LLMProviderName
+        import backend.config as cfg
+        from backend.labgen.llm_provider_boundary import LLMProviderBoundaryService, LLMProviderName
+
+        with patch.object(cfg, "LABGEN_LLM_PROVIDER_NAME", "gpt-99-turbo"):
             svc = LLMProviderBoundaryService.create_from_env()
             assert svc.config.provider_name == LLMProviderName.FAKE
 
