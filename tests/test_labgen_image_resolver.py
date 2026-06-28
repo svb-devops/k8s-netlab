@@ -553,6 +553,31 @@ class TestOCIAcceptHeader:
         assert "application/vnd.oci.image.index.v1+json" in accept
         assert "application/vnd.docker.distribution.manifest.list.v2+json" in accept
 
+    def test_default_http_get_does_not_disable_ssl_verification(self):
+        """verify=False bypasses TLS cert checks and triggers bandit HIGH.
+        The internal registry is HTTP-only so verify is irrelevant, but removing
+        it ensures we don't silently bypass TLS if the URL ever becomes HTTPS.
+        """
+        captured_kwargs: list[dict] = []
+
+        class FakeResponse:
+            status_code = 200
+
+        from unittest.mock import patch as _patch
+        from backend.labgen.image_resolver import _default_http_get, _INTERNAL_REGISTRY
+
+        def fake_get(url: str, **kwargs):
+            captured_kwargs.append(kwargs)
+            return FakeResponse()
+
+        with _patch("httpx.get", side_effect=fake_get):
+            _default_http_get(f"http://{_INTERNAL_REGISTRY}/v2/nginx/manifests/1.25-alpine")
+
+        assert len(captured_kwargs) == 1
+        assert captured_kwargs[0].get("verify") is not False, (
+            "verify=False disables SSL verification — use default (True) or a CA bundle"
+        )
+
     def test_whitelist_nginx_maps_to_library_prefix(self):
         """nginx intent must resolve to library/nginx path for OCI index registry compat."""
         seen_urls: list[str] = []

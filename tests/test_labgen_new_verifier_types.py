@@ -385,3 +385,12 @@ def test_adapter_namespace_not_exists_propagates_500():
     client = _adapter(core, MagicMock())
     with pytest.raises(ApiException):
         client.namespace_not_exists("ns")
+
+
+def test_adapter_namespace_not_exists_true_on_403():
+    """K8s returns 403 when namespace is deleted (SA's RoleBinding was namespace-scoped).
+    namespace_not_exists must treat 403 as 'namespace gone' and return True."""
+    core = MagicMock()
+    core.list_namespaced_config_map.side_effect = ApiException(status=403, reason="Forbidden")
+    client = _adapter(core, MagicMock())
+    assert client.namespace_not_exists("deleted-ns") is True

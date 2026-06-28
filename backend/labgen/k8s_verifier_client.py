@@ -79,13 +79,16 @@ class K8sVerifierClientAdapter(K8sVerifierClientPort):
 
         Uses list_namespaced_config_map (namespace-scoped, limit=1) so only
         the per-session RoleBinding is required — not a ClusterRoleBinding.
-        404 → namespace is gone; other errors propagate to the caller.
+        404 → namespace is gone.
+        403 → namespace was deleted and took the namespace-scoped RoleBinding with it;
+              treat as "not found" rather than propagating a Forbidden error.
+        Other errors propagate to the caller.
         """
         try:
             self._core.list_namespaced_config_map(namespace, limit=1)
             return True
         except ApiException as exc:
-            if exc.status == 404:
+            if exc.status in (403, 404):
                 return False
             raise
 

@@ -130,14 +130,13 @@ class TestNamespaceExists:
         adapter = _adapter(core, MagicMock())
         assert adapter.namespace_exists("lab-missing") is False
 
-    def test_propagates_403_forbidden(self) -> None:
-        """403 means namespace exists but verifier lacks RoleBinding — must not return False."""
+    def test_returns_false_on_403_forbidden(self) -> None:
+        """403 means namespace was deleted (namespace-scoped RoleBinding deleted with it).
+        Treat as 'namespace not found' — same as 404."""
         core = MagicMock()
         core.list_namespaced_config_map.side_effect = _api_403()
         adapter = _adapter(core, MagicMock())
-        with pytest.raises(ApiException) as exc_info:
-            adapter.namespace_exists("lab-test")
-        assert exc_info.value.status == 403
+        assert adapter.namespace_exists("lab-test") is False
 
     def test_propagates_non_404_exception(self) -> None:
         core = MagicMock()

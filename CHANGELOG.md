@@ -7,6 +7,10 @@
 ## [Unreleased]
 
 ### Changed
+- fix(labgen): namespace_exists() 在命名空间删除后收到 403（SA 的 namespace-scoped RoleBinding 随命名空间一起删除）时抛出 500；现在同时捕获 403 作为"命名空间不存在"处理（与 404 语义相同）；补回归测试 test_adapter_namespace_not_exists_true_on_403 防止重现
+- fix(labgen): image_resolver._default_http_get() 移除 verify=False（bandit HIGH B501）；内网 registry（172.16.100.1:5000）使用 HTTP，不需要 SSL；补回归测试 test_default_http_get_does_not_disable_ssl_verification 防止重现
+- fix(labgen): lab draft bb4fe651 step-5 patch 目标字段错误（/args 应为 /command）；kubectl create deployment -- args 设置的是 command 字段而非 args 字段；已通过彩排 step-5 验证修复正确
+- ops(labgen): Owner Soft Launch Article #1 Internal Rehearsal — VMID 299 staging VM（172.16.100.167）；7 步 CrashLoopBackOff 实验彩排全部 PASS（NAMESPACE_EXISTS/DEPLOYMENT_UNAVAILABLE×3/DEPLOYMENT_READY×2/NAMESPACE_NOT_EXISTS）；rehearsal_completed=True；cleanup_verified=True；bandit HIGH=0；static validator 17/17 PASS；发布技术门禁全部清除；VMID 500-599 untouched；no publish
 - feat(labgen): Draft Repair + Rehearsal Enablement — Owner Soft Launch Article #1；新增 VerifyType.DEPLOYMENT_UNAVAILABLE（验证 Deployment 存在且 available_replicas=0，用于 CrashLoopBackOff 观察步骤）和 VerifyType.NAMESPACE_NOT_EXISTS（验证命名空间已删除，用于 cleanup 步骤）；K8sVerifierClientPort/FakeK8sVerifierClient/K8sVerifierClientAdapter 新增对应方法；_SUPPORTED_TYPES+_dispatch+_make_detail 全部更新；lab draft bb4fe651 从 4 步（有 4 项质量问题）改为 7 步（setup+observe+describe+logs+patch-fix+verify+cleanup），所有步骤无占位符/无交互式命令/verifier 类型正确匹配；StaticValidator 17/17 PASS 0 FAIL；23 个新测试（test_labgen_new_verifier_types.py）；4666 tests PASS 92.16% coverage；VMID 500-599 untouched；no publish；rehearsal_required=True；STAGING_ENV_MISSING（需 Owner 提供 K3s staging VM）
 
 - fix(tests): test_labgen_llm_provider_boundary.py — test_invalid_mode_name_safe_fallback 和 test_invalid_provider_name_safe_fallback 改用 patch.object(cfg, ...) 替代 patch.dict(os.environ, ...)，修复 live LLM 环境下两个测试误判（根因：config 模块级属性在 import 时已缓存，patch.dict 无法影响已绑定的模块级变量）；补回归测试防止重现

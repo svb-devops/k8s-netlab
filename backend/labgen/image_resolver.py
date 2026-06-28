@@ -166,7 +166,7 @@ def _default_http_get(url: str) -> int:
     """GET url with OCI-compatible Accept headers, return HTTP status code or 0 on network error."""
     try:
         import httpx
-        r = httpx.get(url, timeout=5.0, verify=False, headers={"Accept": _OCI_ACCEPT})
+        r = httpx.get(url, timeout=5.0, headers={"Accept": _OCI_ACCEPT})
         return r.status_code
     except Exception as exc:
         logger.debug("Registry HTTP check failed for %s: %s", url, exc)
