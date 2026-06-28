@@ -68,9 +68,9 @@ class _StubK8sApiFactory(PlatformK8sApiFactory):
         self,
         token: str = _FAKE_TOKEN,
         sa_409: bool = False,
-        role_404: bool = False,   # replace_cluster_role returns 404 → fallback to create
+        role_delete_error: int = 0,   # delete_cluster_role returns this non-404 error
+        role_create_error: int = 0,   # create_cluster_role returns this error
         sa_error: int = 0,
-        role_error: int = 0,      # replace_cluster_role returns this error
         token_error: int = 0,
         empty_token: bool = False,
     ) -> None:
@@ -88,16 +88,17 @@ class _StubK8sApiFactory(PlatformK8sApiFactory):
                 status=409, reason="AlreadyExists"
             )
 
-        # replace_cluster_role is called first; create_cluster_role is the 404-fallback.
-        if role_error:
-            self.rbac.replace_cluster_role.side_effect = ApiException(
-                status=role_error, reason="Error"
+        # delete+create pattern: delete_cluster_role is always called first (404 → ignored),
+        # then create_cluster_role is called. replace_cluster_role must NEVER be called
+        # (K3s v1.34.4 RBAC informer cache bug: PUT breaks authorization evaluator).
+        if role_delete_error:
+            self.rbac.delete_cluster_role.side_effect = ApiException(
+                status=role_delete_error, reason="Error"
             )
-        elif role_404:
-            self.rbac.replace_cluster_role.side_effect = ApiException(
-                status=404, reason="NotFound"
+        if role_create_error:
+            self.rbac.create_cluster_role.side_effect = ApiException(
+                status=role_create_error, reason="Error"
             )
-        # create_cluster_role: no side-effect needed on happy path (replace succeeds)
 
         if token_error:
             self.core.create_namespaced_service_account_token.side_effect = ApiException(
@@ -187,12 +188,13 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         assert meta.credential_generation == 1
         assert store.exists("401")
 
-    def test_cluster_role_replace_is_idempotent(self, store: VerifierCredentialStore) -> None:
-        """replace_cluster_role is used instead of create; always updates existing role."""
+    def test_cluster_role_uses_delete_then_create(self, store: VerifierCredentialStore) -> None:
+        """delete+create is used (not replace) — idempotent and avoids K3s RBAC cache bug."""
         init, factory = self._make(store)
         init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
-        factory.rbac.replace_cluster_role.assert_called_once()
-        factory.rbac.create_cluster_role.assert_not_called()
+        factory.rbac.delete_cluster_role.assert_called_once()
+        factory.rbac.create_cluster_role.assert_called_once()
+        factory.rbac.replace_cluster_role.assert_not_called()
         assert store.exists("401")
 
     def test_sa_non_409_raises_runtime_error(self, store: VerifierCredentialStore) -> None:
@@ -201,18 +203,28 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         with pytest.raises(RuntimeError, match="ServiceAccount"):
             init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
 
-    def test_cluster_role_replace_error_raises_runtime_error(self, store: VerifierCredentialStore) -> None:
-        """Non-404 errors from replace_cluster_role propagate as RuntimeError."""
-        init, _ = self._make(store, role_error=403)
+    def test_cluster_role_delete_non404_error_raises_runtime_error(self, store: VerifierCredentialStore) -> None:
+        """Non-404 errors from delete_cluster_role propagate as RuntimeError."""
+        init, _ = self._make(store, role_delete_error=403)
         with pytest.raises(RuntimeError, match="ClusterRole"):
             init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
 
-    def test_cluster_role_404_fallback_creates(self, store: VerifierCredentialStore) -> None:
-        """replace_cluster_role 404 → fallback to create_cluster_role (idempotent)."""
-        init, factory = self._make(store, role_404=True)
+    def test_cluster_role_delete_404_is_silently_ignored(self, store: VerifierCredentialStore) -> None:
+        """delete_cluster_role 404 is silently ignored — CR didn't exist yet, create proceeds."""
+        from kubernetes.client.exceptions import ApiException
+
+        init, factory = self._make(store)
+        factory.rbac.delete_cluster_role.side_effect = ApiException(status=404, reason="NotFound")
         init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
-        factory.rbac.replace_cluster_role.assert_called_once()
+        factory.rbac.delete_cluster_role.assert_called_once()
         factory.rbac.create_cluster_role.assert_called_once()
+        assert store.exists("401")
+
+    def test_cluster_role_create_error_raises_runtime_error(self, store: VerifierCredentialStore) -> None:
+        """Errors from create_cluster_role propagate as RuntimeError."""
+        init, _ = self._make(store, role_create_error=500)
+        with pytest.raises(RuntimeError, match="ClusterRole"):
+            init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
 
     def test_token_api_error_raises_runtime_error(self, store: VerifierCredentialStore) -> None:
         init, _ = self._make(store, token_error=503)
@@ -229,8 +241,8 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         # Regression: ClusterRole was missing secrets — caused 403 on secret_exists check.
         init, factory = self._make(store)
         init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
-        factory.rbac.replace_cluster_role.assert_called_once()
-        cr_arg = factory.rbac.replace_cluster_role.call_args[0][1]
+        factory.rbac.create_cluster_role.assert_called_once()
+        cr_arg = factory.rbac.create_cluster_role.call_args[0][0]
         all_resources = [r for rule in cr_arg.rules for r in (rule.resources or [])]
         assert "secrets" in all_resources
 
@@ -239,7 +251,7 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         # The secrets rule must not grant get (which would allow reading .data).
         init, factory = self._make(store)
         init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
-        cr_arg = factory.rbac.replace_cluster_role.call_args[0][1]
+        cr_arg = factory.rbac.create_cluster_role.call_args[0][0]
         secrets_rule = next(
             (r for r in cr_arg.rules if "secrets" in (r.resources or [])), None
         )
@@ -250,7 +262,7 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         # deployment_ready verifier requires list permission on apps/deployments.
         init, factory = self._make(store)
         init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
-        cr_arg = factory.rbac.replace_cluster_role.call_args[0][1]
+        cr_arg = factory.rbac.create_cluster_role.call_args[0][0]
         apps_rule = next(
             (r for r in cr_arg.rules if "apps" in (r.api_groups or [])), None
         )
@@ -262,7 +274,7 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         # apps/deployments rule must not grant get — list is sufficient and reduces blast radius.
         init, factory = self._make(store)
         init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
-        cr_arg = factory.rbac.replace_cluster_role.call_args[0][1]
+        cr_arg = factory.rbac.create_cluster_role.call_args[0][0]
         apps_rule = next(
             (r for r in cr_arg.rules if "apps" in (r.api_groups or [])), None
         )
@@ -273,7 +285,7 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         # All verifier methods use list+field_selector; 'get' is not needed anywhere.
         init, factory = self._make(store)
         init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
-        cr_arg = factory.rbac.replace_cluster_role.call_args[0][1]
+        cr_arg = factory.rbac.create_cluster_role.call_args[0][0]
         for rule in cr_arg.rules:
             assert "get" not in (rule.verbs or []), (
                 f"ClusterRole rule grants 'get' on {rule.resources}: "
@@ -284,7 +296,7 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         # namespace_exists uses list_namespaced_config_map; namespaces cluster-resource unneeded.
         init, factory = self._make(store)
         init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
-        cr_arg = factory.rbac.replace_cluster_role.call_args[0][1]
+        cr_arg = factory.rbac.create_cluster_role.call_args[0][0]
         all_resources = [r for rule in cr_arg.rules for r in (rule.resources or [])]
         assert "namespaces" not in all_resources
 
@@ -292,7 +304,7 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         # endpoints is not used by any verifier method.
         init, factory = self._make(store)
         init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
-        cr_arg = factory.rbac.replace_cluster_role.call_args[0][1]
+        cr_arg = factory.rbac.create_cluster_role.call_args[0][0]
         all_resources = [r for rule in cr_arg.rules for r in (rule.resources or [])]
         assert "endpoints" not in all_resources
 
@@ -331,13 +343,22 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         assert store.exists("401")
         assert store.exists("402")
 
+    def test_replace_cluster_role_never_called(self, store: VerifierCredentialStore) -> None:
+        # Regression: K3s v1.34.4 replace_cluster_role (PUT) breaks the RBAC authorization
+        # evaluator cache — SA tokens receive 403 Forbidden after reprovision even when the
+        # ClusterRole is correctly indexed.  delete+create emits clean DELETE+ADD informer
+        # events that the RBAC evaluator processes correctly.
+        init, factory = self._make(store)
+        init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
+        factory.rbac.replace_cluster_role.assert_not_called()
+
     def test_sdk_object_matches_manifest_string(self, store: VerifierCredentialStore) -> None:
-        # Cross-path parity: the V1ClusterRole SDK object passed to replace_cluster_role
+        # Cross-path parity: the V1ClusterRole SDK object passed to create_cluster_role
         # must encode the same resource+verb sets as _CLUSTER_ROLE_MANIFEST.
         # Prevents the two apply paths from silently diverging on future edits.
         init, factory = self._make(store)
         init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
-        cr_sdk = factory.rbac.replace_cluster_role.call_args[0][1]
+        cr_sdk = factory.rbac.create_cluster_role.call_args[0][0]
 
         manifest_doc = yaml.safe_load(_CLUSTER_ROLE_MANIFEST)
         manifest_rules = manifest_doc.get("rules", [])

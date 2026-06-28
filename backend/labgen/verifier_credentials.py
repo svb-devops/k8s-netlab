@@ -591,7 +591,10 @@ class PlatformVerifierInitializer:
                 ) from exc
 
         # Apply ClusterRole — list+watch only, no get on any resource.
-        # Use replace (not create+409-skip) so that re-runs update the live rules.
+        # Use delete+create (not replace/PUT) — K3s v1.34.4 replace_cluster_role breaks the
+        # RBAC authorization evaluator cache, causing all SA token requests to receive 403 even
+        # when the ClusterRole is correctly indexed. delete+create emits clean DELETE+ADD events
+        # that the RBAC informer processes correctly.
         cluster_role = _k8s.V1ClusterRole(
             metadata=_k8s.V1ObjectMeta(name="lab-verifier-namespace-readonly"),
             rules=[
@@ -613,19 +616,18 @@ class PlatformVerifierInitializer:
             ],
         )
         try:
-            rbac_api.replace_cluster_role("lab-verifier-namespace-readonly", cluster_role)
+            rbac_api.delete_cluster_role("lab-verifier-namespace-readonly")
         except ApiException as exc:
-            if exc.status == 404:
-                try:
-                    rbac_api.create_cluster_role(cluster_role)
-                except ApiException as exc2:
-                    raise RuntimeError(
-                        f"Failed to create lab-verifier-namespace-readonly ClusterRole: status={exc2.status}"
-                    ) from exc2
-            else:
+            if exc.status != 404:
                 raise RuntimeError(
-                    f"Failed to update lab-verifier-namespace-readonly ClusterRole: status={exc.status}"
+                    f"Failed to delete lab-verifier-namespace-readonly ClusterRole before re-create: status={exc.status}"
                 ) from exc
+        try:
+            rbac_api.create_cluster_role(cluster_role)
+        except ApiException as exc:
+            raise RuntimeError(
+                f"Failed to create lab-verifier-namespace-readonly ClusterRole: status={exc.status}"
+            ) from exc
 
         # Create token via TokenRequest API (1-year duration)
         token_req = _k8s.AuthenticationV1TokenRequest(
