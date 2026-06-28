@@ -130,9 +130,12 @@ def _gen_ctx(inject_mode: str = "valid", adapter: Optional[LabDraftGenerationPor
         repo=draft_repo,
     )
 
+    from backend.labgen.routes import require_admin_user
+
     saved = dict(app.dependency_overrides)
     app.dependency_overrides[get_generation_service] = lambda: svc
-    app.dependency_overrides[get_current_user] = lambda: "student1"
+    app.dependency_overrides[get_current_user] = lambda: "admin"
+    app.dependency_overrides[require_admin_user] = lambda: "admin"
 
     client = TestClient(app, raise_server_exceptions=True)
     try:
@@ -532,7 +535,7 @@ class TestPermissions:
         """Admin user generates a draft with validator failures — not skipped."""
         from backend.main import app
         from backend.auth_deps import get_current_user
-        from backend.labgen.routes import get_generation_service
+        from backend.labgen.routes import get_generation_service, require_admin_user
 
         saved = dict(app.dependency_overrides)
         draft_repo = _MemDraftRepo()
@@ -543,6 +546,7 @@ class TestPermissions:
         )
         app.dependency_overrides[get_generation_service] = lambda: svc
         app.dependency_overrides[get_current_user] = lambda: "admin"
+        app.dependency_overrides[require_admin_user] = lambda: "admin"
 
         try:
             client = TestClient(app, raise_server_exceptions=True)

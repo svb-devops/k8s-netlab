@@ -163,10 +163,13 @@ def _gen_ctx(
         inject_mode=repair_mode
     )
 
+    from backend.labgen.routes import require_admin_user
+
     saved = dict(app.dependency_overrides)
     app.dependency_overrides[get_generation_service] = lambda: svc
     app.dependency_overrides[get_repair_port] = lambda: repair
-    app.dependency_overrides[get_current_user] = lambda: "student1"
+    app.dependency_overrides[get_current_user] = lambda: "admin"
+    app.dependency_overrides[require_admin_user] = lambda: "admin"
 
     client = TestClient(app, raise_server_exceptions=True)
     try:

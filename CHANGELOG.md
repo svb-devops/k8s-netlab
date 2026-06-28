@@ -7,6 +7,8 @@
 ## [Unreleased]
 
 ### Changed
+- ops(labgen): Owner Soft Launch Article #1 Published Verified Lock — CEO/CTO post_publish_browser_ui_verification 全部通过（article rendered/title/body visible/CTA enabled/header bottom match/anonymous flow PASS/logged-in learner PASS/无泄露/无 Growth assets/VMID 500-599 untouched）；产出 docs/labgen/OWNER_SOFT_LAUNCH_ARTICLE1_PUBLISHED_VERIFIED_v0.1.md；Growth Room 保持 blocked
+- fix(labgen): POST /api/lab-drafts/generate 权限从 login-only 加固为 admin-only（require_admin_user）— 根因：endpoint 仅要求已登录但未校验 admin 角色，普通 learner 可调用并在 repository 创建 DRAFT 记录（当前使用 FakeDraftGenerationAdapter 无 LLM，但若 provider_boundary 后续接入 live_enabled 模式则 learner 可触发 LLM 调用，违反 Phase 1 边界）；加固后 learner 调用返回 403；admin 仍正常 201；4 个回归测试（test_labgen_generate_admin_hardening.py：learner 403/unauthenticated 401-403/admin 201/无 draft 写入）；同步更新 test_labgen_draft_repair/_draft_preview/_llm_generation（_gen_ctx 原覆盖 get_current_user=student1，补覆盖 require_admin_user=admin）；4672 tests PASS 92.16% coverage；BLOCKER=0 HIGH=0 MEDIUM=0；article #1 正常访问未受影响
 - fix(labgen): namespace_exists() 在命名空间删除后收到 403（SA 的 namespace-scoped RoleBinding 随命名空间一起删除）时抛出 500；现在同时捕获 403 作为"命名空间不存在"处理（与 404 语义相同）；补回归测试 test_adapter_namespace_not_exists_true_on_403 防止重现
 - fix(labgen): image_resolver._default_http_get() 移除 verify=False（bandit HIGH B501）；内网 registry（172.16.100.1:5000）使用 HTTP，不需要 SSL；补回归测试 test_default_http_get_does_not_disable_ssl_verification 防止重现
 - fix(labgen): lab draft bb4fe651 step-5 patch 目标字段错误（/args 应为 /command）；kubectl create deployment -- args 设置的是 command 字段而非 args 字段；已通过彩排 step-5 验证修复正确

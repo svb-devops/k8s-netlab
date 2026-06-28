@@ -1433,7 +1433,7 @@ def get_repair_port() -> LabDraftRepairPort:
 )
 async def generate_lab_draft(
     body: LabDraftGenerationBody,
-    username: str = Depends(get_current_user),
+    username: str = Depends(require_admin_user),
     svc: LabDraftGenerationService = Depends(get_generation_service),
     repair: LabDraftRepairPort = Depends(get_repair_port),
 ) -> GenerateLabDraftResponse:

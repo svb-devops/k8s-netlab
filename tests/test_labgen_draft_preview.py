@@ -775,12 +775,14 @@ class TestRegression:
             assert r.status_code == 405
 
     def test_generate_api_still_works(self):
-        # Smoke: POST /api/lab-drafts/generate still returns 201
+        # Smoke: POST /api/lab-drafts/generate still returns 201 (admin-only)
         from backend.main import app
         from backend.auth_deps import get_current_user
+        from backend.labgen.routes import require_admin_user
 
         saved = dict(app.dependency_overrides)
-        app.dependency_overrides[get_current_user] = lambda: "student1"
+        app.dependency_overrides[get_current_user] = lambda: "admin"
+        app.dependency_overrides[require_admin_user] = lambda: "admin"
         client = TestClient(app, raise_server_exceptions=True)
         try:
             r = client.post(
