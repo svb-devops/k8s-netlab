@@ -309,6 +309,99 @@ class TestAutoCleanupTaskSessionPurge:
         mock_loop.run_in_executor.assert_not_called()
         mock_tracker.untrack_vm.assert_not_called()
 
+    async def test_vm_with_active_lab_session_not_deleted(self):
+        """回归：VM 有 LAB_ACTIVE lab session 时，auto_cleanup_task 不得删除该 VM。
+
+        根因：auto_cleanup_task 只检查 vm_tracker TTL，未检查 LabSession 是否仍活跃，
+        导致学生 lab session 进行中 VM 被强制销毁，K3s namespace 消失，lab 无法继续。
+        修复：删除前调用 session_repo.has_active_session_for_vm(vm_id_str)，返回 True 则跳过。
+        """
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from backend.main import auto_cleanup_task
+
+        mock_auth = MagicMock()
+        mock_tracker = MagicMock()
+        mock_tracker.get_expired_vms.return_value = ["400"]
+
+        mock_session_repo = MagicMock()
+        mock_session_repo.has_active_session_for_vm.return_value = True
+
+        mock_loop = MagicMock()
+        mock_loop.run_in_executor = AsyncMock()
+
+        sleep_calls = [None, asyncio.CancelledError()]
+
+        async def fake_sleep(_):
+            val = sleep_calls.pop(0)
+            if isinstance(val, type) and issubclass(val, BaseException):
+                raise val()
+            if isinstance(val, BaseException):
+                raise val
+
+        with patch("backend.main.auth_manager", mock_auth), \
+             patch("backend.main.vm_tracker", mock_tracker), \
+             patch("backend.main.config") as mock_config, \
+             patch("backend.main._get_lab_session_repo", return_value=mock_session_repo), \
+             patch("asyncio.get_running_loop", return_value=mock_loop), \
+             patch("asyncio.sleep", side_effect=fake_sleep):
+            mock_config.VM_SESSION_TIMEOUT_MIN = 30
+            mock_config.VM_TEMPLATE_ID = 101
+            mock_config.VM_CLEANUP_EXEMPT_IDS = frozenset()
+            try:
+                await auto_cleanup_task()
+            except asyncio.CancelledError:
+                pass
+
+        mock_session_repo.has_active_session_for_vm.assert_called_once_with("400")
+        mock_loop.run_in_executor.assert_not_called()
+        mock_tracker.untrack_vm.assert_not_called()
+
+    async def test_vm_without_active_lab_session_is_deleted(self):
+        """回归：VM 无 LAB_ACTIVE lab session 时，auto_cleanup_task 正常删除该 VM。"""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from backend.main import auto_cleanup_task
+
+        mock_auth = MagicMock()
+        mock_tracker = MagicMock()
+        mock_tracker.get_expired_vms.return_value = ["500"]
+
+        mock_session_repo = MagicMock()
+        mock_session_repo.has_active_session_for_vm.return_value = False
+
+        delete_result = {"success": True, "error": None}
+        mock_loop = MagicMock()
+        mock_loop.run_in_executor = AsyncMock(return_value=delete_result)
+
+        sleep_calls = [None, asyncio.CancelledError()]
+
+        async def fake_sleep(_):
+            val = sleep_calls.pop(0)
+            if isinstance(val, type) and issubclass(val, BaseException):
+                raise val()
+            if isinstance(val, BaseException):
+                raise val
+
+        with patch("backend.main.auth_manager", mock_auth), \
+             patch("backend.main.vm_tracker", mock_tracker), \
+             patch("backend.main.config") as mock_config, \
+             patch("backend.main._get_lab_session_repo", return_value=mock_session_repo), \
+             patch("asyncio.get_running_loop", return_value=mock_loop), \
+             patch("asyncio.sleep", side_effect=fake_sleep):
+            mock_config.VM_SESSION_TIMEOUT_MIN = 30
+            mock_config.VM_TEMPLATE_ID = 101
+            mock_config.VM_CLEANUP_EXEMPT_IDS = frozenset()
+            try:
+                await auto_cleanup_task()
+            except asyncio.CancelledError:
+                pass
+
+        mock_session_repo.has_active_session_for_vm.assert_called_once_with("500")
+        mock_loop.run_in_executor.assert_called_once()
+
 
 # ============================================================
 # SHA-256 → bcrypt 自动升级（L2 回归）

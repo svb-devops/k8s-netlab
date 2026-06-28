@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- fix(main): auto_cleanup_task 删除 VM 前未检查是否有活跃 lab session — 根因：自动清理仅依赖 vm_tracker TTL，未查询 LabSessionRepository，导致 LAB_ACTIVE 状态的 lab session 所在 VM 被强制销毁（K3s namespace 消失，lab 无法继续）；修复：在 delete_vm 前调用 `_get_lab_session_repo().has_active_session_for_vm(vm_id_str)`，返回 True 则跳过删除并记录 WARNING；补两个回归测试防止重现
 - ops(labgen): P0 Ops Recovery + Production Readiness Hardening — Owner Internal Run 前置门禁；修复 VM 299 verifier credentials 写入路径错误（应为 /var/lib/labgen-staging/verifier-credentials/299/，实际写入 creds/vm_creds/299/，根因：provision script 未加载 home_lab_mvp.env）；新增 backend/labgen/ops_env.py 规范 env 加载顺序（.env + /etc/labgen/home_lab_mvp.env override=True）；新增 scripts/provision_verifier_credentials.py + scripts/reset_admin_password.py（凭证操作脚本，不打印 secret）；home_lab_mvp.env VM_CLEANUP_EXEMPT_IDS 从 401 修正为 401,299（修复 VM 299 未受 exempt 保护的 bug）；新增 LAB_FORCE_CLOSED 终态 + admin_force_close_session() + list_failed_sessions() + GET /api/lab-sessions/admin/failed + POST /api/lab-sessions/admin/{id}/force-close（admin session recovery 路径）；/api/health 新增 labgen 段（credential_root_exists/exempt_vms/missing_credentials/status ok|degraded）；mypy namespace type safety 修复（lab_session_service/runtime_precheck/namespace_lifecycle/image_resolver/verifier_credentials 5 个文件，错误数从 24 降至 14）；RUNBOOK.md 新增场景五（smoke-admin 密码丢失）和场景六（Verifier Credentials 丢失）；4723 tests PASS 92.03% coverage；VMID 500-599 untouched；service health ok；VM 299 + 401 credentials both present
 
 

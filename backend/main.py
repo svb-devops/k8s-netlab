@@ -46,9 +46,16 @@ from backend.labgen.routes import (
 from backend.labgen.article_draft_routes import router as article_draft_router
 from backend.middleware import JsonFormatter, RequestIDMiddleware, SecurityHeadersMiddleware
 from backend.proxmox_api import connect_proxmox
+from backend.labgen.lab_session_repository import LabSessionRepository
 from backend.task_registry import drain as drain_vm_tasks
 from backend.vm_manager import delete_vm
 from backend.vm_tracker import vm_tracker
+
+
+def _get_lab_session_repo() -> LabSessionRepository:
+    """Return the singleton LabSessionRepository (patchable in tests)."""
+    from backend.labgen.routes import get_session_repository
+    return get_session_repository()
 
 # Configure structured JSON logging
 _handler = logging.StreamHandler()
@@ -101,6 +108,12 @@ async def auto_cleanup_task():
                             continue
                         if vm_id_int in config.VM_CLEANUP_EXEMPT_IDS:
                             logger.info(f"Auto-cleanup: Skipping exempt VM {vm_id} (platform/staging)")
+                            continue
+
+                        if _get_lab_session_repo().has_active_session_for_vm(str(vm_id)):
+                            logger.warning(
+                                f"Auto-cleanup: Skipping VM {vm_id} — has active lab session"
+                            )
                             continue
 
                         logger.info(f"Auto-cleanup: Deleting expired VM {vm_id}")
