@@ -265,6 +265,50 @@ class TestAutoCleanupTaskSessionPurge:
         # untrack_vm must NOT have been called (ownership check must remain valid)
         mock_tracker.untrack_vm.assert_not_called()
 
+    async def test_exempt_vm_skipped_when_id_is_string(self):
+        """回归：get_expired_vms() 从 JSON 返回字符串 key（如 "299"），
+        exempt 检查 frozenset({int}) 必须仍然匹配 — 防止类型不匹配导致 staging VM 被反复尝试删除。
+        根因：JSON dict key 永远是 str，frozenset 存的是 int，"299" in frozenset({299}) 是 False。
+        """
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from backend.main import auto_cleanup_task
+
+        mock_auth = MagicMock()
+        mock_tracker = MagicMock()
+        # Real get_expired_vms() returns string keys from JSON — simulate that
+        mock_tracker.get_expired_vms.return_value = ["299"]
+
+        mock_loop = MagicMock()
+        mock_loop.run_in_executor = AsyncMock()
+
+        sleep_calls = [None, asyncio.CancelledError()]
+
+        async def fake_sleep(_):
+            val = sleep_calls.pop(0)
+            if isinstance(val, type) and issubclass(val, BaseException):
+                raise val()
+            if isinstance(val, BaseException):
+                raise val
+
+        with patch("backend.main.auth_manager", mock_auth), \
+             patch("backend.main.vm_tracker", mock_tracker), \
+             patch("backend.main.config") as mock_config, \
+             patch("asyncio.get_running_loop", return_value=mock_loop), \
+             patch("asyncio.sleep", side_effect=fake_sleep):
+            mock_config.VM_SESSION_TIMEOUT_MIN = 30
+            mock_config.VM_TEMPLATE_ID = 101
+            mock_config.VM_CLEANUP_EXEMPT_IDS = frozenset({299})
+            try:
+                await auto_cleanup_task()
+            except asyncio.CancelledError:
+                pass
+
+        # delete_vm must NOT have been called — "299" (str) must match frozenset({299}) (int)
+        mock_loop.run_in_executor.assert_not_called()
+        mock_tracker.untrack_vm.assert_not_called()
+
 
 # ============================================================
 # SHA-256 → bcrypt 自动升级（L2 回归）

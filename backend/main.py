@@ -85,13 +85,21 @@ async def auto_cleanup_task():
 
                 for vm_id in expired_vms:
                     try:
+                        # get_expired_vms() returns keys from JSON which are always strings.
+                        # Normalise to int for comparisons against int-typed config sets.
+                        try:
+                            vm_id_int = int(vm_id)
+                        except (TypeError, ValueError):
+                            logger.warning(f"Auto-cleanup: Skipping VM with non-integer ID: {vm_id!r}")
+                            continue
+
                         # Skip template VM and exempt platform/staging VMs.
                         # Exempt VMs are NOT untracked so ownership checks remain valid.
-                        if vm_id == config.VM_TEMPLATE_ID:
+                        if vm_id_int == config.VM_TEMPLATE_ID:
                             logger.info(f"Auto-cleanup: Skipping template VM {vm_id}")
                             vm_tracker.untrack_vm(vm_id)
                             continue
-                        if vm_id in config.VM_CLEANUP_EXEMPT_IDS:
+                        if vm_id_int in config.VM_CLEANUP_EXEMPT_IDS:
                             logger.info(f"Auto-cleanup: Skipping exempt VM {vm_id} (platform/staging)")
                             continue
 

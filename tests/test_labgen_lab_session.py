@@ -601,6 +601,11 @@ class TestCreateSessionEndpoint:
         assert "precheck_failures" in detail
         codes = [f["code"] for f in detail["precheck_failures"]]
         assert "no_vm_assigned" in codes
+        # Message must be actionable (tell user to go to /app) — not just "Contact instructor"
+        msgs = [f.get("message", "") for f in detail["precheck_failures"]]
+        assert any("/app" in m for m in msgs), (
+            f"no_vm_assigned message must reference /app so user knows where to go. Got: {msgs}"
+        )
 
     def test_create_without_vm_id_auto_discovers_student_vm(self, student_client):
         """Regression: POST /api/lab-sessions without vm_id uses student's first tracked VM."""

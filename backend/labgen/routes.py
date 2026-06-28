@@ -1164,7 +1164,10 @@ async def create_lab_session(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail={
                         "precheck_failures": [
-                            {"code": "no_vm_assigned", "message": "No VM is assigned to your account. Contact your instructor."}
+                            {
+                                "code": "no_vm_assigned",
+                                "message": "您需要先在实验平台创建 Kubernetes 实验环境，才能开始此实验。请前往实验平台（/app）创建环境后，再回到本页点击 Start Lab。",
+                            }
                         ]
                     },
                 )

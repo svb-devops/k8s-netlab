@@ -89,8 +89,12 @@ export class LabGenClient {
 
         if (!resp.ok) {
             const detail = payload?.detail;
-            const code    = (typeof detail === 'object' ? detail?.code   : null) ?? `http_${resp.status}`;
-            const msg     = (typeof detail === 'object' ? detail?.message : typeof detail === 'string' ? detail : null)
+            // Extract precheck failure message if present (detail.precheck_failures[0].message)
+            const precheckMsg = Array.isArray(detail?.precheck_failures) && detail.precheck_failures.length > 0
+                ? (detail.precheck_failures[0]?.message ?? null)
+                : null;
+            const code    = (typeof detail === 'object' ? (detail?.code ?? detail?.precheck_failures?.[0]?.code) : null) ?? `http_${resp.status}`;
+            const msg     = (typeof detail === 'object' ? (detail?.message ?? precheckMsg) : typeof detail === 'string' ? detail : null)
                             ?? `Request failed (${resp.status})`;
             const issues  = (typeof detail === 'object' ? detail?.issues : null) ?? [];
             throw new LabGenApiError(resp.status, code, msg, issues);
