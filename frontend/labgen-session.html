@@ -1,9 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lab Session — K8S NetLab</title>
+    <title>实验进行中 — K8S NetLab</title>
+
+    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="/js/tailwind-config.js"></script>
 
@@ -15,56 +17,184 @@
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"
             integrity="sha384-AQLWHRKAgdTxkolJcLOELg4E9rE89CPE2xMy3tIRFn08NcGKPTsELdvKomqji+DL" crossorigin="anonymous"></script>
 
+    <!-- Shared styles (doc-drawer, step-pill, lab-panel etc.) -->
+    <link rel="stylesheet" href="/css/app.css?v=20260628">
+
     <style>
+        /* Full-viewport layout — terminal fills all available height */
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
+        #session-terminal-wrap {
+            /* flex-1 fills remaining height below header */
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        #kubectl-terminal-container {
+            flex: 1;
+            overflow: hidden;
+            /* min-height allows xterm.js fitAddon to measure correctly */
+            min-height: 0;
+        }
         #kubectl-terminal-container .xterm {
-            padding: 8px;
+            padding: 6px 10px;
         }
         #kubectl-terminal-container .xterm-viewport {
-            border-radius: 0 0 6px 6px;
+            border-radius: 0 0 4px 4px;
         }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
+
+<body class="flex flex-col bg-gray-900" style="height:100vh;overflow:hidden;">
 
 <!-- ── Header ── -->
-<header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-        <a href="/labgen-catalog.html" class="text-sm text-gray-500 hover:text-gray-700">← Catalog</a>
-        <span class="text-gray-300">|</span>
-        <h1 class="text-sm font-semibold text-gray-900">Session</h1>
+<header class="flex-shrink-0 bg-white border-b border-gray-200 shadow-sm">
+    <div class="flex items-center justify-between px-4 py-3">
+        <!-- Left: back link + lab title -->
+        <div class="flex items-center gap-3 min-w-0">
+            <a href="/labgen-catalog.html"
+               class="flex-shrink-0 text-sm text-gray-500 hover:text-k8s-blue transition flex items-center gap-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                </svg>
+                实验目录
+            </a>
+            <span class="flex-shrink-0 text-gray-300">|</span>
+            <h1 id="session-lab-title"
+                class="text-sm font-semibold text-gray-900 truncate">加载中…</h1>
+        </div>
+
+        <!-- Right: status badge + drawer toggle + username -->
+        <div class="flex-shrink-0 flex items-center gap-3">
+            <span id="session-status-badge"></span>
+
+            <!-- "实验步骤" drawer toggle — matches index.html's btn-toggle-drawer style -->
+            <button id="btn-toggle-drawer"
+                    class="text-xs text-gray-600 hover:text-k8s-blue border border-gray-300 hover:border-k8s-blue
+                           px-3 py-1.5 rounded-lg font-medium transition duration-200 flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                实验步骤
+            </button>
+
+            <span id="session-username" class="text-xs text-gray-400"></span>
+        </div>
     </div>
-    <div id="dev-user-info" class="text-xs text-gray-400"></div>
 </header>
 
-<!-- ── Main ── -->
-<main class="max-w-3xl mx-auto px-6 py-8 space-y-6">
-    <div id="root"><!-- populated by JS --></div>
+<!-- ── Main: full-height terminal area ── -->
+<main id="session-terminal-wrap" class="flex-1">
 
-    <!-- ── Kubectl Terminal Panel (shown only when LAB_ACTIVE) ── -->
-    <div id="kubectl-terminal-panel" class="hidden">
-        <div class="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-            <!-- Panel header -->
-            <div class="flex items-center justify-between px-4 py-2 bg-gray-800 text-white">
-                <div class="flex items-center gap-2">
-                    <span class="text-xs font-mono font-semibold text-green-400">$ kubectl</span>
-                    <span class="text-xs text-gray-400">Lab Terminal</span>
-                </div>
-                <span id="kubectl-terminal-ns-badge"
-                      class="text-xs font-mono text-cyan-300 hidden"></span>
-            </div>
+    <!-- Loading / non-active-state message (shown when terminal not connected) -->
+    <div id="session-message-area"
+         class="flex-1 flex flex-col items-center justify-center text-gray-400 h-full">
+        <div class="loading mb-4" style="border-color:#374151;border-top-color:#326CE5;"></div>
+        <p id="session-message-text" class="text-sm">正在加载实验环境…</p>
+    </div>
 
-            <!-- xterm.js mount point -->
-            <div id="kubectl-terminal-container"
-                 class="bg-gray-900"
-                 style="min-height: 280px;">
+    <!-- kubectl terminal panel (shown when LAB_ACTIVE) -->
+    <div id="kubectl-terminal-panel" class="hidden flex-col h-full">
+        <!-- macOS-style title bar -->
+        <div class="flex-shrink-0 flex items-center px-3 py-2 bg-gray-800 border-b border-gray-700">
+            <div class="flex space-x-1.5 mr-3">
+                <div class="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+                <div class="w-2.5 h-2.5 rounded-full bg-yellow-500"></div>
+                <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
             </div>
+            <span class="text-xs font-mono font-semibold text-green-400">$ kubectl</span>
+            <span class="text-xs text-gray-400 ml-1.5">Lab Terminal</span>
+            <span id="kubectl-terminal-ns-badge"
+                  class="hidden ml-3 text-xs font-mono text-cyan-300"></span>
         </div>
-        <p class="text-xs text-gray-400 mt-1 px-1">
-            Type <code class="font-mono">kubectl</code> commands above. Terminal is scoped to your lab namespace.
-        </p>
+
+        <!-- xterm.js mount point (flex-1 fills remaining height) -->
+        <div id="kubectl-terminal-container" class="bg-gray-900"></div>
     </div>
 </main>
 
-<script type="module" src="/js/labgen-session-init.js?v=2"></script>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     Lab Steps Drawer — fixed overlay, slides in from left
+     Reuses doc-drawer / drawer-backdrop / step-pill CSS from app.css
+     ══════════════════════════════════════════════════════════════════════════ -->
+<div id="lab-drawer" class="doc-drawer" role="dialog" aria-label="实验步骤">
+
+    <!-- Row 1: 实验步骤 / 实验背景 tabs + close -->
+    <div class="flex-shrink-0 flex items-stretch border-b border-gray-200 bg-gray-50">
+        <button id="drawer-tab-steps"
+                class="tab-btn text-xs px-4 py-2.5 font-medium border-b-2 border-k8s-blue text-k8s-blue bg-white">
+            实验步骤
+        </button>
+        <button id="drawer-tab-background"
+                class="tab-btn text-xs px-4 py-2.5 font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition">
+            实验背景
+        </button>
+        <button id="btn-close-drawer"
+                class="ml-auto px-3 text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
+                title="关闭面板">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Row 2: Progress bar + step pills -->
+    <div class="flex-shrink-0 px-3 pt-2 pb-1 border-b border-gray-100">
+        <div class="flex items-center justify-between mb-1">
+            <span class="text-xs font-medium text-gray-500">实验进度</span>
+            <span id="drawer-progress-text" class="text-xs text-gray-500">0/0 完成</span>
+        </div>
+        <div class="w-full bg-gray-200 rounded-full h-1">
+            <div id="drawer-progress-bar"
+                 class="bg-k8s-blue h-1 rounded-full transition-all duration-300"
+                 style="width:0%"></div>
+        </div>
+        <!-- Step pills -->
+        <div id="drawer-step-pills"
+             class="flex flex-wrap gap-1 pt-2 pb-1 max-h-16 overflow-y-auto"></div>
+    </div>
+
+    <!-- View: 实验步骤 (default) -->
+    <div id="drawer-steps-content"
+         class="flex-1 overflow-y-auto p-4 text-sm">
+        <!-- Populated by labgen-session-init.js via renderSessionView() -->
+    </div>
+
+    <!-- View: 实验背景 (hidden by default) -->
+    <div id="drawer-background-content"
+         class="hidden flex-1 overflow-y-auto p-4 text-sm text-gray-700">
+        <!-- Populated by labgen-session-init.js -->
+    </div>
+
+    <!-- Fixed action footer -->
+    <div class="flex-shrink-0 border-t border-gray-200 bg-white p-3 space-y-2">
+        <button id="btn-check-step" data-action="check-step" disabled
+                class="w-full px-4 py-2 rounded text-sm font-medium bg-gray-200 text-gray-400 cursor-not-allowed transition">
+            检查当前步骤
+        </button>
+        <div class="flex gap-2">
+            <button id="btn-complete" data-action="complete" data-ready="false" disabled
+                    class="flex-1 px-4 py-2 rounded text-sm font-medium bg-gray-200 text-gray-400 cursor-not-allowed transition">
+                完成实验
+            </button>
+            <button id="btn-abort" data-action="abort" disabled
+                    class="flex-1 px-4 py-2 rounded text-sm font-medium bg-gray-200 text-gray-400 cursor-not-allowed transition">
+                中止实验
+            </button>
+        </div>
+        <p id="action-error" class="hidden text-red-600 text-xs text-center"></p>
+    </div>
+
+</div><!-- end lab-drawer -->
+
+<!-- Drawer backdrop -->
+<div id="lab-drawer-backdrop" class="drawer-backdrop"></div>
+
+
+<script type="module" src="/js/labgen-session-init.js?v=20260628"></script>
 </body>
 </html>

@@ -1,65 +1,255 @@
+/**
+ * Lab Session Page — Init
+ *
+ * Layout: full-width kubectl terminal (main area) + left slide-in drawer
+ * for step progress, background, and action buttons.
+ *
+ * DOM architecture:
+ *   <header>  — lab title, status badge, drawer toggle
+ *   <main>    — full-height kubectl terminal (or loading/error message)
+ *   #lab-drawer — step list, progress bar, step pills, background tab,
+ *                 fixed footer with 检查当前步骤 / 完成实验 / 中止实验
+ */
+
 import { LabGenClient, LabGenApiError } from '/js/labgenClient.js';
-import { renderSessionView, renderErrorState, renderNotFound, renderLoading } from '/js/labgenViews.js';
+import {
+    renderSessionView,
+    getSessionActionStates,
+    renderErrorState,
+    renderLoading,
+} from '/js/labgenViews.js';
 import { LabKubectlTerminal } from '/js/labgen-kubectl-terminal.js';
 import { isSessionActive } from '/js/labgen-session-state.js';
+import { escapeHtml } from '/js/labgenSecurity.js';
 
-const root = document.getElementById('root');
-const devInfo = document.getElementById('dev-user-info');
-let _client;
-let _sessionId;
-let _terminal = null;     // LabKubectlTerminal instance
-let _wasActive = false;   // tracks whether terminal was connected
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+
+const labTitleEl      = document.getElementById('session-lab-title');
+const statusBadgeEl   = document.getElementById('session-status-badge');
+const usernameEl      = document.getElementById('session-username');
+
+const messageArea     = document.getElementById('session-message-area');
+const messageTextEl   = document.getElementById('session-message-text');
+const terminalPanel   = document.getElementById('kubectl-terminal-panel');
+const nsBadge         = document.getElementById('kubectl-terminal-ns-badge');
+
+const drawer          = document.getElementById('lab-drawer');
+const backdrop        = document.getElementById('lab-drawer-backdrop');
+const btnToggleDrawer = document.getElementById('btn-toggle-drawer');
+const btnCloseDrawer  = document.getElementById('btn-close-drawer');
+
+const tabSteps        = document.getElementById('drawer-tab-steps');
+const tabBackground   = document.getElementById('drawer-tab-background');
+const drawerSteps     = document.getElementById('drawer-steps-content');
+const drawerBg        = document.getElementById('drawer-background-content');
+
+const progressText    = document.getElementById('drawer-progress-text');
+const progressBar     = document.getElementById('drawer-progress-bar');
+const stepPills       = document.getElementById('drawer-step-pills');
+
+const btnCheckStep    = document.getElementById('btn-check-step');
+const btnComplete     = document.getElementById('btn-complete');
+const btnAbort        = document.getElementById('btn-abort');
+const actionErrorEl   = document.getElementById('action-error');
+
+// ── Module state ──────────────────────────────────────────────────────────────
+
+let _client    = null;
+let _sessionId = null;
+let _terminal  = null;
+let _wasActive = false;
+let _snapshot  = null;   // last loaded snapshot
+let _drawerOpen = false;
+let _currentTab = 'steps';   // 'steps' | 'background'
+
+// ── Drawer ────────────────────────────────────────────────────────────────────
+
+function openDrawer() {
+    drawer.classList.add('drawer-open');
+    backdrop.classList.add('backdrop-visible');
+    _drawerOpen = true;
+    // Refit terminal when drawer closes (backdrop covers but terminal is still open)
+    if (_terminal) _terminal.fit();
+}
+
+function closeDrawer() {
+    drawer.classList.remove('drawer-open');
+    backdrop.classList.remove('backdrop-visible');
+    _drawerOpen = false;
+    if (_terminal) _terminal.fit();
+}
+
+function switchTab(tab) {
+    _currentTab = tab;
+    const isSteps = tab === 'steps';
+
+    drawerSteps.classList.toggle('hidden', !isSteps);
+    drawerBg.classList.toggle('hidden', isSteps);
+
+    tabSteps.classList.toggle('border-k8s-blue', isSteps);
+    tabSteps.classList.toggle('text-k8s-blue', isSteps);
+    tabSteps.classList.toggle('bg-white', isSteps);
+    tabSteps.classList.toggle('border-transparent', !isSteps);
+    tabSteps.classList.toggle('text-gray-500', !isSteps);
+
+    tabBackground.classList.toggle('border-k8s-blue', !isSteps);
+    tabBackground.classList.toggle('text-k8s-blue', !isSteps);
+    tabBackground.classList.toggle('bg-white', !isSteps);
+    tabBackground.classList.toggle('border-transparent', isSteps);
+    tabBackground.classList.toggle('text-gray-500', isSteps);
+}
+
+btnToggleDrawer.addEventListener('click', () => _drawerOpen ? closeDrawer() : openDrawer());
+btnCloseDrawer.addEventListener('click', closeDrawer);
+backdrop.addEventListener('click', closeDrawer);
+tabSteps.addEventListener('click', () => switchTab('steps'));
+tabBackground.addEventListener('click', () => switchTab('background'));
+
+// ── Initialisation ────────────────────────────────────────────────────────────
 
 async function init() {
-    root.innerHTML = renderLoading();
-
     _client = new LabGenClient();
+
     const me = await _client.getMe();
     if (!me) {
         window.location.href = '/login.html?next=' + encodeURIComponent(window.location.href);
         return;
     }
-    devInfo.textContent = me.username;
+    usernameEl.textContent = me.username;
 
     _sessionId = new URLSearchParams(window.location.search).get('sessionId');
     if (!_sessionId) {
-        root.innerHTML = renderErrorState('Missing ?sessionId= parameter.');
+        showPageMessage('缺少 sessionId 参数，无法加载实验。', 'error');
         return;
     }
 
     await loadSnapshot();
 }
 
+// ── Snapshot ──────────────────────────────────────────────────────────────────
+
 async function loadSnapshot() {
     try {
         const snapshot = await _client.getSessionSnapshot(_sessionId);
-        root.innerHTML = renderSessionView(snapshot);
-        attachActions(snapshot);
-        syncTerminal(snapshot);
+        _snapshot = snapshot;
+        _updateHeader(snapshot);
+        _updateDrawerContent(snapshot);
+        _updateActionButtons(snapshot);
+        _syncTerminal(snapshot);
     } catch (e) {
-        if (e instanceof LabGenApiError && e.status === 404) {
-            root.innerHTML = renderNotFound('Session');
-        } else {
-            root.innerHTML = renderErrorState(
-                e instanceof LabGenApiError ? e.message : 'Failed to load session.'
-            );
-        }
+        const msg = e instanceof LabGenApiError && e.status === 404
+            ? '实验 Session 不存在'
+            : e instanceof LabGenApiError ? e.message : '加载实验环境失败';
+        showPageMessage(msg, 'error');
     }
 }
 
-/**
- * Show or hide the kubectl terminal panel based on session status.
- * Connect when LAB_ACTIVE, disconnect when session ends.
- */
-function syncTerminal(snapshot) {
-    const panel = document.getElementById('kubectl-terminal-panel');
-    const nsBadge = document.getElementById('kubectl-terminal-ns-badge');
-    if (!panel) return;
+// ── Header updates ────────────────────────────────────────────────────────────
 
+function _updateHeader(snapshot) {
+    if (snapshot?.title) {
+        labTitleEl.textContent = snapshot.title;
+        document.title = `${snapshot.title} — K8S NetLab`;
+    }
+    statusBadgeEl.innerHTML = _statusBadgeHtml(snapshot?.session_state);
+}
+
+// ── Drawer content ────────────────────────────────────────────────────────────
+
+function _updateDrawerContent(snapshot) {
+    // Steps view
+    drawerSteps.innerHTML = renderSessionView(snapshot);
+
+    // Background view
+    const bg = snapshot?.experiment_background ?? snapshot?.background ?? '';
+    drawerBg.innerHTML = bg
+        ? `<p class="text-sm text-gray-700 leading-relaxed">${escapeHtml(bg)}</p>`
+        : `<p class="text-sm text-gray-400 text-center pt-12">暂无实验背景介绍</p>`;
+
+    // Progress bar + step pills
+    _updateProgress(snapshot);
+}
+
+function _updateProgress(snapshot) {
+    const steps = Array.isArray(snapshot?.steps) ? snapshot.steps : [];
+    const total = steps.length;
+    const done  = steps.filter(s => s?.status === 'passed').length;
+    const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
+
+    progressText.textContent = `${done}/${total} 完成`;
+    progressBar.style.width  = `${pct}%`;
+
+    stepPills.innerHTML = steps.map((s, idx) => {
+        const isPassed  = s?.status === 'passed';
+        const isCurrent = s?.is_current === true;
+        const cls = isPassed  ? 'step-pill sp-done'
+                  : isCurrent ? 'step-pill sp-active'
+                              : 'step-pill';
+        const icon = isPassed ? '✓ ' : isCurrent ? '→ ' : `${idx + 1} `;
+        return `<button class="${cls}" data-step-idx="${idx}" title="${escapeHtml(s?.title ?? '')}">${icon}步骤 ${idx + 1}</button>`;
+    }).join('');
+
+    stepPills.querySelectorAll('[data-step-idx]').forEach(pill => {
+        pill.addEventListener('click', () => {
+            if (!_drawerOpen) openDrawer();
+            switchTab('steps');
+            const idx    = parseInt(pill.dataset.stepIdx, 10);
+            const stepEl = drawerSteps.querySelectorAll('[data-step-status]')[idx];
+            if (stepEl) stepEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        });
+    });
+}
+
+// ── Action button state ────────────────────────────────────────────────────────
+
+function _updateActionButtons(snapshot) {
+    const { canCheck, canComplete, canAbort, readyToComplete } = getSessionActionStates(snapshot);
+
+    _applyBtnState(btnCheckStep, canCheck,    'btn-check', '检查当前步骤');
+    _applyBtnState(btnComplete,  canComplete, 'btn-complete', '完成实验');
+    _applyBtnState(btnAbort,     canAbort,    'btn-abort', '中止实验');
+
+    btnComplete.dataset.ready = String(readyToComplete);
+
+    actionErrorEl.classList.add('hidden');
+    actionErrorEl.textContent = '';
+}
+
+function _applyBtnState(btn, enabled, kind, label) {
+    btn.disabled     = !enabled;
+    btn.textContent  = label;
+
+    if (enabled) {
+        if (kind === 'btn-check') {
+            btn.className = 'w-full px-4 py-2 rounded text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition';
+        } else if (kind === 'btn-complete') {
+            btn.className = 'flex-1 px-4 py-2 rounded text-sm font-medium bg-green-600 text-white hover:bg-green-700 transition';
+        } else {
+            btn.className = 'flex-1 px-4 py-2 rounded text-sm font-medium bg-red-500 text-white hover:bg-red-600 transition';
+        }
+    } else {
+        const full = kind === 'btn-check' ? 'w-full ' : 'flex-1 ';
+        btn.className = `${full}px-4 py-2 rounded text-sm font-medium bg-gray-200 text-gray-400 cursor-not-allowed transition`;
+    }
+}
+
+// ── Terminal sync ─────────────────────────────────────────────────────────────
+
+const _STATE_LABELS = {
+    LAB_COMPLETED:      '实验已完成',
+    LAB_CLOSED:         '实验已结束',
+    LAB_ABORTED:        '实验已中止',
+    LAB_CLEANUP_FAILED: '清理失败，请联系管理员',
+    IMAGE_CHECK_RUNNING:'正在检查镜像，请稍候…',
+};
+
+function _syncTerminal(snapshot) {
     const isActive = isSessionActive(snapshot);
 
     if (isActive) {
-        panel.classList.remove('hidden');
+        messageArea.classList.add('hidden');
+        terminalPanel.classList.remove('hidden');
+        terminalPanel.classList.add('flex');
 
         if (!_terminal) {
             _terminal = new LabKubectlTerminal(_sessionId, 'kubectl-terminal-container');
@@ -67,82 +257,108 @@ function syncTerminal(snapshot) {
             _wasActive = true;
         }
 
-        // Show namespace badge (may arrive after terminal is connected)
         if (snapshot?.namespace && nsBadge) {
             nsBadge.textContent = snapshot.namespace;
             nsBadge.classList.remove('hidden');
         }
     } else {
-        // Session ended — disconnect terminal if it was open
         if (_terminal && _wasActive) {
             _terminal.disconnect();
-            _terminal = null;
+            _terminal  = null;
             _wasActive = false;
         }
-        panel.classList.add('hidden');
-        if (nsBadge) nsBadge.classList.add('hidden');
+        terminalPanel.classList.add('hidden');
+        terminalPanel.classList.remove('flex');
+        messageArea.classList.remove('hidden');
+        messageTextEl.textContent = _STATE_LABELS[snapshot?.session_state] ?? '正在准备实验环境…';
+        messageTextEl.className   = snapshot?.session_state === 'LAB_CLEANUP_FAILED'
+            ? 'text-red-400 text-sm'
+            : 'text-gray-400 text-sm';
     }
 }
 
-function attachActions(snapshot) {
-    const checkBtn = root.querySelector('[data-action="check-step"]');
-    if (checkBtn && !checkBtn.disabled) {
-        checkBtn.addEventListener('click', async () => {
-            checkBtn.disabled = true;
-            checkBtn.textContent = 'Checking…';
-            try {
-                await _client.checkStep(_sessionId, snapshot?.current_step_id ?? '');
-                await loadSnapshot();
-            } catch (e) {
-                checkBtn.disabled = false;
-                checkBtn.textContent = 'Check Current Step';
-                showInlineError(checkBtn, e);
-            }
-        });
-    }
+// ── Action button event listeners ─────────────────────────────────────────────
 
-    const completeBtn = root.querySelector('[data-action="complete"]');
-    if (completeBtn && !completeBtn.disabled) {
-        completeBtn.addEventListener('click', async () => {
-            completeBtn.disabled = true;
-            completeBtn.textContent = 'Completing…';
-            try {
-                await _client.completeSession(_sessionId);
-                await loadSnapshot();
-            } catch (e) {
-                completeBtn.disabled = false;
-                completeBtn.textContent = 'Complete Lab';
-                showInlineError(completeBtn, e);
-            }
-        });
+btnCheckStep.addEventListener('click', async () => {
+    if (btnCheckStep.disabled) return;
+    btnCheckStep.disabled    = true;
+    btnCheckStep.textContent = '检查中…';
+    _clearActionError();
+    try {
+        const currentStepId = _snapshot?.current_step_id ?? '';
+        await _client.checkStep(_sessionId, currentStepId);
+        await loadSnapshot();
+    } catch (e) {
+        _showActionError(e);
+        // Restore button from snapshot state
+        if (_snapshot) _updateActionButtons(_snapshot);
     }
+});
 
-    const abortBtn = root.querySelector('[data-action="abort"]');
-    if (abortBtn && !abortBtn.disabled) {
-        abortBtn.addEventListener('click', async () => {
-            if (!confirm('Abort this session? This cannot be undone.')) return;
-            abortBtn.disabled = true;
-            abortBtn.textContent = 'Aborting…';
-            try {
-                await _client.abortSession(_sessionId);
-                await loadSnapshot();
-            } catch (e) {
-                abortBtn.disabled = false;
-                abortBtn.textContent = 'Abort';
-                showInlineError(abortBtn, e);
-            }
-        });
+btnComplete.addEventListener('click', async () => {
+    if (btnComplete.disabled) return;
+    btnComplete.disabled    = true;
+    btnComplete.textContent = '完成中…';
+    _clearActionError();
+    try {
+        await _client.completeSession(_sessionId);
+        await loadSnapshot();
+    } catch (e) {
+        _showActionError(e);
+        if (_snapshot) _updateActionButtons(_snapshot);
     }
+});
+
+btnAbort.addEventListener('click', async () => {
+    if (btnAbort.disabled) return;
+    if (!confirm('确认中止实验？此操作不可撤销，实验进度将清除。')) return;
+    btnAbort.disabled    = true;
+    btnAbort.textContent = '中止中…';
+    _clearActionError();
+    try {
+        await _client.abortSession(_sessionId);
+        await loadSnapshot();
+    } catch (e) {
+        _showActionError(e);
+        if (_snapshot) _updateActionButtons(_snapshot);
+    }
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function showPageMessage(text, type = 'info') {
+    messageArea.classList.remove('hidden');
+    terminalPanel.classList.add('hidden');
+    terminalPanel.classList.remove('flex');
+    messageTextEl.textContent = text;
+    messageTextEl.className   = type === 'error' ? 'text-red-400 text-sm' : 'text-gray-400 text-sm';
 }
 
-function showInlineError(btn, e) {
-    const existing = btn.parentElement.querySelector('.labgen-inline-error');
-    if (existing) existing.remove();
-    const msg = e instanceof LabGenApiError ? e.message : 'Action failed.';
-    const errDiv = document.createElement('p');
-    errDiv.className = 'labgen-inline-error text-red-600 text-xs mt-1';
-    errDiv.textContent = msg;
-    btn.parentElement.appendChild(errDiv);
+function _showActionError(e) {
+    const msg = e instanceof LabGenApiError ? e.message : '操作失败，请重试';
+    actionErrorEl.textContent = msg;
+    actionErrorEl.classList.remove('hidden');
 }
+
+function _clearActionError() {
+    actionErrorEl.classList.add('hidden');
+    actionErrorEl.textContent = '';
+}
+
+const _STATUS_CLASSES = {
+    LAB_ACTIVE:          'bg-green-100 text-green-800',
+    LAB_COMPLETED:       'bg-blue-100 text-blue-800',
+    LAB_CLOSED:          'bg-gray-100 text-gray-600',
+    LAB_ABORTED:         'bg-red-100 text-red-700',
+    LAB_CLEANUP_FAILED:  'bg-orange-100 text-orange-800',
+    IMAGE_CHECK_RUNNING: 'bg-yellow-100 text-yellow-800',
+};
+
+function _statusBadgeHtml(status) {
+    const cls = _STATUS_CLASSES[status] ?? 'bg-gray-100 text-gray-600';
+    return `<span class="inline-block px-2 py-0.5 rounded text-xs font-medium ${cls}">${escapeHtml(status ?? 'UNKNOWN')}</span>`;
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
 
 init();

@@ -15,6 +15,7 @@ const {
     renderLabCatalog,
     renderLabDetail,
     renderSessionView,
+    getSessionActionStates,
     renderContractPackSummary,
     renderErrorState,
     renderNotFound,
@@ -226,31 +227,38 @@ test('session view: title field used for lab title (not lab_title)', () => {
     assert.ok(!html2.includes('undefined'), 'undefined must not appear when title empty');
 });
 
-test('session view: action_availability.can_check_current_step controls Check button', () => {
-    const html = renderSessionView(ACTIVE_SNAPSHOT);
-    assert.ok(!hasDisabled(html, 'check-step'), 'Check step should be enabled (can_check_current_step=true)');
-    assert.ok(hasDisabled(html, 'complete'), 'Complete must be disabled (can_complete=false)');
-    assert.ok(!hasDisabled(html, 'abort'), 'Abort should be enabled (can_abort=true)');
+// ── getSessionActionStates ────────────────────────────────────────────────────
+// Action buttons are now static HTML in the drawer footer (labgen-session.html).
+// getSessionActionStates() returns the enabled/disabled state as a pure object.
+
+test('getSessionActionStates: canCheck true when can_check_current_step=true', () => {
+    const states = getSessionActionStates(ACTIVE_SNAPSHOT);
+    assert.equal(states.canCheck, true, 'canCheck should be true');
+    assert.equal(states.canComplete, false, 'canComplete should be false (can_complete=false)');
+    assert.equal(states.canAbort, true, 'canAbort should be true');
+    assert.equal(states.readyToComplete, false, 'readyToComplete should be false');
 });
 
-test('session view: can_check_current_step=false disables Check button', () => {
+test('getSessionActionStates: canCheck false when can_check_current_step=false', () => {
     const snapshot = {
         ...ACTIVE_SNAPSHOT,
         action_availability: { ...ACTIVE_SNAPSHOT.action_availability, can_check_current_step: false },
     };
-    const html = renderSessionView(snapshot);
-    assert.ok(hasDisabled(html, 'check-step'), 'Check button must be disabled when can_check_current_step=false');
+    const states = getSessionActionStates(snapshot);
+    assert.equal(states.canCheck, false, 'canCheck must be false when can_check_current_step=false');
 });
 
-test('session view: runtime_summary.ready_to_complete controls data-ready and Complete button', () => {
+test('getSessionActionStates: readyToComplete and canComplete when ready', () => {
     const snapshot = {
         ...ACTIVE_SNAPSHOT,
         runtime_summary: { ...ACTIVE_SNAPSHOT.runtime_summary, ready_to_complete: true },
         action_availability: { can_check_current_step: false, can_complete: true, can_abort: false, disabled_reasons: [] },
     };
-    const html = renderSessionView(snapshot);
-    assert.ok(hasAttr(html, 'data-ready', 'true'), 'Missing data-ready=true');
-    assert.ok(!hasDisabled(html, 'complete'), 'Complete should be enabled when ready_to_complete=true');
+    const states = getSessionActionStates(snapshot);
+    assert.equal(states.readyToComplete, true, 'readyToComplete must be true');
+    assert.equal(states.canComplete, true, 'canComplete must be true');
+    assert.equal(states.canCheck, false, 'canCheck should be false');
+    assert.equal(states.canAbort, false, 'canAbort should be false');
 });
 
 test('session view: step.status=passed marks step as passed (not completed_step_ids)', () => {
@@ -324,16 +332,16 @@ test('session view: runtime_summary.failure_reason shown as banner (not snapshot
     assert.ok(html.includes('namespace_cleanup_failed'), 'failure_reason banner not shown');
 });
 
-test('session view: complete/abort disabled after terminal state', () => {
+test('getSessionActionStates: all false in terminal state (LAB_CLOSED)', () => {
     const closed = {
         ...ACTIVE_SNAPSHOT,
         session_state: 'LAB_CLOSED',
         action_availability: { can_check_current_step: false, can_complete: false, can_abort: false, disabled_reasons: [] },
     };
-    const html = renderSessionView(closed);
-    assert.ok(hasDisabled(html, 'check-step'), 'Check step must be disabled in closed state');
-    assert.ok(hasDisabled(html, 'complete'), 'Complete must be disabled in closed state');
-    assert.ok(hasDisabled(html, 'abort'), 'Abort must be disabled in closed state');
+    const states = getSessionActionStates(closed);
+    assert.equal(states.canCheck,    false, 'canCheck must be false in closed state');
+    assert.equal(states.canComplete, false, 'canComplete must be false in closed state');
+    assert.equal(states.canAbort,    false, 'canAbort must be false in closed state');
 });
 
 test('session view: does not expose kubeconfig or vm_id', () => {

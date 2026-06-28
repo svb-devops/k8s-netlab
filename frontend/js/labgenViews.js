@@ -299,27 +299,42 @@ export function renderLabDetail({ lab, eligibility }) {
 // ─── Learner: Session ─────────────────────────────────────────────────────────
 
 /**
+ * Returns the action button enabled/disabled states for a session snapshot.
+ * Pure function — no DOM side-effects.
+ *
  * @param {object} snapshot - LearnerSessionSnapshot
+ * @returns {{ canCheck: boolean, canComplete: boolean, canAbort: boolean, readyToComplete: boolean }}
+ */
+export function getSessionActionStates(snapshot) {
+    const actions        = snapshot?.action_availability ?? {};
+    const runtimeSummary = snapshot?.runtime_summary ?? {};
+    return {
+        canCheck:        actions?.can_check_current_step === true,
+        canComplete:     actions?.can_complete           === true,
+        canAbort:        actions?.can_abort              === true,
+        readyToComplete: runtimeSummary?.ready_to_complete === true,
+    };
+}
+
+/**
+ * Renders the steps list for the drawer content area.
+ * Action buttons are static HTML in the drawer footer (see labgen-session.html).
  *
  * Field mapping (backend model → this function):
  *   snapshot.session_state           → status badge
- *   snapshot.title                   → lab title
- *   snapshot.runtime_summary.ready_to_complete → data-ready / Complete button
- *   snapshot.runtime_summary.failure_reason    → failure banner
- *   snapshot.action_availability.can_check_current_step → Check button
+ *   snapshot.title                   → lab title (inside drawer content)
+ *   snapshot.runtime_summary.failure_reason → failure banner
  *   step.status === 'passed'         → step marked as passed
  *   step.is_current                  → step marked as current
  *   step.check_summary               → inline verifier result under current step
+ *
+ * @param {object} snapshot - LearnerSessionSnapshot
+ * @returns {string} HTML string
  */
 export function renderSessionView(snapshot) {
     if (!snapshot) return renderErrorState('Session not found');
 
-    const actions        = snapshot?.action_availability ?? {};
-    const canCheck       = actions?.can_check_current_step === true;
-    const canComplete    = actions?.can_complete           === true;
-    const canAbort       = actions?.can_abort              === true;
     const runtimeSummary = snapshot?.runtime_summary ?? {};
-    const readyToComplete = runtimeSummary?.ready_to_complete === true;
 
     const steps = Array.isArray(snapshot?.steps)
         ? snapshot.steps.map((s, idx) => {
@@ -340,15 +355,15 @@ export function renderSessionView(snapshot) {
                 : '';
             const stepHint = isCurrent && s?.step_troubleshoot
                 ? `<details class="mt-2">
-                       <summary class="text-xs text-gray-400 cursor-pointer select-none hover:text-gray-600">Need help?</summary>
+                       <summary class="text-xs text-gray-400 cursor-pointer select-none hover:text-gray-600">操作提示</summary>
                        <p class="text-xs text-gray-500 mt-1 pl-2 border-l-2 border-gray-200">${_safe(s.step_troubleshoot)}</p>
                    </details>`
                 : '';
 
             return `
             <div class="flex items-start gap-3 border ${border} rounded p-3" data-step-status="${_safe(statusText)}">
-                <span class="text-sm font-bold w-6 text-center ${isPassed ? 'text-green-600' : isCurrent ? 'text-blue-600' : 'text-gray-400'}">${_safe(icon)}</span>
-                <div class="flex-1">
+                <span class="text-sm font-bold w-6 text-center flex-shrink-0 ${isPassed ? 'text-green-600' : isCurrent ? 'text-blue-600' : 'text-gray-400'}">${_safe(icon)}</span>
+                <div class="flex-1 min-w-0">
                     <p class="text-sm font-medium text-gray-800">${_safe(s?.title ?? s?.step_id ?? '')}</p>
                     ${stepDo}
                     ${stepCmds}
@@ -362,47 +377,22 @@ export function renderSessionView(snapshot) {
     const failureReasonValue = runtimeSummary?.failure_reason;
     const failureReason = failureReasonValue
         ? `<div class="bg-orange-50 border border-orange-200 rounded p-3 text-orange-800 text-sm">
-               <strong>Failure reason:</strong> ${_safe(failureReasonValue)}
+               <strong>异常原因：</strong>${_safe(failureReasonValue)}
            </div>`
         : '';
 
     return `
-    <div class="space-y-5">
+    <div class="space-y-3">
         <div class="flex items-center justify-between">
-            <h2 class="text-xl font-semibold text-gray-900">Lab Session</h2>
+            <h2 class="text-sm font-semibold text-gray-700">实验步骤</h2>
             ${_statusBadge(snapshot?.session_state ?? 'UNKNOWN')}
         </div>
 
-        ${snapshot?.title ? `<p class="text-gray-600 font-medium">${_safe(snapshot.title)}</p>` : ''}
+        ${snapshot?.title ? `<p class="text-base font-medium text-gray-900">${_safe(snapshot.title)}</p>` : ''}
 
         ${failureReason}
 
-        ${steps ? `<div class="space-y-2">${steps}</div>` : ''}
-
-        <div class="flex gap-3 pt-4 border-t flex-wrap">
-            <button
-                data-action="check-step"
-                ${!canCheck ? 'disabled' : ''}
-                class="px-4 py-2 rounded text-sm font-medium
-                    ${canCheck ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}">
-                Check Current Step
-            </button>
-            <button
-                data-action="complete"
-                data-ready="${readyToComplete}"
-                ${!canComplete ? 'disabled' : ''}
-                class="px-4 py-2 rounded text-sm font-medium
-                    ${canComplete ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}">
-                Complete Lab
-            </button>
-            <button
-                data-action="abort"
-                ${!canAbort ? 'disabled' : ''}
-                class="px-4 py-2 rounded text-sm font-medium
-                    ${canAbort ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}">
-                Abort
-            </button>
-        </div>
+        ${steps ? `<div class="space-y-2 mt-3">${steps}</div>` : ''}
     </div>`;
 }
 
