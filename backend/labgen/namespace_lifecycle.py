@@ -562,10 +562,10 @@ class K3sNamespaceLifecycleAdapter(NamespaceLifecyclePort):
                 return False
             if ns.metadata is None or ns.metadata.deletion_timestamp is None:
                 return False
-            elapsed = (
+            elapsed: float = (
                 datetime.now(timezone.utc) - ns.metadata.deletion_timestamp
             ).total_seconds()
-            return elapsed >= threshold_seconds
+            return bool(elapsed >= threshold_seconds)
         except ApiException as exc:
             if exc.status == 404:
                 return False  # already deleted — not stuck

@@ -126,6 +126,7 @@ class LabSessionStatus(str, Enum):
     CLEANUP_VERIFICATION_RUNNING = "CLEANUP_VERIFICATION_RUNNING"
     CLEANUP_VERIFIED = "CLEANUP_VERIFIED"
     LAB_CLOSED = "LAB_CLOSED"
+    LAB_FORCE_CLOSED = "LAB_FORCE_CLOSED"  # Admin-only: terminal override for stuck sessions
 
 
 class ConnectionState(str, Enum):
@@ -541,6 +542,8 @@ class LabSessionState(SchemaVersionedModel):
     last_verify_results: list[VerifyResult] = Field(default_factory=list)
     session_type: SessionType = SessionType.LEARNER
     article_draft_id: Optional[str] = None
+    admin_force_closed_with_residual_risk: bool = False
+    admin_audit_note: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

@@ -176,12 +176,12 @@ class RuntimePrecheckService:
         Terminating namespaces from previous owners are also detected.
         """
         try:
-            sessions = [
-                s for s in self._sessions.list_by_vm_id(vm_id)
+            sessions_with_ns: list[tuple] = [
+                (s, s.namespace) for s in self._sessions.list_by_vm_id(vm_id)
                 if s.namespace is not None
             ]
-            for session in sessions:
-                if self._ns.is_namespace_stuck_terminating(session.namespace, self._threshold):
+            for session, ns in sessions_with_ns:
+                if self._ns.is_namespace_stuck_terminating(ns, self._threshold):
                     return RuntimePrecheckIssue(
                         code=FailureReason.RUNTIME_PRECHECK_CONDITION_4_FAILED.value,
                         message=_sanitize_message(

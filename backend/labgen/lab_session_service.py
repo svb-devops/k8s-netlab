@@ -53,6 +53,7 @@ _TERMINAL_STATES: frozenset[LabSessionStatus] = frozenset({
     LabSessionStatus.LAB_CLOSED,
     LabSessionStatus.LAB_CLEANUP_FAILED,
     LabSessionStatus.LAB_START_FAILED,
+    LabSessionStatus.LAB_FORCE_CLOSED,
 })
 
 # States that have already ended (either terminal or completed lifecycle) — timeout is a no-op.
@@ -63,6 +64,7 @@ _ALREADY_ENDED_STATES: frozenset[LabSessionStatus] = frozenset({
     LabSessionStatus.LAB_TIMEOUT,
     LabSessionStatus.LAB_COMPLETED,
     LabSessionStatus.LAB_ABORTED,
+    LabSessionStatus.LAB_FORCE_CLOSED,
 })
 
 _ACTIVE_STATES: frozenset[LabSessionStatus] = frozenset({
@@ -564,10 +566,11 @@ class LabSessionService:
             session_type=session_type,
             article_draft_id=article_draft_id,
         )
-        session.namespace = f"lab-{session.session_id}"
+        namespace: str = f"lab-{session.session_id}"
+        session.namespace = namespace
 
         try:
-            create_ok = self._ns_lifecycle.create_namespace(session.namespace)
+            create_ok = self._ns_lifecycle.create_namespace(namespace)
         except Exception:
             create_ok = False
 
@@ -579,7 +582,7 @@ class LabSessionService:
             return session
 
         try:
-            exists = self._ns_lifecycle.namespace_exists(session.namespace)
+            exists = self._ns_lifecycle.namespace_exists(namespace)
         except Exception:
             exists = False
 
@@ -592,7 +595,7 @@ class LabSessionService:
 
         session.lab_session_status = LabSessionStatus.VERIFIER_BINDING_CREATING
         try:
-            binding_ok = self._ns_lifecycle.ensure_verifier_rolebinding(session.namespace)
+            binding_ok = self._ns_lifecycle.ensure_verifier_rolebinding(namespace)
         except Exception:
             binding_ok = False
 
@@ -604,7 +607,7 @@ class LabSessionService:
             return session
 
         try:
-            binding_exists = self._ns_lifecycle.verifier_rolebinding_exists(session.namespace)
+            binding_exists = self._ns_lifecycle.verifier_rolebinding_exists(namespace)
         except Exception:
             binding_exists = False
 
@@ -675,6 +678,49 @@ class LabSessionService:
         session.ended_at = datetime.now(tz=timezone.utc)
         session = self._session_repo.update(session)
         return self._do_cleanup(session)
+
+    def list_failed_sessions(self) -> list[LabSessionState]:
+        """Return all sessions in LAB_START_FAILED or LAB_CLEANUP_FAILED (admin only).
+
+        The caller (route handler) is responsible for enforcing admin auth.
+        """
+        _failed = frozenset({LabSessionStatus.LAB_START_FAILED, LabSessionStatus.LAB_CLEANUP_FAILED})
+        return self._session_repo.list_by_status(_failed)
+
+    def admin_force_close_session(
+        self,
+        session_id: str,
+        audit_note: str,
+        *,
+        residual_risk: bool = False,
+    ) -> LabSessionState:
+        """Admin-only: force close a terminal-failed session.
+
+        Only permitted for sessions in LAB_START_FAILED or LAB_CLEANUP_FAILED states.
+        Transitions to LAB_FORCE_CLOSED and records admin audit note.
+
+        Args:
+            session_id: The session to force close.
+            audit_note: Required explanation from the admin (stored on session).
+            residual_risk: True when the admin cannot confirm resources were cleaned up
+                (LAB_CLEANUP_FAILED path). If False, admin attests cleanup was verified.
+        """
+        if not audit_note or not audit_note.strip():
+            raise ValueError("admin_audit_note is required for force close")
+
+        session = self._require_session(session_id)
+        _eligible = {LabSessionStatus.LAB_START_FAILED, LabSessionStatus.LAB_CLEANUP_FAILED}
+        if session.lab_session_status not in _eligible:
+            raise ValueError(
+                f"force_close only permitted for {[s.value for s in _eligible]}, "
+                f"got {session.lab_session_status.value}"
+            )
+
+        session.lab_session_status = LabSessionStatus.LAB_FORCE_CLOSED
+        session.ended_at = session.ended_at or datetime.now(tz=timezone.utc)
+        session.admin_audit_note = audit_note.strip()
+        session.admin_force_closed_with_residual_risk = residual_risk
+        return self._session_repo.update(session)
 
     # ------------------------------------------------------------------
     # Internal helpers

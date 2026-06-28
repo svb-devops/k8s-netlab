@@ -486,6 +486,42 @@ async def api_health_head() -> Response:
     return Response(status_code=status.HTTP_200_OK)
 
 
+def _check_verifier_credentials_health() -> Dict[str, Any]:
+    """Check verifier credential store for configured exempt/staging VMs.
+
+    Returns a dict suitable for embedding in the health response.
+    Never exposes credential content — only presence.
+    """
+    try:
+        from backend.labgen.verifier_credentials import VerifierCredentialStore
+        store = VerifierCredentialStore(config.LABGEN_VERIFIER_CREDENTIAL_ROOT)
+        root_exists = store.credential_root_exists
+
+        vm_ids = [
+            str(v).strip()
+            for v in config.VM_CLEANUP_EXEMPT_IDS
+            if str(v).strip().isdigit()
+        ]
+
+        vm_status: Dict[str, Any] = {}
+        missing: list[str] = []
+        for vm_id in vm_ids:
+            present = store.exists(vm_id)
+            vm_status[vm_id] = {"credentials_present": present}
+            if not present:
+                missing.append(vm_id)
+
+        return {
+            "status": "degraded" if missing else "ok",
+            "credential_root_exists": root_exists,
+            "exempt_vms": vm_status,
+            "missing_credentials": missing,
+        }
+    except Exception as exc:
+        logger.warning("verifier_credentials_health check failed: %s", exc)
+        return {"status": "unknown", "error": "health check failed"}
+
+
 @router.get(
     "/health",
     status_code=status.HTTP_200_OK,
@@ -497,21 +533,34 @@ async def api_health_check() -> Dict[str, Any]:
     Health check endpoint.
 
     Returns:
-        dict: Health status with Proxmox connection info
+        dict: Health status with Proxmox connection info and LabGen credential status
     """
+    loop = asyncio.get_running_loop()
+
+    proxmox_ok = False
+    proxmox_error: Optional[str] = None
     try:
-        loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, connect_proxmox)
-        return {
-            "status": "healthy",
-            "proxmox": {"connected": True}
-        }
+        proxmox_ok = True
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        logger.error(f"Proxmox health check failed: {e}")
+        proxmox_error = "Proxmox connection failed"
+
+    labgen_health = await loop.run_in_executor(None, _check_verifier_credentials_health)
+
+    if not proxmox_ok:
         return {
             "status": "unhealthy",
-            "error": "Proxmox connection failed"
+            "error": proxmox_error,
+            "proxmox": {"connected": False},
+            "labgen": labgen_health,
         }
+
+    return {
+        "status": "healthy",
+        "proxmox": {"connected": True},
+        "labgen": labgen_health,
+    }
 
 
 @router.get(

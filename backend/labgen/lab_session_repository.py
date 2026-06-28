@@ -21,6 +21,7 @@ _DONE_STATUSES: frozenset[LabSessionStatus] = frozenset({
     LabSessionStatus.LAB_TIMEOUT,
     LabSessionStatus.LAB_COMPLETED,
     LabSessionStatus.LAB_ABORTED,
+    LabSessionStatus.LAB_FORCE_CLOSED,
 })
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,19 @@ class LabSessionRepository:
                     result.append(s)
             except Exception as exc:
                 logger.error("LabSessionRepository.list_by_vm_id failed: %s", exc)
+        return result
+
+    def list_by_status(self, statuses: frozenset[LabSessionStatus]) -> list[LabSessionState]:
+        """Return all sessions whose lab_session_status is in the given set."""
+        data = safe_read_json(self._path)
+        result = []
+        for raw in data.values():
+            try:
+                s = LabSessionState.model_validate(raw)
+                if s.lab_session_status in statuses:
+                    result.append(s)
+            except Exception as exc:
+                logger.error("LabSessionRepository.list_by_status failed: %s", exc)
         return result
 
     def has_active_session_for_vm(self, vm_id: str) -> bool:

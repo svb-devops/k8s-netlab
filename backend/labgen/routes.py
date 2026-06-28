@@ -1385,6 +1385,64 @@ async def get_session_snapshot(
 
 
 # ===========================================================================
+# Admin Session Recovery — GET/POST /api/lab-sessions/admin/failed
+# ===========================================================================
+
+
+class AdminForceCloseRequest(BaseModel):
+    audit_note: str = Field(..., min_length=10, description="Required admin explanation (min 10 chars)")
+    residual_risk: bool = Field(
+        False,
+        description="True = admin cannot confirm resources were cleaned up (LAB_CLEANUP_FAILED cases)",
+    )
+
+
+@lab_session_router.get(
+    "/admin/failed",
+    response_model=list[LabSessionState],
+    summary="Admin: list terminal-failed sessions",
+)
+async def list_failed_sessions(
+    admin: str = Depends(require_admin_user),
+    svc: LabSessionService = Depends(get_session_service),
+) -> list[LabSessionState]:
+    """Return all sessions in LAB_START_FAILED or LAB_CLEANUP_FAILED state.
+
+    Admin only. Intended for identifying sessions that need force-close recovery.
+    """
+    return svc.list_failed_sessions()
+
+
+@lab_session_router.post(
+    "/admin/{session_id}/force-close",
+    response_model=LabSessionState,
+    summary="Admin: force close a stuck terminal-failed session",
+)
+async def admin_force_close_session(
+    session_id: str,
+    body: AdminForceCloseRequest,
+    admin: str = Depends(require_admin_user),
+    svc: LabSessionService = Depends(get_session_service),
+) -> LabSessionState:
+    """Force close a session stuck in LAB_START_FAILED or LAB_CLEANUP_FAILED.
+
+    Admin only. Transitions to LAB_FORCE_CLOSED. Requires an audit note.
+    For LAB_CLEANUP_FAILED sessions, set residual_risk=true if you cannot confirm
+    namespace/resources were actually cleaned up.
+    """
+    try:
+        return svc.admin_force_close_session(
+            session_id,
+            audit_note=body.audit_note,
+            residual_risk=body.residual_risk,
+        )
+    except SessionNotFound:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+
+# ===========================================================================
 # Lab Draft Generation — POST /api/lab-drafts/generate
 # ===========================================================================
 

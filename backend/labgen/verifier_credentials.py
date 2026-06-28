@@ -23,7 +23,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import Field
 
@@ -168,6 +168,11 @@ class VerifierCredentialStore:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    @property
+    def credential_root_exists(self) -> bool:
+        """True if the credential root directory exists on disk."""
+        return self._base.exists()
 
     def save(
         self,
@@ -518,7 +523,7 @@ class PlatformK8sApiFactory:
         self, kubeconfig_content: str
     ) -> "tuple[Any, Any]":
         """Return (CoreV1Api, RbacAuthorizationV1Api)."""
-        import yaml
+        import yaml  # type: ignore[import-untyped]
         from kubernetes import client as _k8s
         from kubernetes.config.kube_config import KubeConfigLoader
 

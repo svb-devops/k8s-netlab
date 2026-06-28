@@ -35,9 +35,9 @@ from typing import Any, Callable, Optional
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Load .env before any backend import (config.py requires PROXMOX_HOST etc.)
-from dotenv import load_dotenv
-load_dotenv(Path(__file__).parent.parent / ".env", override=False)
+# Load env in production order: .env → home_lab_mvp.env (override)
+from backend.labgen.ops_env import load_ops_env
+load_ops_env()
 
 from backend.labgen.image_resolver import ImageResolver
 from backend.labgen.k8s_verifier_client import K8sVerifierClientAdapter, KubernetesApiFactory

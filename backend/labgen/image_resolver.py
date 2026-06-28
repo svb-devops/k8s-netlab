@@ -17,7 +17,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from backend.labgen.models import ImageResolutionResult, ImageStatus
 
@@ -130,23 +130,23 @@ def parse_image_ref(image_ref: str) -> RequestedImage:
 # ---------------------------------------------------------------------------
 
 
-def _load_whitelist(path: Path) -> dict:
+def _load_whitelist(path: Path) -> dict[str, Any]:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return dict(json.loads(path.read_text(encoding="utf-8")))
     except (FileNotFoundError, json.JSONDecodeError) as exc:
         logger.warning("image_whitelist.json not found or invalid: %s", exc)
         return {}
 
 
-def _lookup_whitelist(whitelist: dict, key: str) -> Optional[str]:
+def _lookup_whitelist(whitelist: dict[str, Any], key: str) -> Optional[str]:
     """Return the default resolved image for a given key or alias, or None."""
     # Direct key match
     if key in whitelist:
-        return whitelist[key]["default"]
+        return str(whitelist[key]["default"])
     # Alias match
     for entry in whitelist.values():
         if key in entry.get("aliases", []):
-            return entry["default"]
+            return str(entry["default"])
     return None
 
 
