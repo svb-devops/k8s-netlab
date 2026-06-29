@@ -122,4 +122,5 @@ async def directus_auth_login(username: str, password: str) -> Optional[str]:
     if resp.status_code != 200:
         return None
 
-    return resp.json().get("data", {}).get("access_token")
+    token: Optional[str] = resp.json().get("data", {}).get("access_token")
+    return token

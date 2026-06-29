@@ -42,9 +42,9 @@ async def get_current_user(
 
     # 2. Legacy session cookie
     if session_token:
-        username = auth_manager.verify_session(session_token)
-        if username:
-            return username
+        legacy_user = auth_manager.verify_session(session_token)
+        if legacy_user:
+            return legacy_user
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired session. Please login again.",

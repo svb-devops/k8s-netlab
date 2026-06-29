@@ -240,6 +240,25 @@ if [ "$ISSUES" -eq 0 ] && command -v codex &>/dev/null; then
 fi
 
 # ----------------------------------------------------------------
+# Mypy 类型检查门禁（硬阻断）
+# ----------------------------------------------------------------
+if [ "$ISSUES" -eq 0 ]; then
+    echo ""
+    echo "  [mypy] 类型检查..."
+    VENV_PYTHON="$PROJECT_ROOT/venv/bin/python3"
+    if [ -f "$VENV_PYTHON" ]; then
+        if "$VENV_PYTHON" -m mypy backend/ --ignore-missing-imports 2>&1 | sed 's/^/  /'; then
+            echo "  ✅ mypy 通过"
+        else
+            echo "  ❌ mypy 失败，push 已阻止"
+            ISSUES=$((ISSUES + 1))
+        fi
+    else
+        echo "  ⚠️  venv 未找到，跳过 mypy"
+    fi
+fi
+
+# ----------------------------------------------------------------
 # 测试门禁：有 tests/ 目录则必须通过
 # ----------------------------------------------------------------
 if [ -d "tests" ] && [ "$ISSUES" -eq 0 ]; then

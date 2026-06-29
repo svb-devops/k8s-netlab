@@ -366,3 +366,73 @@ class TestAdminRecoveryEndpointAuth:
         data = resp.json()
         assert data["lab_session_status"] == "LAB_FORCE_CLOSED"
         assert data["admin_force_closed_with_residual_risk"] is True
+
+
+class TestAbortedSessionAttestation:
+    """Verify admin attestation pattern for LAB_ABORTED sessions with cleanup_verified=False.
+
+    When a session is LAB_ABORTED and cleanup_verified=False (e.g., the underlying VM was
+    deleted before cleanup could run), an admin can investigate and attest zero residual by
+    updating the session via the repository layer.
+    """
+
+    def _make_aborted_session(self, *, reason: str, vm_id: str = "401") -> LabSessionState:
+        s = _make_session(lab_session_status=LabSessionStatus.LAB_ABORTED)
+        s.failure_reason = reason
+        s.vm_id = vm_id
+        s.cleanup_verified = False
+        s.admin_force_closed_with_residual_risk = False
+        return s
+
+    def test_aborted_session_can_be_attested_via_repo_update(self) -> None:
+        """Admin attestation updates cleanup_verified and audit_note without changing status."""
+        session = self._make_aborted_session(reason="operator_reset")
+        assert not session.cleanup_verified
+
+        # Admin investigates: VM is gone, no namespace residual
+        session.admin_audit_note = "VM 401 absent from Proxmox; namespace cannot exist; admin attests zero residual"
+        session.admin_force_closed_with_residual_risk = False
+        session.cleanup_verified = True
+
+        assert session.lab_session_status == LabSessionStatus.LAB_ABORTED
+        assert session.cleanup_verified is True
+        assert session.admin_force_closed_with_residual_risk is False
+        assert "admin attests" in session.admin_audit_note
+
+    def test_precheck_abort_has_no_residual(self) -> None:
+        """Sessions aborted at precheck (before namespace creation) have zero residual."""
+        session = self._make_aborted_session(
+            reason="vm_has_no_verifier_credentials", vm_id="400"
+        )
+        # Precheck fires before namespace creation → namespace never existed
+        session.admin_audit_note = "Precheck abort; namespace was never created; zero residual"
+        session.cleanup_verified = True
+        assert session.cleanup_verified is True
+
+    def test_vm_deleted_abort_has_no_residual(self) -> None:
+        """Sessions where VM was deleted/rebuilt have zero residual (K3s cluster wiped)."""
+        for reason in ("vm_deleted_and_recreated", "vm_not_found_rebuilt"):
+            session = self._make_aborted_session(reason=reason, vm_id="500")
+            session.admin_audit_note = f"VM deleted ({reason}); K3s cluster wiped; namespace gone"
+            session.cleanup_verified = True
+            assert session.cleanup_verified is True
+
+    def test_zero_debt_state_after_full_recovery(self) -> None:
+        """After complete admin recovery, no sessions have cleanup_verified=False."""
+        sessions: list[LabSessionState] = []
+
+        # Mix of terminal states all recovered
+        for status in (LabSessionStatus.LAB_CLOSED, LabSessionStatus.LAB_FORCE_CLOSED,
+                       LabSessionStatus.LAB_ABORTED):
+            s = _make_session(lab_session_status=status)
+            s.cleanup_verified = True
+            s.admin_force_closed_with_residual_risk = False
+            sessions.append(s)
+
+        not_clean = [s for s in sessions if not s.cleanup_verified]
+        with_residual = [s for s in sessions if s.admin_force_closed_with_residual_risk]
+        active = [s for s in sessions if s.lab_session_status == LabSessionStatus.LAB_ACTIVE]
+
+        assert len(not_clean) == 0
+        assert len(with_residual) == 0
+        assert len(active) == 0

@@ -8,7 +8,7 @@ POST /api/articles/{slug}/comments      — post a comment (login required)
 """
 
 import logging
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional, cast
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -49,10 +49,10 @@ async def _directus_get(path: str, params: dict) -> Optional[dict]:
         return None
     if resp.status_code != 200:
         raise HTTPException(status_code=502, detail="CMS 返回错误")
-    return resp.json()
+    return cast(dict[Any, Any], resp.json())
 
 
-async def _directus_post(path: str, payload: dict) -> dict:
+async def _directus_post(path: str, payload: dict[str, Any]) -> dict[Any, Any]:
     if not config.DIRECTUS_URL:
         raise HTTPException(status_code=503, detail="CMS 未配置")
     try:
@@ -63,7 +63,7 @@ async def _directus_post(path: str, payload: dict) -> dict:
         raise HTTPException(status_code=503, detail="CMS 暂时不可用")
     if resp.status_code not in (200, 201):
         raise HTTPException(status_code=502, detail="评论提交失败")
-    return resp.json()
+    return cast(dict[Any, Any], resp.json())
 
 
 async def _resolve_user(

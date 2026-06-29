@@ -82,13 +82,13 @@ def _stream_reply(messages: list[dict]) -> StreamingResponse:
         try:
             stream = client.chat.completions.create(
                 model=config.DEEPSEEK_MODEL,
-                messages=messages,
+                messages=messages,  # type: ignore[arg-type]  # built dynamically from valid role/content dicts; runtime-correct
                 stream=True,
                 max_tokens=512,
                 temperature=0.7,
             )
             for chunk in stream:
-                delta = chunk.choices[0].delta
+                delta = chunk.choices[0].delta  # type: ignore[union-attr]  # stream=True narrows type at runtime; mypy cannot infer
                 if delta.content:
                     yield f"data: {json.dumps({'text': delta.content}, ensure_ascii=False)}\n\n"
         except Exception as exc:
@@ -141,13 +141,13 @@ async def ai_chat(
         try:
             stream = client.chat.completions.create(
                 model=config.DEEPSEEK_MODEL,
-                messages=messages,
+                messages=messages,  # type: ignore[arg-type]  # built dynamically from valid role/content dicts; runtime-correct
                 stream=True,
                 max_tokens=512,
                 temperature=0.7,
             )
             for chunk in stream:
-                delta = chunk.choices[0].delta
+                delta = chunk.choices[0].delta  # type: ignore[union-attr]  # stream=True narrows type at runtime; mypy cannot infer
                 if delta.content:
                     full_reply.append(delta.content)
                     yield f"data: {json.dumps({'text': delta.content}, ensure_ascii=False)}\n\n"

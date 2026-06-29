@@ -7,6 +7,13 @@
 ## [Unreleased]
 
 ### Changed
+- feat(health): health check expansion — sessions sub-section added (active_session_count/failed_terminal_session_count/tainted_vm_count/lab_review_diffs_size_mb/zombie_draft_count/warnings); backward compatible; no secrets exposed; 10 new tests; service restart verified
+- ops(runbook): PHASE 4 runbook gate — RUNBOOK.md expanded with env loading order, VMID policy, K3s v1.34.4 known limitations, failed session recovery (场景七), data archive/cleanup (场景八), owner internal run checklist, small cohort readiness checklist; scripts/ops_smoke_check.sh added (11 automated checks, all pass)
+- feat(retention): data growth retention gate — DataRetentionService with dry-run report/archive; archived 11,736 orphaned lab_review_diffs groups (15MB→64KB); audit log rotation by age (90-day TTL); 7 published lab IDs protected; 16 tests; data/archive/ created
+- ops(recovery): failed session recovery gate — force-closed 4 sessions (2× LAB_CLEANUP_FAILED linux spike, 2× LAB_START_FAILED namespace_create_failed); admin-attested 5 LAB_ABORTED sessions (VMs absent from Proxmox, zero namespace residual); all 82 sessions now cleanup_verified=True, residual_risk=False, active=0; +4 attestation tests
+- refactor(mypy): zero-error gate — fix 14 mypy errors across 10 files (auth_deps.py, directus_client.py, deployments_routes.py, ai_tutor_routes.py, articles_routes.py, labgen/verifier.py, labgen/llm_provider_boundary.py, labgen/lab_kubectl_ws.py); add types-PyYAML to requirements.txt; wire mypy hard gate into pre-push-security-check.sh
+
+### Changed
 - fix(labgen): K3sNamespaceLifecycleAdapter.create_namespace() 409 (AlreadyExists) 未做幂等处理，返回 False — 根因：create_namespace 对 409 走通用 API 错误分支（log error + return False），而合约要求 create 已存在 namespace 等同于成功；修复：与 delete_namespace/ensure_verifier_rolebinding 保持一致，409 返回 True；补两个回归测试防止重现
 - fix(labgen): PlatformVerifierInitializer.ensure_verifier_identity() 用 replace_cluster_role() 导致 K3s v1.34.4 RBAC authorization evaluator 缓存破坏（所有 SA token 请求 403 Forbidden）— 根因：K3s v1.34.4 对 ClusterRole UPDATE 事件处理不正确，RBAC informer 缓存失效；修复：改为 delete_cluster_role() + create_cluster_role()（DELETE+ADD 事件对，RBAC informer 可正确处理）；补回归测试防止重现
 - fix(main): auto_cleanup_task 删除 VM 前未检查是否有活跃 lab session — 根因：自动清理仅依赖 vm_tracker TTL，未查询 LabSessionRepository，导致 LAB_ACTIVE 状态的 lab session 所在 VM 被强制销毁（K3s namespace 消失，lab 无法继续）；修复：在 delete_vm 前调用 `_get_lab_session_repo().has_active_session_for_vm(vm_id_str)`，返回 True 则跳过删除并记录 WARNING；补两个回归测试防止重现

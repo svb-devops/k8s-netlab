@@ -519,7 +519,7 @@ async def _handle_linux_terminal(
             loop = asyncio.get_running_loop()
             cmd_result = await loop.run_in_executor(
                 None,
-                lambda c=cmd_str: _run_linux_cmd(linux_adapter, session_id, workspace_path, c),
+                lambda c=cmd_str: _run_linux_cmd(linux_adapter, session_id, workspace_path, c),  # type: ignore[misc]  # mypy cannot infer default-arg lambda; not a core runtime path
             )
 
             if cmd_result["blocked"]:

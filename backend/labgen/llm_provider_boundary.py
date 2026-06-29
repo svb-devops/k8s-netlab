@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import re
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional, cast
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -569,7 +569,7 @@ class LLMProviderBoundaryService:
             raise LLMProviderConfigError(msg)
         from backend.labgen.llm_openai_compatible import OpenAICompatibleProviderError
         try:
-            return self._live_adapter.call_generate(system_msg, user_msg)
+            return cast(dict[Any, Any], self._live_adapter.call_generate(system_msg, user_msg))
         except OpenAICompatibleProviderError as exc:
             raise OpenAICompatibleProviderError(
                 code=exc.code,

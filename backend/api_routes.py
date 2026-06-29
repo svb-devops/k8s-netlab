@@ -486,6 +486,82 @@ async def api_health_head() -> Response:
     return Response(status_code=status.HTTP_200_OK)
 
 
+def _check_labgen_session_health() -> Dict[str, Any]:
+    """Read-only scan of lab session and data file state.
+
+    Returns counts and warnings. Never exposes user-identifiable data or secrets.
+    """
+    try:
+        from pathlib import Path as _Path
+        import json as _json
+        from backend.labgen.lab_session_repository import LabSessionRepository
+        from backend.labgen.models import LabSessionStatus
+
+        repo = LabSessionRepository()
+        sessions = repo.list_all()
+
+        active_statuses = {LabSessionStatus.LAB_ACTIVE}
+        failed_statuses = {LabSessionStatus.LAB_START_FAILED, LabSessionStatus.LAB_CLEANUP_FAILED}
+
+        active_count = sum(1 for s in sessions if s.lab_session_status in active_statuses)
+        failed_count = sum(1 for s in sessions if s.lab_session_status in failed_statuses)
+
+        data_dir = _Path("data")
+        tainted_count = 0
+        tainted_path = data_dir / "tainted_vms.json"
+        if tainted_path.exists():
+            try:
+                tainted = _json.loads(tainted_path.read_text())
+                tainted_count = len(tainted) if isinstance(tainted, dict) else 0
+            except Exception:
+                pass
+
+        warnings: list[str] = []
+
+        diffs_path = data_dir / "lab_review_diffs.json"
+        diffs_size_mb: float = 0.0
+        if diffs_path.exists():
+            diffs_size_mb = round(diffs_path.stat().st_size / 1024 / 1024, 2)
+            if diffs_size_mb >= 1.0:
+                warnings.append(f"lab_review_diffs.json is {diffs_size_mb}MB — run DataRetentionService cleanup")
+
+        drafts_path = data_dir / "lab_drafts.json"
+        zombie_count = 0
+        if drafts_path.exists():
+            try:
+                from backend.labgen.data_retention import DataRetentionService, _age_days
+                raw = _json.loads(drafts_path.read_text())
+                drafts = raw if isinstance(raw, list) else list(raw.values())
+                zombie_count = sum(
+                    1 for d in drafts
+                    if d.get("publish_status") == "draft"
+                    and not d.get("rehearsal_completed")
+                    and _age_days(d.get("updated_at") or d.get("created_at")) >= 30
+                )
+                if zombie_count > 0:
+                    warnings.append(f"{zombie_count} zombie draft(s) older than 30 days")
+            except Exception:
+                pass
+
+        if failed_count > 0:
+            warnings.append(f"{failed_count} session(s) need admin recovery (LAB_START_FAILED/LAB_CLEANUP_FAILED)")
+        if tainted_count > 0:
+            warnings.append(f"{tainted_count} tainted VM(s) — students blocked until resolved")
+
+        return {
+            "status": "degraded" if warnings else "ok",
+            "active_session_count": active_count,
+            "failed_terminal_session_count": failed_count,
+            "tainted_vm_count": tainted_count,
+            "lab_review_diffs_size_mb": diffs_size_mb,
+            "zombie_draft_count": zombie_count,
+            "warnings": warnings,
+        }
+    except Exception as exc:
+        logger.warning("labgen_session_health check failed: %s", exc)
+        return {"status": "unknown", "error": "health check failed"}
+
+
 def _check_verifier_credentials_health() -> Dict[str, Any]:
     """Check verifier credential store for configured exempt/staging VMs.
 
@@ -547,6 +623,7 @@ async def api_health_check() -> Dict[str, Any]:
         proxmox_error = "Proxmox connection failed"
 
     labgen_health = await loop.run_in_executor(None, _check_verifier_credentials_health)
+    session_health = await loop.run_in_executor(None, _check_labgen_session_health)
 
     if not proxmox_ok:
         return {
@@ -554,12 +631,14 @@ async def api_health_check() -> Dict[str, Any]:
             "error": proxmox_error,
             "proxmox": {"connected": False},
             "labgen": labgen_health,
+            "sessions": session_health,
         }
 
     return {
         "status": "healthy",
         "proxmox": {"connected": True},
         "labgen": labgen_health,
+        "sessions": session_health,
     }
 
 

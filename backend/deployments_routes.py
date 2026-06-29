@@ -181,7 +181,7 @@ async def get_deployment(
     if not case:
         return JSONResponse({"error": "Deployment case not found"}, status_code=404)
 
-    file_path = (DEPLOYMENTS_DIR / case["filename"]).resolve()
+    file_path = (DEPLOYMENTS_DIR / str(case["filename"])).resolve()
     safe_root = DEPLOYMENTS_DIR.resolve()
     if not str(file_path).startswith(str(safe_root) + "/") and file_path != safe_root:
         return JSONResponse({"error": "File not found"}, status_code=404)

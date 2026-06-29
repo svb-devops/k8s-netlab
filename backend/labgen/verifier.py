@@ -83,10 +83,10 @@ class FakeK8sVerifierClient(K8sVerifierClientPort):
 
     def __init__(
         self,
-        responses: Optional[dict] = None,
+        responses: Optional[dict[tuple, bool]] = None,
         default: bool = True,
     ) -> None:
-        self._responses: dict = responses or {}
+        self._responses: dict[tuple, bool] = responses or {}
         self._default = default
 
     def _get(self, key: tuple) -> bool:
