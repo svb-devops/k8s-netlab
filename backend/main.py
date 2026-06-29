@@ -131,6 +131,14 @@ async def auto_cleanup_task():
                             if "does not exist" in error or "Configuration file" in error:
                                 logger.warning(f"Auto-cleanup: VM {vm_id} not found in Proxmox (reason: {error!r}), removing from tracker")
                                 vm_tracker.untrack_vm(vm_id)
+                            elif "403" in error or "Permission check failed" in error or "Forbidden" in error:
+                                # Token lacks permission to manage this VM (outside pool, wrong role, etc.).
+                                # Untrack to prevent repeated retries — manual ops required if deletion needed.
+                                logger.warning(
+                                    f"Auto-cleanup: VM {vm_id} permission denied ({error!r}); "
+                                    "removing from tracker — manual deletion required if VM should be removed"
+                                )
+                                vm_tracker.untrack_vm(vm_id)
                             else:
                                 logger.error(f"Auto-cleanup: Failed to delete VM {vm_id}: {error}")
 

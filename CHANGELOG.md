@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- fix(main): auto_cleanup_task 对 403 Forbidden 错误无限重试导致 ERROR 日志风暴 — 根因：auto-cleanup 尝试删除 tracker 中 TTL 过期的 VM 400（pool 外部，token 无权限），每 60 秒重试并记录 ERROR；修复：403/Permission check failed/Forbidden 触发 untrack+WARNING，停止重试；7 个回归测试防止重现
 - feat(health): health check expansion — sessions sub-section added (active_session_count/failed_terminal_session_count/tainted_vm_count/lab_review_diffs_size_mb/zombie_draft_count/warnings); backward compatible; no secrets exposed; 10 new tests; service restart verified
 - ops(runbook): PHASE 4 runbook gate — RUNBOOK.md expanded with env loading order, VMID policy, K3s v1.34.4 known limitations, failed session recovery (场景七), data archive/cleanup (场景八), owner internal run checklist, small cohort readiness checklist; scripts/ops_smoke_check.sh added (11 automated checks, all pass)
 - feat(retention): data growth retention gate — DataRetentionService with dry-run report/archive; archived 11,736 orphaned lab_review_diffs groups (15MB→64KB); audit log rotation by age (90-day TTL); 7 published lab IDs protected; 16 tests; data/archive/ created
