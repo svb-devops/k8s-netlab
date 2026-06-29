@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- fix(stability): stability_watch.sh heredoc 数值变量含换行导致 Python SyntaxError — 改用 os.environ 传值，预先 tr -d '[:space:]' 清理所有数值变量
 - ops(stability): scripts/stability_watch.sh — 非侵入式 24h 稳定性观察脚本（10 项检查：health/error-logs/VMID-500-599/diffs-size/disk/memory/article/CTA/git-dirty/cloudflared）；JSON 格式记录到 /var/log/k8s-netlab-stability-watch.log；cron 每 30 分钟执行；不创建 session/VM，不触发 LLM，不修改数据
 - fix(main): auto_cleanup_task 对 403 Forbidden 错误无限重试导致 ERROR 日志风暴 — 根因：auto-cleanup 尝试删除 tracker 中 TTL 过期的 VM 400（pool 外部，token 无权限），每 60 秒重试并记录 ERROR；修复：403/Permission check failed/Forbidden 触发 untrack+WARNING，停止重试；7 个回归测试防止重现
 - feat(health): health check expansion — sessions sub-section added (active_session_count/failed_terminal_session_count/tainted_vm_count/lab_review_diffs_size_mb/zombie_draft_count/warnings); backward compatible; no secrets exposed; 10 new tests; service restart verified

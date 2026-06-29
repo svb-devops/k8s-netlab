@@ -99,34 +99,41 @@ GIT_DIRTY=$(git -C "$PROJECT_ROOT" status --short 2>/dev/null | grep -c "" || ec
 CF_OK="ok"
 pgrep -x cloudflared &>/dev/null || { CF_OK="down"; add_error "cloudflared_down"; }
 
-# Write result as JSON line
-python3 - <<PYEOF
-import json, sys
+# Strip any trailing whitespace/newlines from numeric variables before JSON
+ERR_COUNT=$(printf '%s' "${ERR_COUNT:-0}" | tr -d '[:space:]')
+DIFFS_KB=$(printf '%s' "${DIFFS_KB:-0}" | tr -d '[:space:]')
+DISK_PCT=$(printf '%s' "${DISK_PCT:-0}" | tr -d '[:space:]')
+MEM_PCT=$(printf '%s' "${MEM_PCT:-0}" | tr -d '[:space:]')
+GIT_DIRTY=$(printf '%s' "${GIT_DIRTY:-0}" | tr -d '[:space:]')
+ACTIVE_CT=$(printf '%s' "${ACTIVE_CT:-0}" | tr -d '[:space:]')
+FAILED_CT=$(printf '%s' "${FAILED_CT:-0}" | tr -d '[:space:]')
+TAINTED_CT=$(printf '%s' "${TAINTED_CT:-0}" | tr -d '[:space:]')
+EPOCH=$(printf '%s' "${EPOCH:-0}" | tr -d '[:space:]')
+
+# Write result as JSON line using env vars to avoid heredoc interpolation issues
+export _SW_TS="$TS" _SW_EPOCH="$EPOCH" _SW_SVC="$SVC_STATUS" _SW_LABGEN="$LABGEN_STATUS"
+export _SW_SESS="$SESSION_STATUS" _SW_ACT="$ACTIVE_CT" _SW_FAIL="$FAILED_CT" _SW_TAINT="$TAINTED_CT"
+export _SW_ERR="$ERR_COUNT" _SW_VMID="${VMID_599:-none}" _SW_DIFFS="$DIFFS_KB"
+export _SW_DISK="$DISK_PCT" _SW_MEM="$MEM_PCT" _SW_ART="$ARTICLE_OK" _SW_CTA="$CTA_OK"
+export _SW_GIT="$GIT_DIRTY" _SW_CF="$CF_OK" _SW_STATUS="$STATUS"
+export _SW_WARN="${WARNINGS:-none}" _SW_ERRS="${ERRORS:-none}" _SW_LOG="$LOG_FILE"
+
+python3 -c "
+import json, os
+e = os.environ
 result = {
-    "ts": "$TS",
-    "epoch": $EPOCH,
-    "svc": "$SVC_STATUS",
-    "labgen": "$LABGEN_STATUS",
-    "sessions": "$SESSION_STATUS",
-    "active": $ACTIVE_CT,
-    "failed": $FAILED_CT,
-    "tainted": $TAINTED_CT,
-    "err_logs": $ERR_COUNT,
-    "vmid_500_599": "${VMID_599:-none}",
-    "diffs_kb": $DIFFS_KB,
-    "disk_pct": $DISK_PCT,
-    "mem_pct": $MEM_PCT,
-    "article1": "$ARTICLE_OK",
-    "cta": "$CTA_OK",
-    "git_dirty": $GIT_DIRTY,
-    "cloudflared": "$CF_OK",
-    "status": "$STATUS",
-    "warnings": "${WARNINGS:-none}",
-    "errors": "${ERRORS:-none}"
+    'ts': e['_SW_TS'], 'epoch': int(e['_SW_EPOCH']),
+    'svc': e['_SW_SVC'], 'labgen': e['_SW_LABGEN'], 'sessions': e['_SW_SESS'],
+    'active': int(e['_SW_ACT']), 'failed': int(e['_SW_FAIL']), 'tainted': int(e['_SW_TAINT']),
+    'err_logs': int(e['_SW_ERR']), 'vmid_500_599': e['_SW_VMID'],
+    'diffs_kb': int(e['_SW_DIFFS']), 'disk_pct': int(e['_SW_DISK']), 'mem_pct': int(e['_SW_MEM']),
+    'article1': e['_SW_ART'], 'cta': e['_SW_CTA'],
+    'git_dirty': int(e['_SW_GIT']), 'cloudflared': e['_SW_CF'],
+    'status': e['_SW_STATUS'], 'warnings': e['_SW_WARN'], 'errors': e['_SW_ERRS'],
 }
-with open("$LOG_FILE", "a") as f:
-    f.write(json.dumps(result) + "\n")
-PYEOF
+with open(e['_SW_LOG'], 'a') as f:
+    f.write(json.dumps(result) + '\n')
+"
 
 # Print summary to stderr (captured by cron mail)
 if [ "$STATUS" = "fail" ]; then
