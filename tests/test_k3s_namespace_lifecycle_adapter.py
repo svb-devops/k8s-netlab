@@ -150,6 +150,21 @@ class TestCreateNamespace:
         assert "secret-token-abc123" not in caplog.text
         assert "token" not in caplog.text.lower() or "status=500" in caplog.text
 
+    def test_409_idempotent_success(self):
+        # Regression: create_namespace 409 (AlreadyExists) must return True.
+        # When a lab session retries namespace creation after a partial failure,
+        # a 409 must be treated as idempotent success — not as an error.
+        core = MagicMock()
+        core.create_namespace.side_effect = _api_exception(409)
+        adapter, _ = _make_adapter(core_v1=core)
+        assert adapter.create_namespace("lab-abc123") is True
+
+    def test_non_409_api_failure_returns_false(self):
+        core = MagicMock()
+        core.create_namespace.side_effect = _api_exception(403)
+        adapter, _ = _make_adapter(core_v1=core)
+        assert adapter.create_namespace("lab-abc123") is False
+
 
 class TestDeleteNamespace:
     def test_success(self):

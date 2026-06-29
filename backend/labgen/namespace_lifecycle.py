@@ -458,6 +458,8 @@ class K3sNamespaceLifecycleAdapter(NamespaceLifecyclePort):
             core_v1.create_namespace(body, _request_timeout=self._config.api_timeout_seconds)
             return True
         except ApiException as exc:
+            if exc.status == 409:
+                return True  # already exists — idempotent success
             logger.error("create_namespace API failure: %s", _sanitize_api_error(exc))
             return False
         except NamespaceAdapterConfigError as exc:
