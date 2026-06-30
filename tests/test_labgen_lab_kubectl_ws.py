@@ -111,7 +111,7 @@ class TestCommandValidation:
         ("kubectl create token lab-learner", False),
         ("kubectl port-forward pod/x 8080:80", False),
         ("kubectl get pods --kubeconfig=/root/.kube/config", False),
-        ("kubectl get pods -n kube-system", False),
+        ("kubectl get pods -n kube-system", True),   # -n is stripped at execute(); validation allows it
     ])
     def test_validate_command(self, cmd, should_allow):
         allowed, reason = validate_command(cmd)

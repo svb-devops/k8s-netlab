@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from backend.labgen.kubectl_executor import validate_command
+from backend.labgen.kubectl_executor import validate_command, _strip_namespace_flags
 
 pytestmark = pytest.mark.static
 
@@ -131,15 +131,52 @@ class TestValidateCommandOverrideBlocking:
 
     @pytest.mark.parametrize("cmd", [
         "kubectl get pods --kubeconfig=/etc/kubernetes/admin.conf",
-        "kubectl get pods -n default",
-        "kubectl get pods --namespace kube-system",
-        # no-space form: -nkube-system (pre-existing gap now tested)
-        "kubectl get pods -nkube-system",
     ])
     def test_blocked_override(self, cmd):
         allowed, reason = validate_command(cmd)
         assert not allowed, f"Expected '{cmd}' to be blocked"
         assert reason
+
+    @pytest.mark.parametrize("cmd", [
+        # -n / --namespace are now ALLOWED through validation and stripped at execute() time
+        "kubectl get pods -n default",
+        "kubectl get pods --namespace kube-system",
+        "kubectl get pods -nkube-system",
+        # lab step command: -n {{lab_namespace}} must pass validation
+        'kubectl create deployment crash-demo -n lab-abc123 --image=172.16.100.1:5000/library/busybox:latest -- /bin/sh -c "echo starting; /app/missing-command"',
+    ])
+    def test_namespace_flag_passes_validation(self, cmd):
+        allowed, reason = validate_command(cmd)
+        assert allowed, f"Expected '{cmd}' to be allowed (namespace stripped in execute): {reason}"
+
+
+# ── D2. _strip_namespace_flags ────────────────────────────────────────────────
+
+class TestStripNamespaceFlags:
+
+    def test_strip_dash_n_space(self):
+        parts = ["create", "deployment", "foo", "-n", "lab-abc", "--image", "nginx"]
+        assert _strip_namespace_flags(parts) == ["create", "deployment", "foo", "--image", "nginx"]
+
+    def test_strip_dash_n_no_space(self):
+        parts = ["get", "pods", "-nkube-system"]
+        assert _strip_namespace_flags(parts) == ["get", "pods"]
+
+    def test_strip_double_dash_namespace_space(self):
+        parts = ["get", "pods", "--namespace", "kube-system"]
+        assert _strip_namespace_flags(parts) == ["get", "pods"]
+
+    def test_strip_double_dash_namespace_equals(self):
+        parts = ["get", "pods", "--namespace=kube-system"]
+        assert _strip_namespace_flags(parts) == ["get", "pods"]
+
+    def test_no_namespace_unchanged(self):
+        parts = ["get", "pods", "-o", "wide"]
+        assert _strip_namespace_flags(parts) == ["get", "pods", "-o", "wide"]
+
+    def test_strip_multiple_namespace_flags(self):
+        parts = ["-n", "a", "get", "pods", "--namespace", "b"]
+        assert _strip_namespace_flags(parts) == ["get", "pods"]
 
 
 # ── E. Non-kubectl input ──────────────────────────────────────────────────────

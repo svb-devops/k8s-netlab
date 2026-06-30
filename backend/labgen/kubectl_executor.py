@@ -10,8 +10,9 @@ Security model:
   - Blocked commands: config view, create token, auth can-i, get/describe/delete
     cluster-scoped resources (namespaces, nodes, clusterroles, etc.).
   - Command is parsed with shlex.split — never passed to shell (no injection).
-  - --kubeconfig and --namespace are always prepended by the executor;
-    any user-supplied --kubeconfig or --namespace is rejected.
+  - --kubeconfig is always injected by the executor; user-supplied --kubeconfig is blocked.
+  - -n / --namespace supplied by the user are silently stripped; the executor always
+    injects its own --namespace, so user-supplied values are ignored regardless of target.
   - Max output: 64 KB (excess is truncated).
   - Max command duration: configurable timeout (default 30s).
 
@@ -56,16 +57,35 @@ _BLOCKED_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"\s+-A\b"),
     # apply from a URL (arbitrary resource creation, possible SSRF)
     re.compile(r"\bapply\b.*https?://"),
-    # Override kubeconfig or namespace (would break sandboxing)
+    # Override kubeconfig (would break sandboxing); -n/--namespace is stripped in execute()
     re.compile(r"\s--kubeconfig\b"),
-    re.compile(r"\s-n\s*\S"),        # explicit -n <ns> override (both -n ns and -nns forms)
-    re.compile(r"\s--namespace\s"),  # explicit --namespace override
 ]
 
 # Only these output formats may be used; all others (yaml, json, jsonpath, go-template, …)
 # risk exposing secret values. Checked against parsed tokens, not raw string, to prevent
 # bypasses like -o=yaml, -ojson, or --output yaml (space variant).
 _ALLOWED_OUTPUT_FORMATS: frozenset[str] = frozenset({"wide", "name"})
+
+
+def _strip_namespace_flags(parts: list[str]) -> list[str]:
+    """Remove -n / --namespace flags so the executor's own --namespace injection wins."""
+    result: list[str] = []
+    i = 0
+    while i < len(parts):
+        token = parts[i]
+        if token == "-n" or token == "--namespace":
+            i += 2  # skip flag and its value
+            continue
+        if token.startswith("-n") and len(token) > 2 and not token.startswith("--"):
+            # -nkube-system form
+            i += 1
+            continue
+        if token.startswith("--namespace="):
+            i += 1
+            continue
+        result.append(token)
+        i += 1
+    return result
 
 
 def _check_output_format(parts: list[str]) -> tuple[bool, str]:
@@ -189,7 +209,7 @@ async def execute(
     except ValueError as exc:
         return CommandResult(allowed=True, block_reason=None, output=f"Parse error: {exc}\n", exit_code=1)
 
-    kubectl_args = parts[1:]  # everything after 'kubectl'
+    kubectl_args = _strip_namespace_flags(parts[1:])  # strip user -n/--namespace; executor injects its own
 
     full_cmd = [
         "/usr/local/bin/kubectl",
