@@ -80,6 +80,7 @@ class LearnerLabEligibility(BaseModel):
     is_startable: bool
     issues: list[LearnerLabEligibilityIssue] = Field(default_factory=list)
     checked_at: str  # ISO 8601 UTC
+    existing_session_id: Optional[str] = None  # set when SESSION_ALREADY_ACTIVE; frontend uses for Resume button
 
 
 class LearnerLabStepPreview(BaseModel):
@@ -301,16 +302,20 @@ class LearnerCatalogService:
             ))
 
         # 3. Active session check — mirrors start precheck; only if session_repo injected
+        existing_session_id: Optional[str] = None
         if self._session_repo is not None:
             from backend.labgen.models import SessionType
             existing = self._session_repo.list_by_student(actor_user)
-            if any(
-                s.lab_id == lab_id
-                and s.lab_session_status in _ACTIVE_STATES
-                and s.session_type != SessionType.INTERNAL_REHEARSAL
-                for s in existing
-            ):
+            active_match = next(
+                (s for s in existing
+                 if s.lab_id == lab_id
+                 and s.lab_session_status in _ACTIVE_STATES
+                 and s.session_type != SessionType.INTERNAL_REHEARSAL),
+                None,
+            )
+            if active_match is not None:
                 is_startable = False
+                existing_session_id = active_match.session_id
                 issues.append(LearnerLabEligibilityIssue(
                     code=EligibilityIssueCode.SESSION_ALREADY_ACTIVE,
                     message=self._sanitize(
@@ -336,4 +341,5 @@ class LearnerCatalogService:
             is_startable=is_startable,
             issues=issues,
             checked_at=checked_at,
+            existing_session_id=existing_session_id,
         )

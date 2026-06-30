@@ -530,6 +530,23 @@ class TestStartEligibility:
         codes = [i["code"] for i in data["issues"]]
         assert EligibilityIssueCode.SESSION_ALREADY_ACTIVE in codes
 
+    def test_active_session_includes_existing_session_id(self) -> None:
+        """SESSION_ALREADY_ACTIVE eligibility must carry existing_session_id for Resume button."""
+        mem = _MemDraftRepo()
+        sess_repo = _MemSessionRepo()
+        draft = _make_published_draft()
+        active = _make_active_session(lab_id=draft.lab_id, username="student1")
+        mem.create(draft)
+        sess_repo.add(active)
+
+        with _catalog_ctx(mem, user="student1", session_repo=sess_repo) as client:
+            r = client.get(f"/api/labs/{draft.lab_id}/start-eligibility")
+        data = r.json()
+        assert data["is_startable"] is False
+        assert data.get("existing_session_id") == active.session_id, (
+            "existing_session_id must be set so the frontend can render a Resume button"
+        )
+
     def test_active_session_different_lab_does_not_block(self) -> None:
         mem = _MemDraftRepo()
         sess_repo = _MemSessionRepo()

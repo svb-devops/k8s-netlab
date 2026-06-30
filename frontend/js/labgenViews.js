@@ -282,6 +282,11 @@ export function renderLabDetail({ lab, eligibility }) {
                 <p class="text-sm font-medium text-red-700">Not eligible to start:</p>
                 ${ineligibleReasons}
             </div>` : ''}
+            ${eligibility?.existing_session_id ? `
+            <a href="/labgen-session.html?sessionId=${encodeURIComponent(eligibility.existing_session_id)}"
+               class="inline-block px-5 py-2 rounded font-medium text-sm bg-green-600 text-white hover:bg-green-700">
+                Resume Lab
+            </a>` : `
             <button
                 data-action="start-lab"
                 data-startable="${canStart}"
@@ -291,7 +296,7 @@ export function renderLabDetail({ lab, eligibility }) {
                         ? 'bg-blue-600 text-white hover:bg-blue-700'
                         : 'bg-gray-200 text-gray-400 cursor-not-allowed'}">
                 Start Lab
-            </button>
+            </button>`}
         </div>
     </div>`;
 }
