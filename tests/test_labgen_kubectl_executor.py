@@ -47,6 +47,12 @@ class TestValidateCommandAllowed:
         "kubectl get pods -o name",
         "kubectl get pods --output=wide",
         "kubectl get pods --output=name",
+        # label selector variants — used instead of shell variables in lab steps
+        "kubectl describe pods -l app=crash-demo",
+        "kubectl logs -l app=crash-demo",
+        "kubectl logs -l app=crash-demo --previous",
+        "kubectl get pods -l app=crash-demo",
+        "kubectl get pods -l app=crash-demo -o name",
         "",  # empty is allowed (no-op)
     ])
     def test_allowed(self, cmd):
@@ -193,6 +199,19 @@ class TestValidateCommandNonKubectl:
         "k9s",
     ])
     def test_non_kubectl_blocked(self, cmd):
+        allowed, reason = validate_command(cmd)
+        assert not allowed
+        assert "Only kubectl" in reason
+
+    @pytest.mark.parametrize("cmd", [
+        # Shell variable assignment — executor runs commands directly, no shell expansion.
+        # Regression: lab step previously used POD_NAME=$(kubectl ...) which was always blocked.
+        "POD_NAME=$(kubectl get pods -l app=crash-demo -o jsonpath='{.items[0].metadata.name}')",
+        "RESULT=$(kubectl get pods)",
+        "export FOO=bar",
+        "FOO=bar kubectl get pods",
+    ])
+    def test_shell_variable_syntax_blocked(self, cmd):
         allowed, reason = validate_command(cmd)
         assert not allowed
         assert "Only kubectl" in reason
