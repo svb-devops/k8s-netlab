@@ -232,8 +232,11 @@ class TestServiceDegradation:
         client = _api_client()
         mock_tracker = MagicMock()
         mock_tracker.is_owner.return_value = True
+        mock_repo = MagicMock()
+        mock_repo.has_active_session_for_vm.return_value = False
 
         with patch("backend.api_routes.vm_tracker", mock_tracker), \
+             patch("backend.api_routes._get_lab_session_repo", return_value=mock_repo), \
              patch("backend.api_routes.delete_vm",
                    return_value={"success": False, "error": "VM busy"}):
             resp = client.delete("/api/vms/500")
@@ -298,8 +301,11 @@ class TestErrorInfoLeakage:
         """APP_DEBUG=False 时，delete VM 的 500 响应不应包含原始异常文本（C 回归）"""
         client = _api_client()
         secret_msg = "super_secret_internal_token_xyz"
+        mock_repo = MagicMock()
+        mock_repo.has_active_session_for_vm.return_value = False
         with patch("backend.api_routes.delete_vm", side_effect=Exception(secret_msg)), \
              patch("backend.api_routes.vm_tracker") as mock_tracker, \
+             patch("backend.api_routes._get_lab_session_repo", return_value=mock_repo), \
              patch("backend.config.APP_DEBUG", False):
             mock_tracker.get_vm_owner.return_value = "testuser"
             resp = client.delete("/api/vms/500")

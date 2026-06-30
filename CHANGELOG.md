@@ -8,6 +8,7 @@
 
 ### Changed
 - fix(labgen): kubectl executor 误拦截 -n/--namespace flag 导致实验步骤命令无法执行 — 改为验证阶段放行、execute() 阶段静默剥离用户提供的 namespace flag（executor 始终注入自身 --namespace），6 个单元测试 + test_labgen_lab_kubectl_ws.py 期望更新
+- fix(tests): delete VM 相关测试未 mock _get_lab_session_repo，真实数据（VM 500 有活跃 session）导致 409 干扰测试结果 — 补全 mock 覆盖 test_api_routes/test_contract/test_robustness/test_security/test_e2e
 - fix(labgen): labgen-lab-init.js no_vm_assigned 错误仅显示红色文本无操作路径 — 改为渲染独立 UI 块含「前往创建实验环境」跳转按钮，保留 /app 链接；4 个回归测试防止重现
 - fix(stability): stability_watch.sh heredoc 数值变量含换行导致 Python SyntaxError — 改用 os.environ 传值，预先 tr -d '[:space:]' 清理所有数值变量
 - ops(stability): scripts/stability_watch.sh — 非侵入式 24h 稳定性观察脚本（10 项检查：health/error-logs/VMID-500-599/diffs-size/disk/memory/article/CTA/git-dirty/cloudflared）；JSON 格式记录到 /var/log/k8s-netlab-stability-watch.log；cron 每 30 分钟执行；不创建 session/VM，不触发 LLM，不修改数据

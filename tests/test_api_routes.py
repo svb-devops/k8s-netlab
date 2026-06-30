@@ -264,11 +264,14 @@ class TestDeleteVM:
         import asyncio as _asyncio
         mock_tracker = MagicMock()
         mock_tracker.is_owner.return_value = True
+        mock_repo = MagicMock()
+        mock_repo.has_active_session_for_vm.return_value = False
 
         async def _timeout(*args, **kwargs):
             raise _asyncio.TimeoutError()
 
         with patch("backend.api_routes.vm_tracker", mock_tracker), \
+             patch("backend.api_routes._get_lab_session_repo", return_value=mock_repo), \
              patch("backend.api_routes.asyncio.wait_for", _timeout):
             resp = client.delete("/api/vms/500")
 
@@ -278,8 +281,11 @@ class TestDeleteVM:
     def test_success_returns_200(self, client):
         mock_tracker = MagicMock()
         mock_tracker.is_owner.return_value = True
+        mock_repo = MagicMock()
+        mock_repo.has_active_session_for_vm.return_value = False
 
         with patch("backend.api_routes.vm_tracker", mock_tracker), \
+             patch("backend.api_routes._get_lab_session_repo", return_value=mock_repo), \
              patch("backend.api_routes.delete_vm", return_value={"success": True, "data": {}}):
             resp = client.delete("/api/vms/500")
 
@@ -316,8 +322,11 @@ class TestDeleteVM:
     def test_proxmox_failure_returns_500(self, client):
         mock_tracker = MagicMock()
         mock_tracker.is_owner.return_value = True
+        mock_repo = MagicMock()
+        mock_repo.has_active_session_for_vm.return_value = False
 
         with patch("backend.api_routes.vm_tracker", mock_tracker), \
+             patch("backend.api_routes._get_lab_session_repo", return_value=mock_repo), \
              patch("backend.api_routes.delete_vm", return_value={"success": False, "error": "fail"}):
             resp = client.delete("/api/vms/500")
 

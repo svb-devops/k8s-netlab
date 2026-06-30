@@ -157,7 +157,10 @@ def test_e2e_vm_lifecycle(full_app):
     assert quota["system"]["current"] == 1
 
     # 删除 VM
+    _mock_repo_e2e1 = MagicMock()
+    _mock_repo_e2e1.has_active_session_for_vm.return_value = False
     with patch("backend.api_routes.vm_tracker", mock_tracker), \
+         patch("backend.api_routes._get_lab_session_repo", return_value=_mock_repo_e2e1), \
          patch("backend.api_routes.delete_vm",
                return_value={"success": True, "data": {}}):
         resp = client.delete("/api/vms/500")
@@ -204,7 +207,10 @@ def test_e2e_multi_user_isolation(full_app):
     client.cookies.set("session_token", token_a)
     mock_tracker.is_owner.return_value = True
 
+    _mock_repo_e2e2 = MagicMock()
+    _mock_repo_e2e2.has_active_session_for_vm.return_value = False
     with patch("backend.api_routes.vm_tracker", mock_tracker), \
+         patch("backend.api_routes._get_lab_session_repo", return_value=_mock_repo_e2e2), \
          patch("backend.api_routes.delete_vm",
                return_value={"success": True, "data": {}}):
         resp = client.delete("/api/vms/500")
@@ -282,7 +288,10 @@ def test_e2e_quota_exhausted_then_freed(full_app):
 
     # 删除一个 VM 后可以重新创建
     mock_tracker.is_owner.return_value = True
+    _mock_repo_e2e3 = MagicMock()
+    _mock_repo_e2e3.has_active_session_for_vm.return_value = False
     with patch("backend.api_routes.vm_tracker", mock_tracker), \
+         patch("backend.api_routes._get_lab_session_repo", return_value=_mock_repo_e2e3), \
          patch("backend.api_routes.delete_vm",
                return_value={"success": True, "data": {}}):
         resp = client.delete("/api/vms/500")
