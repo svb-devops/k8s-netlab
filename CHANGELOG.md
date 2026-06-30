@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- fix(labgen): labgen-lab-init.js no_vm_assigned 错误仅显示红色文本无操作路径 — 改为渲染独立 UI 块含「前往创建实验环境」跳转按钮，保留 /app 链接；4 个回归测试防止重现
 - fix(stability): stability_watch.sh heredoc 数值变量含换行导致 Python SyntaxError — 改用 os.environ 传值，预先 tr -d '[:space:]' 清理所有数值变量
 - ops(stability): scripts/stability_watch.sh — 非侵入式 24h 稳定性观察脚本（10 项检查：health/error-logs/VMID-500-599/diffs-size/disk/memory/article/CTA/git-dirty/cloudflared）；JSON 格式记录到 /var/log/k8s-netlab-stability-watch.log；cron 每 30 分钟执行；不创建 session/VM，不触发 LLM，不修改数据
 - fix(main): auto_cleanup_task 对 403 Forbidden 错误无限重试导致 ERROR 日志风暴 — 根因：auto-cleanup 尝试删除 tracker 中 TTL 过期的 VM 400（pool 外部，token 无权限），每 60 秒重试并记录 ERROR；修复：403/Permission check failed/Forbidden 触发 untrack+WARNING，停止重试；7 个回归测试防止重现

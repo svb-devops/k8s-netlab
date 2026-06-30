@@ -52,11 +52,23 @@ function attachStartAction(client, labId) {
         } catch (e) {
             btn.disabled = false;
             btn.textContent = 'Start Lab';
-            const msg = e instanceof LabGenApiError ? e.message : 'Failed to start lab.';
-            const errDiv = document.createElement('p');
-            errDiv.className = 'text-red-600 text-sm mt-2';
-            errDiv.textContent = msg;
-            btn.insertAdjacentElement('afterend', errDiv);
+            if (e instanceof LabGenApiError && e.code === 'no_vm_assigned') {
+                const block = document.createElement('div');
+                block.className = 'mt-3 p-3 bg-amber-50 border border-amber-200 rounded text-sm';
+                block.innerHTML =
+                    '<p class="text-amber-800 mb-2">需要先在实验平台创建 Kubernetes 实验环境，才能开始此实验。</p>' +
+                    '<a href="/app" target="_blank" rel="noopener" ' +
+                    'class="inline-block bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm">' +
+                    '前往创建实验环境 →</a>' +
+                    '<p class="text-amber-700 mt-2 text-xs">创建完成后回到此页面，再次点击 Start Lab 即可。</p>';
+                btn.insertAdjacentElement('afterend', block);
+            } else {
+                const msg = e instanceof LabGenApiError ? e.message : 'Failed to start lab.';
+                const errDiv = document.createElement('p');
+                errDiv.className = 'text-red-600 text-sm mt-2';
+                errDiv.textContent = msg;
+                btn.insertAdjacentElement('afterend', errDiv);
+            }
         }
     });
 }
