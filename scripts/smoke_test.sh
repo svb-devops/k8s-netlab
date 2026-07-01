@@ -41,7 +41,7 @@ fi
 # -------------------------------------------------------
 curl -s -o /dev/null -X POST "${BASE_URL}/api/auth/register" \
     -H "Content-Type: application/json" \
-    -d "{\"username\":\"${TEST_USER}\",\"password\":\"${TEST_PASS}\"}" || true
+    -d "{\"username\":\"${TEST_USER}\",\"password\":\"${TEST_PASS}\",\"email\":\"${TEST_USER}@example.com\"}" || true
 
 # -------------------------------------------------------
 # 检查 2：POST /api/auth/login → 200，设置 cookie
