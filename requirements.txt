@@ -1,10 +1,10 @@
 # K8S NetLab Backend Dependencies
 
 # Web Framework
-fastapi==0.135.2
-starlette==0.52.1
+fastapi==0.139.0
+starlette==1.3.1
 uvicorn[standard]==0.24.0
-python-multipart==0.0.22
+python-multipart==0.0.32
 aiofiles==23.2.1
 
 # Proxmox API
@@ -12,7 +12,7 @@ proxmoxer==2.0.1
 requests==2.33.0
 
 # SSH and Terminal
-paramiko==3.4.0
+paramiko==5.0.0
 websockets==12.0
 
 # Data Validation
@@ -20,7 +20,7 @@ pydantic==2.12.5
 email-validator==2.3.0
 
 # Configuration
-python-dotenv==1.0.0
+python-dotenv==1.2.2
 
 # Password Hashing
 bcrypt>=4.0.0

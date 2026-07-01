@@ -7,6 +7,8 @@
 ## [Unreleased]
 
 ### Changed
+- fix(security): 升级 9 个含已知 CVE 的依赖包，为公开上线扫清安全阻塞项 — starlette 0.52.1→1.3.1、fastapi 0.135.2→0.139.0（starlette 主版本升级，`backend/middleware.py` 是唯一直接依赖 starlette API 的文件，用法均为稳定 API 未受影响）、python-multipart 0.0.22→0.0.32、paramiko 3.4.0→5.0.0（SSH 终端 `backend/websocket.py` 唯一使用方）、python-dotenv 1.0.0→1.2.2、cryptography/idna/pygments/pytest/urllib3 传递依赖一并升级到无 CVE 版本；`prometheus-fastapi-instrumentator` 6.1.0→8.0.2（旧版本对新版 starlette 内部路由 API 不兼容，导致所有请求 500，升级后修复）；`tests/test_websocket_k3s.py` 5 个测试改用原生 `async def`（原先手动 `asyncio.get_event_loop().run_until_complete()` 是 safety-reviewer 检查清单明确禁止的过时写法，pytest/pytest-asyncio 版本升级后在全量 suite 下暴露为 `RuntimeError: no current event loop`）；`requirements.lock` 同步重新生成；`pip-audit` 确认 0 已知漏洞；4837 tests PASS，92.11% coverage
+
 - feat(docs): 部署案例栏目（deployments_routes.py）接入 Directus CMS，与网络实验（docs_routes.py）对称——`fetch_deployment_list`/`fetch_deployment_detail` 优先读 experiments 集合 category=deployment，Directus 不可用时降级为本地 Markdown 文件；directus_client.py 抽取 `_fetch_category_list`/`_fetch_category_detail` 消除与网络实验的重复逻辑；补 22 个测试（directus_client 部署案例分支 + deployments_routes Directus 集成），消除此前部署案例栏目落后于网络实验的技术债
 - fix(tests): test_health_response_time 全量 suite 负载下偶发超时 — 改为预热一次后取 3 次最小值，消除冷启动 import 偏差
 - fix(ops): mypy SmartLogger.warning 参数类型修复（dict→str）
