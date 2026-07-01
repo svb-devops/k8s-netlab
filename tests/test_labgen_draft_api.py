@@ -362,8 +362,9 @@ class TestValidateDraft:
         r = non_admin_client.post("/api/labgen/drafts/some-id/validate")
         assert r.status_code == 403
 
-    def test_review_required_status_from_helm_command(self, client, mem_repo):
-        # Helm install → review_required (not publish_blocking)
+    def test_publish_blocked_from_helm_command(self, client, mem_repo):
+        # helm install is not a kubectl command — executor blocks it at runtime,
+        # so commands.executor_compatible raises PUBLISH_BLOCKING (not review_required).
         step = Step(
             step_id="s1", order=1, why="w", do="d", observe="o",
             commands=["helm install myapp ./chart"],
@@ -371,7 +372,7 @@ class TestValidateDraft:
         )
         draft = _insert_draft(mem_repo, steps=[step])
         r = client.post(f"/api/labgen/drafts/{draft.lab_id}/validate")
-        assert r.json()["publish_status"] == "review_required"
+        assert r.json()["publish_status"] == "publish_blocked"
 
 
 # ---------------------------------------------------------------------------

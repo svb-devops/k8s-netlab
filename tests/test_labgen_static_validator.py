@@ -631,3 +631,206 @@ class TestPublishGateIntegration:
         assert "cleanup.declared" in blocking
         assert "namespace.no_hardcoded" in blocking
         assert "explain.verified_if_published" in blocking
+
+
+# ---------------------------------------------------------------------------
+# commands.executor_compatible
+# ---------------------------------------------------------------------------
+
+
+class TestCommandsExecutorCompatible:
+    """Regression suite for publish-gate check: commands.executor_compatible.
+
+    Today's bugs that this gate would have caught at publish time:
+      - step-3/4: POD_NAME=$(...) shell variable syntax
+      - step-3/4: -o jsonpath blocked output format
+      - step-7: kubectl delete namespace blocked cluster-scoped pattern
+    """
+
+    def test_pass_empty_commands(self):
+        draft = _draft(steps=[_step(commands=[])])
+        results = validator.validate(draft)
+        assert "commands.executor_compatible" in _passed_ids(results)
+
+    def test_pass_valid_kubectl_commands(self):
+        draft = _draft(steps=[_step(commands=[
+            "kubectl get pods",
+            "kubectl describe pods -l app=crash-demo",
+            "kubectl logs -l app=crash-demo",
+            "kubectl logs -l app=crash-demo --previous",
+            "kubectl delete deployment crash-demo",
+            "kubectl rollout status deployment/crash-demo --timeout=90s",
+        ])])
+        results = validator.validate(draft)
+        assert "commands.executor_compatible" in _passed_ids(results)
+
+    def test_pass_namespace_placeholder_substituted(self):
+        draft = _draft(steps=[_step(commands=[
+            "kubectl get pods -n {{lab_namespace}}",
+            "kubectl create deployment crash-demo -n {{lab_namespace}} --image=172.16.100.1:5000/library/busybox:latest -- /bin/sh -c 'echo hi'",
+        ])])
+        results = validator.validate(draft)
+        assert "commands.executor_compatible" in _passed_ids(results)
+
+    def test_fail_shell_variable_assignment(self):
+        # Regression: step-3/4 used POD_NAME=$(kubectl ...) — blocked by executor
+        draft = _draft(steps=[_step(step_id="step-3", commands=[
+            "POD_NAME=$(kubectl get pods -l app=crash-demo -o jsonpath='{.items[0].metadata.name}')",
+        ])])
+        results = validator.validate(draft)
+        assert "commands.executor_compatible" in _failed_ids(results)
+        assert _blocking_levels(results, "commands.executor_compatible") == [BlockingLevel.PUBLISH_BLOCKING]
+
+    def test_fail_jsonpath_output_format(self):
+        # Regression: -o jsonpath is not in _ALLOWED_OUTPUT_FORMATS
+        draft = _draft(steps=[_step(commands=[
+            "kubectl get pods -l app=crash-demo -o jsonpath='{.items[0].metadata.name}'",
+        ])])
+        results = validator.validate(draft)
+        assert "commands.executor_compatible" in _failed_ids(results)
+
+    def test_fail_kubectl_delete_namespace(self):
+        # Regression: step-7 used kubectl delete namespace — blocked by cluster-scoped pattern
+        draft = _draft(steps=[_step(step_id="step-7", commands=[
+            "kubectl delete namespace {{lab_namespace}} --wait=true",
+        ])])
+        results = validator.validate(draft)
+        assert "commands.executor_compatible" in _failed_ids(results)
+
+    def test_fail_reports_step_id_in_message(self):
+        draft = _draft(steps=[_step(step_id="step-3", commands=[
+            "POD_NAME=$(kubectl get pods)",
+        ])])
+        results = validator.validate(draft)
+        failed = [r for r in results if r.check_id == "commands.executor_compatible" and r.status.value == "failed"]
+        assert any("step-3" in r.message for r in failed)
+
+    def test_fail_multiple_bad_commands_all_reported(self):
+        draft = _draft(steps=[
+            _step(step_id="step-3", commands=[
+                "POD_NAME=$(kubectl get pods -l app=crash-demo -o jsonpath='{.items[0].metadata.name}')",
+                "kubectl describe pod \"$POD_NAME\"",
+            ]),
+            _step(step_id="step-7", commands=[
+                "kubectl delete namespace {{lab_namespace}} --wait=true",
+            ]),
+        ])
+        results = validator.validate(draft)
+        failed = [r for r in results if r.check_id == "commands.executor_compatible" and r.status.value == "failed"]
+        assert len(failed) == 2  # POD_NAME=$(...) and delete namespace are blocked
+
+
+# ---------------------------------------------------------------------------
+# commands.rbac_coverage
+# ---------------------------------------------------------------------------
+
+
+class TestCommandsRbacCoverage:
+    """Regression suite for publish-gate check: commands.rbac_coverage.
+
+    Today's bug that this gate would have caught:
+      - step-4: kubectl logs requires pods/log:get — not in original learner Role
+    """
+
+    def test_pass_empty_commands(self):
+        draft = _draft(steps=[_step(commands=[])])
+        results = validator.validate(draft)
+        assert "commands.rbac_coverage" in _passed_ids(results)
+
+    def test_pass_kubectl_logs_has_pods_log(self):
+        # Regression: kubectl logs needs pods/log:get — must pass after fix
+        draft = _draft(steps=[_step(commands=[
+            "kubectl logs -l app=crash-demo",
+            "kubectl logs -l app=crash-demo --previous",
+        ])])
+        results = validator.validate(draft)
+        assert "commands.rbac_coverage" in _passed_ids(results)
+
+    def test_pass_common_lab_commands_within_role(self):
+        draft = _draft(steps=[_step(commands=[
+            "kubectl create deployment crash-demo --image=172.16.100.1:5000/library/busybox:latest -- sleep 3600",
+            "kubectl get pods",
+            "kubectl describe pods -l app=crash-demo",
+            "kubectl rollout status deployment/crash-demo --timeout=90s",
+            "kubectl patch deployment crash-demo --type=json -p='[{\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/command\",\"value\":[\"sleep\",\"3600\"]}]'",
+            "kubectl delete deployment crash-demo",
+        ])])
+        results = validator.validate(draft)
+        assert "commands.rbac_coverage" in _passed_ids(results)
+
+    def test_fail_service_create_not_in_role(self):
+        # services are not in the learner Role — would fail at K8s level
+        draft = _draft(steps=[_step(commands=[
+            "kubectl create service clusterip my-svc --tcp=80:8080",
+        ])])
+        results = validator.validate(draft)
+        assert "commands.rbac_coverage" in _failed_ids(results)
+        assert _blocking_levels(results, "commands.rbac_coverage") == [BlockingLevel.PUBLISH_BLOCKING]
+
+    def test_fail_reports_missing_permission_in_message(self):
+        draft = _draft(steps=[_step(commands=[
+            "kubectl create service clusterip my-svc --tcp=80:8080",
+        ])])
+        results = validator.validate(draft)
+        failed = [r for r in results if r.check_id == "commands.rbac_coverage" and r.status.value == "failed"]
+        assert any("services" in r.message for r in failed)
+
+
+# ---------------------------------------------------------------------------
+# _command_required_permissions (unit tests for the parser)
+# ---------------------------------------------------------------------------
+
+
+class TestCommandRequiredPermissions:
+    from backend.labgen.static_validator import _command_required_permissions as _crp  # type: ignore[attr-defined]
+
+    def test_logs_returns_pods_log(self):
+        from backend.labgen.static_validator import _command_required_permissions
+        perms = _command_required_permissions("kubectl logs -l app=crash-demo")
+        assert ("", "pods/log", "get") in perms
+
+    def test_logs_previous_returns_pods_log(self):
+        from backend.labgen.static_validator import _command_required_permissions
+        perms = _command_required_permissions("kubectl logs -l app=crash-demo --previous")
+        assert ("", "pods/log", "get") in perms
+
+    def test_get_pods_returns_pods_get_list(self):
+        from backend.labgen.static_validator import _command_required_permissions
+        perms = _command_required_permissions("kubectl get pods")
+        assert ("", "pods", "get") in perms
+        assert ("", "pods", "list") in perms
+
+    def test_describe_pods_with_selector(self):
+        from backend.labgen.static_validator import _command_required_permissions
+        perms = _command_required_permissions("kubectl describe pods -l app=crash-demo")
+        assert ("", "pods", "get") in perms
+
+    def test_delete_deployment(self):
+        from backend.labgen.static_validator import _command_required_permissions
+        perms = _command_required_permissions("kubectl delete deployment crash-demo")
+        assert ("apps", "deployments", "delete") in perms
+
+    def test_rollout_status(self):
+        from backend.labgen.static_validator import _command_required_permissions
+        perms = _command_required_permissions("kubectl rollout status deployment/crash-demo --timeout=90s")
+        assert ("apps", "deployments", "get") in perms
+
+    def test_patch_deployment(self):
+        from backend.labgen.static_validator import _command_required_permissions
+        perms = _command_required_permissions("kubectl patch deployment crash-demo --type=json -p='[]'")
+        assert ("apps", "deployments", "patch") in perms
+
+    def test_namespace_placeholder_handled(self):
+        from backend.labgen.static_validator import _command_required_permissions
+        perms = _command_required_permissions("kubectl get pods -n {{lab_namespace}}")
+        assert ("", "pods", "get") in perms
+
+    def test_non_kubectl_returns_empty(self):
+        from backend.labgen.static_validator import _command_required_permissions
+        assert _command_required_permissions("POD_NAME=$(kubectl get pods)") == []
+
+    def test_delete_namespace_not_in_resource_map(self):
+        from backend.labgen.static_validator import _command_required_permissions
+        # namespaces not in _KUBECTL_RESOURCE_MAP — executor blocks it first anyway
+        perms = _command_required_permissions("kubectl delete namespace lab-xxx")
+        assert perms == []

@@ -8,6 +8,7 @@ Contract reference: §9, §10, §8.
 from __future__ import annotations
 
 import re
+import shlex
 from typing import Optional
 
 from backend.labgen.models import (
@@ -72,6 +73,91 @@ _LINUX_FORBIDDEN_PATH_PREFIXES: tuple[str, ...] = (
 _LINUX_FORBIDDEN_CLEANUP_ROOTS: frozenset[str] = frozenset({
     "/", "/home", "/tmp", "/etc", "/var", "/root",
 })
+
+# ---------------------------------------------------------------------------
+# Kubectl command permission analysis (commands.executor_compatible /
+# commands.rbac_coverage)
+# ---------------------------------------------------------------------------
+
+# Substitute for {{lab_namespace}} so shlex can parse commands without error.
+_TEMPLATE_NS = "lab-00000000-0000-0000-0000-000000000000"
+
+# kubectl short-name → (api_group, canonical K8s resource name)
+_KUBECTL_RESOURCE_MAP: dict[str, tuple[str, str]] = {
+    "pod": ("", "pods"), "pods": ("", "pods"),
+    "deployment": ("apps", "deployments"), "deploy": ("apps", "deployments"),
+    "deployments": ("apps", "deployments"),
+    "service": ("", "services"), "svc": ("", "services"), "services": ("", "services"),
+    "configmap": ("", "configmaps"), "cm": ("", "configmaps"), "configmaps": ("", "configmaps"),
+    "secret": ("", "secrets"), "secrets": ("", "secrets"),
+    "replicaset": ("apps", "replicasets"), "rs": ("apps", "replicasets"),
+    "replicasets": ("apps", "replicasets"),
+    "event": ("", "events"), "events": ("", "events"),
+}
+
+# kubectl subcommand → K8s verbs required on the target resource
+_KUBECTL_SUBCOMMAND_VERBS: dict[str, list[str]] = {
+    "get":      ["get", "list"],
+    "describe": ["get", "list"],
+    "create":   ["create"],
+    "delete":   ["delete"],
+    "apply":    ["create", "update", "patch"],
+    "patch":    ["patch"],
+    "edit":     ["update", "patch"],
+}
+
+
+def _command_required_permissions(cmd: str) -> list[tuple[str, str, str]]:
+    """Return [(api_group, resource, verb)] permissions required by one kubectl command.
+
+    Returns [] for unknown or unrecognised patterns — only emits findings when we
+    are confident about what the command does.
+    """
+    normalized = cmd.replace("{{lab_namespace}}", _TEMPLATE_NS)
+    try:
+        parts = shlex.split(normalized)
+    except ValueError:
+        return []
+    if not parts or parts[0] != "kubectl" or len(parts) < 2:
+        return []
+
+    subcommand = parts[1]
+
+    # logs is special: requires pods/log subresource, not pods
+    if subcommand == "logs":
+        return [("", "pods/log", "get")]
+
+    # rollout (status / restart / history) always touches deployments
+    if subcommand == "rollout":
+        return [("apps", "deployments", "get"), ("apps", "deployments", "list")]
+
+    verbs = _KUBECTL_SUBCOMMAND_VERBS.get(subcommand)
+    if verbs is None:
+        return []
+
+    # First non-flag positional after the subcommand = resource type.
+    # kubectl syntax always places the resource before flags, so this is reliable.
+    resource_raw = next(
+        (p for p in parts[2:] if not p.startswith("-")),
+        None,
+    )
+    if resource_raw is None:
+        return []
+
+    # Handle "deployment/crash-demo" → "deployment"
+    resource_raw = resource_raw.split("/")[0].lower()
+
+    mapping = _KUBECTL_RESOURCE_MAP.get(resource_raw)
+    if mapping is None:
+        return []
+
+    api_group, k8s_resource = mapping
+    return [(api_group, k8s_resource, v) for v in verbs]
+
+
+# ---------------------------------------------------------------------------
+# Linux domain: required residual check keys that every cleanup policy must include
+# ---------------------------------------------------------------------------
 
 # Linux domain: required residual check keys that every cleanup policy must include
 _LINUX_REQUIRED_RESIDUAL_CHECKS: frozenset[str] = frozenset({
@@ -164,6 +250,9 @@ class StaticValidator:
         # K8s domain must not contain Linux verifiers
         results.extend(self._check_k8s_no_linux_verifiers(draft))
         results.extend(self._check_article_lab_topic_consistency(draft))
+        # Command-level publish gates — catch executor/RBAC mismatches before live
+        results.extend(self._check_commands_executor_compatible(draft))
+        results.extend(self._check_commands_rbac_coverage(draft))
 
         # Derived fields — computed after all structural checks
         pollution = self._derive_pollution_level(draft)
@@ -335,6 +424,59 @@ class StaticValidator:
                     f"Step '{step.step_id}': published_to_student=true but admin_verified=false",
                 ))
         return failures or [_pass("explain.verified_if_published", "steps[*].explain")]
+
+    # ------------------------------------------------------------------
+    # Command executor compatibility  (commands.executor_compatible)
+    # ------------------------------------------------------------------
+
+    def _check_commands_executor_compatible(self, draft: LabDraft) -> list[ValidatorResult]:
+        """All step commands must pass validate_command() or the executor will block them at runtime."""
+        from backend.labgen.kubectl_executor import validate_command
+
+        failures = []
+        for i, step in enumerate(draft.steps):
+            for j, cmd in enumerate(step.commands):
+                normalized = cmd.replace("{{lab_namespace}}", _TEMPLATE_NS)
+                allowed, reason = validate_command(normalized)
+                if not allowed:
+                    failures.append(_fail(
+                        "commands.executor_compatible",
+                        BlockingLevel.PUBLISH_BLOCKING,
+                        f"steps[{i}].commands[{j}]",
+                        f"Step '{step.step_id}' command blocked by kubectl executor: {reason}"
+                        f" — command: {cmd!r}",
+                    ))
+        return failures or [_pass("commands.executor_compatible", "steps[*].commands")]
+
+    # ------------------------------------------------------------------
+    # Command RBAC coverage  (commands.rbac_coverage)
+    # ------------------------------------------------------------------
+
+    def _check_commands_rbac_coverage(self, draft: LabDraft) -> list[ValidatorResult]:
+        """Every K8s permission required by step commands must be granted by the learner Role."""
+        from backend.labgen.learner_credentials import LEARNER_ALLOWED_PERMISSIONS
+
+        allowed_set: set[tuple[str, str, str]] = {
+            (api_group, resource, verb)
+            for api_group, resources, verbs in LEARNER_ALLOWED_PERMISSIONS
+            for resource in resources
+            for verb in verbs
+        }
+
+        failures = []
+        for i, step in enumerate(draft.steps):
+            for j, cmd in enumerate(step.commands):
+                for api_group, resource, verb in _command_required_permissions(cmd):
+                    if (api_group, resource, verb) not in allowed_set:
+                        failures.append(_fail(
+                            "commands.rbac_coverage",
+                            BlockingLevel.PUBLISH_BLOCKING,
+                            f"steps[{i}].commands[{j}]",
+                            f"Step '{step.step_id}' command needs"
+                            f" '{api_group + '/' if api_group else ''}{resource}:{verb}'"
+                            f" which is not in the learner Role — command: {cmd!r}",
+                        ))
+        return failures or [_pass("commands.rbac_coverage", "steps[*].commands")]
 
     # ------------------------------------------------------------------
     # Namespace check  (§10: namespace.*)

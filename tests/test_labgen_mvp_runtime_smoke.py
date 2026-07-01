@@ -468,7 +468,7 @@ _STEP_WITH_VERIFY = {
     "order": 1,
     "why": "Understand pod scheduling",
     "do": "Deploy nginx and verify it runs",
-    "commands": ["kubectl run nginx --image=172.16.100.1:5000/nginx:1.25"],
+    "commands": ["kubectl create deployment nginx --image=172.16.100.1:5000/nginx:1.25"],
     "observe": "Pod transitions to Running state",
     "explain": {"concept": "Pod lifecycle", "observation": "Scheduler assigns node"},
     "verify": [{

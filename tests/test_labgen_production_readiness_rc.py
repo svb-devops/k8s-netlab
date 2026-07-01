@@ -352,7 +352,7 @@ def _minimal_published_draft(lab_id: str, draft_repo: _MemDraftRepo) -> LabDraft
         order=1,
         why="Understand pods",
         do="Deploy nginx",
-        commands=["kubectl run nginx --image=172.16.100.1:5000/nginx:1.25"],
+        commands=["kubectl create deployment nginx --image=172.16.100.1:5000/nginx:1.25"],
         observe="Pod is Running",
         explain=ExplainField(
             concept="Pod lifecycle",

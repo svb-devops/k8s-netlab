@@ -49,6 +49,18 @@ _ROLE_NAME = "lab-learner-role"
 _RB_NAME = "lab-learner-rolebinding"
 _TOKEN_EXPIRY_SECONDS = 3600
 
+# Single source of truth for learner RBAC — consumed by both _ensure_role()
+# and StaticValidator (publish-gate check commands.rbac_coverage).
+# Format: (api_group, frozenset[resources], frozenset[verbs])
+LEARNER_ALLOWED_PERMISSIONS: tuple[tuple[str, frozenset, frozenset], ...] = (
+    ("", frozenset({"configmaps"}),   frozenset({"create", "get", "list", "watch", "delete", "update", "patch"})),
+    ("", frozenset({"secrets"}),      frozenset({"create", "get", "list", "watch", "delete"})),
+    ("", frozenset({"pods", "events"}), frozenset({"get", "list", "watch"})),
+    ("", frozenset({"pods/log"}),     frozenset({"get"})),
+    ("apps", frozenset({"deployments"}),  frozenset({"create", "get", "list", "watch", "delete", "update", "patch"})),
+    ("apps", frozenset({"replicasets"}),  frozenset({"get", "list", "watch"})),
+)
+
 # Validate session_id is a UUID (36 chars: 8-4-4-4-12 hex + dashes).
 _SESSION_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
@@ -85,35 +97,11 @@ def _ensure_role(rbac_v1: k8s_client.RbacAuthorizationV1Api, namespace: str) -> 
         metadata=k8s_client.V1ObjectMeta(name=_ROLE_NAME, namespace=namespace),
         rules=[
             k8s_client.V1PolicyRule(
-                api_groups=[""],
-                resources=["configmaps"],
-                verbs=["create", "get", "list", "watch", "delete", "update", "patch"],
-            ),
-            k8s_client.V1PolicyRule(
-                api_groups=[""],
-                resources=["secrets"],
-                verbs=["create", "get", "list", "watch", "delete"],
-            ),
-            k8s_client.V1PolicyRule(
-                api_groups=[""],
-                resources=["pods", "events"],
-                verbs=["get", "list", "watch"],
-            ),
-            k8s_client.V1PolicyRule(
-                api_groups=[""],
-                resources=["pods/log"],
-                verbs=["get"],
-            ),
-            k8s_client.V1PolicyRule(
-                api_groups=["apps"],
-                resources=["deployments"],
-                verbs=["create", "get", "list", "watch", "delete", "update", "patch"],
-            ),
-            k8s_client.V1PolicyRule(
-                api_groups=["apps"],
-                resources=["replicasets"],
-                verbs=["get", "list", "watch"],
-            ),
+                api_groups=[api_group],
+                resources=sorted(resources),
+                verbs=sorted(verbs),
+            )
+            for api_group, resources, verbs in LEARNER_ALLOWED_PERMISSIONS
         ],
     )
     try:
