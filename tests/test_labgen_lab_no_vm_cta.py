@@ -1,12 +1,15 @@
 """
-Regression tests for no_vm_assigned error UX in labgen-lab-init.js.
+Regression tests for no_vm_assigned error UX: labgen-lab-init.js + app.js.
 
 Bug (Controlled Soft Launch): When a new user clicks "Start Lab" on the article lab page
 and has no K8s VM yet, the backend returns 422 no_vm_assigned. The frontend rendered
 a plain red text message with no actionable path, causing users to abandon the flow.
 
-Fix: labgen-lab-init.js must detect e.code === 'no_vm_assigned' and render a dedicated
-UI block containing a link/button to /app so users can create a VM and return to the lab.
+After VM creation the user had no way back to the lab (stranded on /app).
+
+Fix:
+- labgen-lab-init.js: detect no_vm_assigned, link to /app?next=<lab_url> (not new tab)
+- app.js: after VM creation success, if ?next= points to /labgen-lab.html, redirect there
 """
 
 from pathlib import Path
@@ -26,45 +29,62 @@ class TestNoVmAssignedErrorHandling:
     """labgen-lab-init.js must handle no_vm_assigned with an actionable path."""
 
     def test_no_vm_assigned_code_is_checked(self):
-        """JS must explicitly check for the no_vm_assigned error code."""
         js = _read("labgen-lab-init.js")
-        assert "no_vm_assigned" in js, (
-            "labgen-lab-init.js must detect e.code === 'no_vm_assigned' to render "
-            "a dedicated error UI instead of generic red text"
+        assert "no_vm_assigned" in js
+
+    def test_link_to_app_includes_next_param(self):
+        """When no_vm_assigned, link must use /app?next= so user returns after VM creation."""
+        js = _read("labgen-lab-init.js")
+        assert "'/app?next='" in js or '"/app?next="' in js or "/app?next=" in js, (
+            "labgen-lab-init.js must pass ?next= to /app so the user is redirected "
+            "back to the lab page after VM creation"
         )
 
-    def test_link_to_app_present_for_no_vm(self):
-        """When no_vm_assigned, JS must render a link or button pointing to /app."""
+    def test_no_vm_block_encodes_current_url(self):
+        """The ?next= value must be encoded from the current page URL."""
         js = _read("labgen-lab-init.js")
-        # Must contain a reference to /app as the destination for VM creation
-        assert '"/app"' in js or "'/app'" in js or "href='/app'" in js or 'href="/app"' in js, (
-            "labgen-lab-init.js must include a link to /app so users without a VM "
-            "can create one and return to start the lab"
-        )
+        assert "encodeURIComponent" in js and "window.location.href" in js
 
     def test_no_vm_branch_is_separate_from_generic_error(self):
-        """no_vm_assigned must be handled in its own branch, not the generic error path."""
         js = _read("labgen-lab-init.js")
-        # The no_vm_assigned check must appear before or separate from the generic error msg
         no_vm_idx = js.find("no_vm_assigned")
         generic_idx = js.find("text-red-600")
         assert no_vm_idx != -1, "no_vm_assigned code check missing"
-        # Generic red text path should still exist for other errors
         assert generic_idx != -1, "Generic red error text path must still exist for non-no_vm errors"
-        # They must be in different code paths (no_vm_assigned appears before generic path OR in separate branch)
-        # We verify this by checking that no_vm_assigned appears within an if-branch context
         no_vm_region = js[max(0, no_vm_idx - 50): no_vm_idx + 200]
-        assert "if" in no_vm_region or "===" in no_vm_region, (
-            "no_vm_assigned must be handled inside a conditional branch"
-        )
+        assert "if" in no_vm_region or "===" in no_vm_region
 
     def test_action_element_rendered_for_no_vm(self):
-        """The no_vm error UI must render an interactive element (a or button) to /app."""
         js = _read("labgen-lab-init.js")
-        # Verify there's an anchor element pointing to /app in the no_vm handling
-        has_anchor = "<a" in js and "/app" in js
-        has_button_redirect = "location" in js and "/app" in js
-        assert has_anchor or has_button_redirect, (
-            "labgen-lab-init.js must render an <a href='/app'> anchor (or equivalent redirect) "
-            "in the no_vm_assigned error block so users have a clickable path to VM creation"
+        assert "<a" in js and "/app" in js
+
+
+class TestAppJsNextParamRedirect:
+    """app.js must redirect to ?next= after VM creation if it points to /labgen-lab.html."""
+
+    def test_app_reads_next_param_after_create(self):
+        """app.js must read ?next= from URL after successful VM creation."""
+        js = _read("app.js")
+        assert "next" in js and "URLSearchParams" in js
+
+    def test_app_validates_next_prefix(self):
+        """app.js must only redirect to /labgen-lab.html (not arbitrary URLs)."""
+        js = _read("app.js")
+        assert "/labgen-lab.html" in js, (
+            "app.js must validate that ?next= starts with /labgen-lab.html "
+            "to prevent open redirect"
         )
+
+    def test_app_redirects_on_safe_next(self):
+        """app.js must call window.location.href = safeNext after VM creation success."""
+        js = _read("app.js")
+        # safeNext variable must be set and used for redirect
+        assert "safeNext" in js, "app.js must define a safeNext variable for the validated ?next= URL"
+        safe_idx = js.find("safeNext")
+        region = js[safe_idx: safe_idx + 200]
+        assert "location.href" in region, "safeNext must be used in a window.location.href redirect"
+
+    def test_app_no_redirect_when_no_next_param(self):
+        """Without ?next=, app.js must show the normal success modal (not redirect)."""
+        js = _read("app.js")
+        assert "showSuccess" in js, "Normal success path must still exist when no ?next= param"

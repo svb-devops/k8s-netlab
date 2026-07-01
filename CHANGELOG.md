@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- fix(labgen): no_vm_assigned 流程断点 — 用户点 Start Lab 被跳转到 /app 创建 VM 后无路回到原实验页面；修复：labgen-lab-init.js 的跳转链接改为 /app?next=<encoded_lab_url>，app.js VM 创建成功后若 next 参数指向 /labgen-lab.html 则自动跳回，验证前缀防止 open redirect；补回归测试防止重现
 - feat(labgen): StaticValidator 新增两道发布前静态检查：commands.executor_compatible（所有步骤命令经 kubectl_executor.validate_command() 过滤，shell 变量/非 kubectl 命令/delete namespace 等在发布时即被阻断）和 commands.rbac_coverage（从 LEARNER_ALLOWED_PERMISSIONS 单一权限源推导，命令所需权限不在角色内则阻断发布）；LEARNER_ALLOWED_PERMISSIONS 提取为常量（含 pods/log:get），_ensure_role() 409 处理改为 create-or-replace 确保已有 session 自动升级角色；27 个新测试（TestCommandsExecutorCompatible/TestCommandsRbacCoverage/TestCommandRequiredPermissions）；防止未来 lab 内容与 executor/RBAC 不兼容问题在运行时才被发现
 - fix(labgen): lab draft bb4fe651 step-7 verify namespace_not_exists 永远失败 — 原命令 kubectl delete namespace 被 executor 拦截，namespace 由 complete_session() 服务端回收，改为空 verify 列表（自动通过）+ 命令改为 kubectl delete deployment crash-demo，补回归测试防止重现
 - fix(labgen): lab-learner RBAC Role 缺少 pods/log 子资源导致 kubectl logs 403 Forbidden — 新增 pods/log:get 规则，409 处理改为 create-or-replace 确保已有 session 自动升级，kubectl patch 修复当前 live session；补 2 个回归测试防止重现

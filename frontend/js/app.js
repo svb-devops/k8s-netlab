@@ -261,6 +261,12 @@ class K8SNetLabApp {
         this.hideLoading();
 
         if (result.success) {
+            const nextParam = new URLSearchParams(window.location.search).get('next');
+            const safeNext = nextParam && nextParam.startsWith('/labgen-lab.html') ? nextParam : null;
+            if (safeNext) {
+                window.location.href = safeNext;
+                return;
+            }
             this.showSuccess(
                 '创建成功！',
                 `VM ${result.data.vm_id} (${result.data.name}) 已创建并启动。\n资源: ${result.data.cores} 核 CPU, ${result.data.memory_mb} MB 内存\n\n⏳ 网络就绪约需 1 分钟，终端连接时会自动等待。`
