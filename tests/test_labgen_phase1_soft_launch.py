@@ -1207,6 +1207,78 @@ class TestArticleLabPromptBuilder:
         assert "My Desired Title" in user
 
 
+class TestCommandGenerationConstraints:
+    """Regression: lab draft bb4fe651 required a week of manual debugging because
+    the LLM generated shell-variable syntax (POD_NAME=$(...)) and a `kubectl delete
+    namespace` verify step — both silently unrunnable by the sandboxed kubectl-only
+    executor (backend/labgen/kubectl_executor.py). StaticValidator now catches these
+    at publish time, but the prompt itself must also tell the LLM not to generate
+    them in the first place, or every future article repeats the same debug cycle.
+    """
+
+    def test_prohibits_shell_variable_assignment(self):
+        from backend.labgen.article_lab_prompt_builder import build_article_to_lab_messages
+
+        system, _ = build_article_to_lab_messages(
+            _K8S_ARTICLE, article_title="A", target_domain="k8s",
+        )
+        assert "$(" in system or "command substitution" in system.lower()
+        assert "no shell" in system.lower() or "not run through a shell" in system.lower()
+
+    def test_recommends_label_selector_over_captured_pod_name(self):
+        from backend.labgen.article_lab_prompt_builder import build_article_to_lab_messages
+
+        system, _ = build_article_to_lab_messages(
+            _K8S_ARTICLE, article_title="A", target_domain="k8s",
+        )
+        assert "-l app=" in system or "label selector" in system.lower()
+
+    def test_prohibits_delete_namespace(self):
+        from backend.labgen.article_lab_prompt_builder import build_article_to_lab_messages
+
+        system, _ = build_article_to_lab_messages(
+            _K8S_ARTICLE, article_title="A", target_domain="k8s",
+        )
+        assert "delete namespace" in system.lower()
+        assert "automatically" in system.lower() or "platform" in system.lower()
+
+    def test_prohibits_yaml_json_output_formats(self):
+        from backend.labgen.article_lab_prompt_builder import build_article_to_lab_messages
+
+        system, _ = build_article_to_lab_messages(
+            _K8S_ARTICLE, article_title="A", target_domain="k8s",
+        )
+        assert "-o yaml" in system
+        assert "-o json" in system
+
+    def test_prohibits_namespace_flag(self):
+        from backend.labgen.article_lab_prompt_builder import build_article_to_lab_messages
+
+        system, _ = build_article_to_lab_messages(
+            _K8S_ARTICLE, article_title="A", target_domain="k8s",
+        )
+        assert "-n " in system or "--namespace" in system
+
+    def test_prohibits_blocked_subcommands(self):
+        from backend.labgen.article_lab_prompt_builder import build_article_to_lab_messages
+
+        system, _ = build_article_to_lab_messages(
+            _K8S_ARTICLE, article_title="A", target_domain="k8s",
+        )
+        for sub in ("exec", "port-forward", "cp", "debug"):
+            assert sub in system
+
+    def test_constraints_present_for_linux_domain_too(self):
+        """Command constraints apply to any domain using the kubectl executor path —
+        but at minimum must not silently disappear for non-k8s domains."""
+        from backend.labgen.article_lab_prompt_builder import build_article_to_lab_messages
+
+        system, _ = build_article_to_lab_messages(
+            _LINUX_ARTICLE, article_title="A", target_domain="linux",
+        )
+        assert "COMMAND GENERATION" in system or "command generation" in system.lower()
+
+
 # ---------------------------------------------------------------------------
 # H. Regression Tests
 # ---------------------------------------------------------------------------

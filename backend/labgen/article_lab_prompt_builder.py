@@ -91,6 +91,50 @@ HARD CONSTRAINTS (violating any causes your output to be DISCARDED):
 10. cleanup field MUST be present and declare how the environment is cleaned up.
 """
 
+_K8S_COMMAND_CONSTRAINTS = """\
+COMMAND GENERATION RULES (K8s domain — kubectl_executor.py enforces these at runtime
+and StaticValidator rejects violations before publish; a lab that violates these will
+either fail for the learner or be discarded before it ever reaches them):
+
+1. Each string in "commands" is executed as a single, standalone "kubectl ..."
+   invocation. It is NOT run through a shell: no variable assignment (X=$(...)),
+   no command substitution, no pipes (|), no && / ; chaining, no $VAR expansion.
+   Every command string must start with the literal word "kubectl".
+2. To target a Pod without knowing its exact name in advance, use a label selector
+   directly in the command — do NOT capture a name into a variable first:
+   GOOD: kubectl logs -l app=my-app --previous
+   GOOD: kubectl describe pods -l app=my-app
+   BAD:  POD_NAME=$(kubectl get pods -o jsonpath='{.items[0].metadata.name}')
+3. Never generate "kubectl delete namespace" or any get/describe/delete/edit on a
+   cluster-scoped resource (namespace, node, clusterrole, clusterrolebinding,
+   persistentvolume, storageclass). Namespace cleanup happens automatically when the
+   lab session ends — never write a step or verify command that deletes or inspects
+   the namespace itself.
+4. Never use -o yaml, -o json, -o jsonpath, or any --output format other than the
+   default table, "wide", or "name" — these are blocked because they can expose
+   secret values.
+5. Never write -n or --namespace in a command — the platform always injects the
+   learner's own namespace automatically; any namespace flag you write is ignored.
+6. Never use: kubectl exec, port-forward, proxy, attach, cp, debug, run, plugin,
+   config, "create token", auth, or --all-namespaces / -A.
+7. Never use --kubeconfig — the platform always injects its own.
+"""
+
+_LINUX_COMMAND_CONSTRAINTS = """\
+COMMAND GENERATION RULES (Linux domain — linux_command_executor.py enforces these
+at runtime; a lab that violates these will fail for the learner):
+
+1. Each command is executed as argv directly (no shell). Do NOT use shell
+   metacharacters in any argument: ; & | ` $ ( ) { } < > \\ !  — no pipes,
+   no substitution, no redirection, no chaining.
+2. The first word of each command must be one of: pwd, ls, mkdir, touch, echo,
+   cat, chmod, stat, find, rm, cp, mv, wc, head, tail, grep, diff, test, [.
+   Never use: sudo, su, systemctl, ssh/scp/rsync, curl/wget, package managers
+   (apt/yum/apk/pip), or any interpreter (python, bash, sh, perl, node).
+3. All paths must be relative to the workspace and stay within it — never use an
+   absolute path (starting with /) and never use ".." to escape the workspace.
+"""
+
 _JSON_SCHEMA_SUMMARY = """\
 REQUIRED JSON SCHEMA (all fields required unless marked optional):
 {
@@ -168,6 +212,9 @@ def build_article_to_lab_messages(
     """
     domain_key = target_domain.lower() if target_domain else "k8s"
     domain_hint = _DOMAIN_HINTS.get(domain_key, _DOMAIN_HINTS["k8s"])
+    command_constraints = (
+        _LINUX_COMMAND_CONSTRAINTS if domain_key == "linux" else _K8S_COMMAND_CONSTRAINTS
+    )
 
     safe_title = (article_title or "Untitled")[:_MAX_TITLE_LEN]
     safe_reader = (intended_reader or "intermediate practitioner")[:_MAX_READER_LEN]
@@ -190,6 +237,8 @@ def build_article_to_lab_messages(
         "You ONLY produce Guided Practice Labs — NOT assessment labs, NOT quizzes, NOT conceptual exams.\n\n"
         f"Domain context:\n{domain_hint}\n\n"
         + _JSON_SCHEMA_SUMMARY
+        + "\n"
+        + command_constraints
         + "\n"
         + _SYSTEM_PROHIBITIONS
     )
