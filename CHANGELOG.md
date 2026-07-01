@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- fix(ops): mypy SmartLogger.warning 参数类型修复（dict→str）
 - fix(ops): delete_vm 对非 pool VM 的 403 status-check 盲目失败改为 blind destroy fallback — Proxmox K8SNetLab 角色新增 VM.Allocate（pool 范围），delete_vm 捕获 403 ResourceException 后跳过 status-check 直接调用 destroy（VM.Allocate 全局授权），补 2 个回归测试防止重现
 - ops(labgen): credential reconcile — 清理 creds/vm_creds/500（VM 已销毁）旧凭证至 archive；清除 /var/lib/labgen-staging/verifier-credentials/vm_creds/ 嵌套残留目录；effective root 现仅含 299/401
 - fix(labgen): no_vm_assigned 流程断点 — 用户点 Start Lab 被跳转到 /app 创建 VM 后无路回到原实验页面；修复：labgen-lab-init.js 的跳转链接改为 /app?next=<encoded_lab_url>，app.js VM 创建成功后若 next 参数指向 /labgen-lab.html 则自动跳回，验证前缀防止 open redirect；补回归测试防止重现

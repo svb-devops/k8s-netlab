@@ -232,8 +232,7 @@ def delete_vm(vm_id: int, force: bool = False) -> Dict[str, Any]:
                 # with blind destroy using VM.Allocate (granted globally via K8SNetLabCreate).
                 # If VM is still running, destroy will fail; caller should check success flag.
                 slog.warning(
-                    f"VM {vm_id} status check 403 (not in pool); attempting blind destroy",
-                    {"error": str(status_err)},
+                    f"VM {vm_id} status check 403 (not in pool); attempting blind destroy: {status_err}",
                 )
                 vm_status = "unknown"
             else:
