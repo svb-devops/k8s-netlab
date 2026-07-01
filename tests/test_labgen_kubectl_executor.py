@@ -101,7 +101,9 @@ class TestValidateCommandBlockedPatterns:
         "kubectl get node pve",
         "kubectl get clusterroles",
         "kubectl get clusterrolebindings",
+        # namespace deletion is blocked regardless of target (cluster-scoped; cleanup is server-side)
         "kubectl delete namespace lab-xxx",
+        "kubectl delete namespace lab-97a950f4-4995-4750-bf86-20ff13e9ec7b --wait=true",
         "kubectl describe clusterrole lab-verifier",
         # all-namespaces flags
         "kubectl get pods --all-namespaces",
