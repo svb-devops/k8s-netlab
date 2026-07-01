@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- fix(tests): test_health_response_time 全量 suite 负载下偶发超时 — 改为预热一次后取 3 次最小值，消除冷启动 import 偏差
 - fix(ops): mypy SmartLogger.warning 参数类型修复（dict→str）
 - fix(ops): delete_vm 对非 pool VM 的 403 status-check 盲目失败改为 blind destroy fallback — Proxmox K8SNetLab 角色新增 VM.Allocate（pool 范围），delete_vm 捕获 403 ResourceException 后跳过 status-check 直接调用 destroy（VM.Allocate 全局授权），补 2 个回归测试防止重现
 - ops(labgen): credential reconcile — 清理 creds/vm_creds/500（VM 已销毁）旧凭证至 archive；清除 /var/lib/labgen-staging/verifier-credentials/vm_creds/ 嵌套残留目录；effective root 现仅含 299/401
