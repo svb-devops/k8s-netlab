@@ -14,6 +14,7 @@ Validates:
 from __future__ import annotations
 
 from typing import Optional
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -324,6 +325,7 @@ class TestTaintedVMPrecheck:
             vm_tracker=tracker,
             ns_lifecycle=StubNamespaceLifecycleAdapter(),
             image_resolver=_StubImageResolver(),
+        
         )
         result = svc.run_precheck(draft.lab_id, "vm-500", "student1")
         assert not result.passed
@@ -339,6 +341,7 @@ class TestTaintedVMPrecheck:
             vm_tracker=tracker,
             ns_lifecycle=StubNamespaceLifecycleAdapter(),
             image_resolver=_StubImageResolver(),
+        
         )
         with pytest.raises(PrecheckFailed) as exc_info:
             svc.create_session(draft.lab_id, "vm-500", "student1")
@@ -355,6 +358,7 @@ class TestTaintedVMPrecheck:
             vm_tracker=tracker,
             ns_lifecycle=ns,
             image_resolver=_StubImageResolver(),
+        
         )
         with pytest.raises(PrecheckFailed):
             svc.create_session(draft.lab_id, "vm-500", "student1")
@@ -370,6 +374,7 @@ class TestTaintedVMPrecheck:
             vm_tracker=tracker,
             ns_lifecycle=StubNamespaceLifecycleAdapter(),
             image_resolver=_StubImageResolver(),
+        
         )
         result = svc.run_precheck(draft.lab_id, "vm-500", "student1")
         assert result.passed
@@ -388,16 +393,18 @@ class TestTaintedVMPrecheck:
             vm_tracker=tracker,
             ns_lifecycle=StubNamespaceLifecycleAdapter(),
             image_resolver=_StubImageResolver(),
+        
         )
         app.dependency_overrides[get_session_repository] = lambda: repo
         app.dependency_overrides[get_session_service] = lambda: svc
         app.dependency_overrides[get_current_user] = lambda: "student1"
         try:
             client = TestClient(app, raise_server_exceptions=True)
-            r = client.post(
-                "/api/lab-sessions",
-                json={"lab_id": draft.lab_id, "vm_id": "vm-500"},
-            )
+            with patch("backend.labgen.routes.config.LABGEN_ENABLED_LAB_IDS", frozenset({draft.lab_id})):
+                r = client.post(
+                    "/api/lab-sessions",
+                    json={"lab_id": draft.lab_id, "vm_id": "vm-500"},
+                )
             assert r.status_code == 422
             failures = r.json()["detail"]["precheck_failures"]
             assert "precheck.vm_tainted" in failures
@@ -417,16 +424,18 @@ class TestTaintedVMPrecheck:
             vm_tracker=tracker,
             ns_lifecycle=StubNamespaceLifecycleAdapter(),
             image_resolver=_StubImageResolver(),
+        
         )
         app.dependency_overrides[get_session_repository] = lambda: repo
         app.dependency_overrides[get_session_service] = lambda: svc
         app.dependency_overrides[get_current_user] = lambda: "student1"
         try:
             client = TestClient(app, raise_server_exceptions=True)
-            client.post(
-                "/api/lab-sessions",
-                json={"lab_id": draft.lab_id, "vm_id": "vm-500"},
-            )
+            with patch("backend.labgen.routes.config.LABGEN_ENABLED_LAB_IDS", frozenset({draft.lab_id})):
+                client.post(
+                    "/api/lab-sessions",
+                    json={"lab_id": draft.lab_id, "vm_id": "vm-500"},
+                )
             # No session was persisted
             assert len(repo._store) == 0
         finally:

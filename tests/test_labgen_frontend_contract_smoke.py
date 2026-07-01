@@ -21,6 +21,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -170,6 +171,15 @@ class _StubImageResolver:
 # ===========================================================================
 
 
+class _ContainsEverything:
+    """Stand-in for LABGEN_ENABLED_LAB_IDS when the allowlist gate itself isn't
+    under test — drafts get fresh UUIDs per test, so membership must trivially
+    hold for any of them without pre-enumerating IDs."""
+
+    def __contains__(self, item: object) -> bool:
+        return True
+
+
 @contextmanager
 def _full_smoke_ctx():
     """Wire all LabGen + generation dependencies with in-memory stores.
@@ -265,6 +275,11 @@ def _full_smoke_ctx():
 
     client = TestClient(app, raise_server_exceptions=True)
 
+    # This suite tests contract/schema shape, not the LABGEN_ENABLED_LAB_IDS allowlist
+    # gate itself — drafts get fresh UUIDs per test, so bypass with a stand-in rather
+    # than pre-enumerating IDs.
+    allowlist_patch = patch("backend.labgen.routes.config.LABGEN_ENABLED_LAB_IDS", _ContainsEverything())
+    allowlist_patch.start()
     try:
         yield {
             "client": client,
@@ -275,6 +290,7 @@ def _full_smoke_ctx():
             "as_student": _as_student,
         }
     finally:
+        allowlist_patch.stop()
         app.dependency_overrides.clear()
         app.dependency_overrides.update(saved)
 

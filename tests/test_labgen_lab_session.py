@@ -229,6 +229,7 @@ def mem_session_repo() -> _MemSessionRepo:
 
 @pytest.fixture()
 def student_client(mem_session_repo):
+    import unittest.mock as mock
     from backend.main import app
     from backend.auth_deps import get_current_user
 
@@ -247,7 +248,8 @@ def student_client(mem_session_repo):
     app.dependency_overrides[get_session_service] = lambda: svc
     app.dependency_overrides[get_current_user] = lambda: "student1"
     c = TestClient(app, raise_server_exceptions=True)
-    yield c, draft.lab_id
+    with mock.patch("backend.labgen.routes.config.LABGEN_ENABLED_LAB_IDS", frozenset({draft.lab_id})):
+        yield c, draft.lab_id
     app.dependency_overrides.clear()
 
 
@@ -366,6 +368,25 @@ class TestPrecheck:
         result = svc.run_precheck("missing-draft", "vm-500", "student1")
         assert not result.passed
         assert "precheck.draft_not_found" in result.failures
+
+    def test_precheck_fails_when_lab_not_allowlisted(self):
+        """Defense-in-depth: safety-reviewer found LABGEN_ENABLED_LAB_IDS was
+        only enforced at the route layer — any future call site that reaches
+        run_precheck directly must still be blocked for a non-allowlisted lab."""
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft})
+        svc._enabled_lab_ids = frozenset()  # simulate a lab published but not allowlisted
+        result = svc.run_precheck(draft.lab_id, "vm-500", "student1")
+        assert not result.passed
+        assert "precheck.lab_access_not_enabled" in result.failures
+
+    def test_precheck_admin_bypasses_allowlist(self):
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft})
+        svc._enabled_lab_ids = frozenset()
+        svc._admin_usernames = frozenset({"admin1"})
+        result = svc.run_precheck(draft.lab_id, "vm-500", "admin1")
+        assert result.passed
 
     def test_precheck_fails_when_draft_not_published(self):
         draft = _make_published_draft(publish_status=PublishStatus.DRAFT)
@@ -572,13 +593,17 @@ class TestCreateSessionEndpoint:
         assert "session_id" in r.json()
 
     def test_create_precheck_fail_returns_422(self, student_client):
+        import unittest.mock as mock
         client, _ = student_client
-        r = client.post("/api/lab-sessions", json={"lab_id": "nonexistent", "vm_id": "vm-500"})
+        with mock.patch("backend.labgen.routes.config.LABGEN_ENABLED_LAB_IDS", frozenset({"nonexistent"})):
+            r = client.post("/api/lab-sessions", json={"lab_id": "nonexistent", "vm_id": "vm-500"})
         assert r.status_code == 422
 
     def test_create_422_body_contains_precheck_failures(self, student_client):
+        import unittest.mock as mock
         client, _ = student_client
-        r = client.post("/api/lab-sessions", json={"lab_id": "nonexistent", "vm_id": "vm-500"})
+        with mock.patch("backend.labgen.routes.config.LABGEN_ENABLED_LAB_IDS", frozenset({"nonexistent"})):
+            r = client.post("/api/lab-sessions", json={"lab_id": "nonexistent", "vm_id": "vm-500"})
         detail = r.json()["detail"]
         assert "precheck_failures" in detail
 
@@ -617,6 +642,47 @@ class TestCreateSessionEndpoint:
             r = client.post("/api/lab-sessions", json={"lab_id": lab_id})
         assert r.status_code == 201
         assert r.json()["vm_id"] == "500"
+
+
+class TestCreateSessionEnabledLabAllowlist:
+    """Regression: public site now has open self-registration (no invite gate),
+    so lab_id access must be allowlist-gated at the route, not left to "nobody
+    knows the URL". Admins are exempt so internal dev/testing keeps working."""
+
+    def test_blocked_when_lab_not_in_allowlist(self, student_client):
+        import unittest.mock as mock
+        client, lab_id = student_client
+        with mock.patch("backend.labgen.routes.config.LABGEN_ENABLED_LAB_IDS", frozenset()), \
+             mock.patch("backend.labgen.routes.auth_manager.is_admin", return_value=False):
+            r = client.post("/api/lab-sessions", json={"lab_id": lab_id, "vm_id": "vm-500"})
+        assert r.status_code == 403
+
+    def test_allowed_when_lab_in_allowlist(self, student_client):
+        import unittest.mock as mock
+        client, lab_id = student_client
+        with mock.patch("backend.labgen.routes.config.LABGEN_ENABLED_LAB_IDS", frozenset({lab_id})), \
+             mock.patch("backend.labgen.routes.auth_manager.is_admin", return_value=False):
+            r = client.post("/api/lab-sessions", json={"lab_id": lab_id, "vm_id": "vm-500"})
+        assert r.status_code == 201
+
+    def test_admin_bypasses_allowlist(self, student_client):
+        import unittest.mock as mock
+        client, lab_id = student_client
+        with mock.patch("backend.labgen.routes.config.LABGEN_ENABLED_LAB_IDS", frozenset()), \
+             mock.patch("backend.labgen.routes.auth_manager.is_admin", return_value=True):
+            r = client.post("/api/lab-sessions", json={"lab_id": lab_id, "vm_id": "vm-500"})
+        assert r.status_code == 201
+
+    def test_blocked_response_does_not_leak_precheck_details(self, student_client):
+        """Gate must fire before VM/precheck logic — a blocked user shouldn't
+        learn anything about the lab's VM/ownership state."""
+        import unittest.mock as mock
+        client, lab_id = student_client
+        with mock.patch("backend.labgen.routes.config.LABGEN_ENABLED_LAB_IDS", frozenset()), \
+             mock.patch("backend.labgen.routes.auth_manager.is_admin", return_value=False):
+            r = client.post("/api/lab-sessions", json={"lab_id": lab_id})
+        assert r.status_code == 403
+        assert "precheck_failures" not in r.json().get("detail", {})
 
 
 class TestGetSessionEndpoint:

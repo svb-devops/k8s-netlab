@@ -182,6 +182,8 @@ def get_session_service() -> LabSessionService:
             ),
             linux_adapter=get_linux_runtime_adapter(),
             linux_learner_enabled_lab_ids=config.LABGEN_LINUX_LEARNER_ENABLED_LAB_IDS,
+            enabled_lab_ids=config.LABGEN_ENABLED_LAB_IDS,
+            admin_usernames=frozenset(config.ADMIN_USERNAMES),
         )
     return _session_svc
 
@@ -1145,6 +1147,15 @@ async def create_lab_session(
     svc: LabSessionService = Depends(get_session_service),
     repo: LabDraftRepository = Depends(get_repository),
 ) -> LabSessionState:
+    # Public-launch gate: registration has no invite barrier, so lab access must
+    # be allowlisted explicitly rather than relying on "nobody knows the URL".
+    # Admins are exempt so internal dev/testing is unaffected.
+    if body.lab_id not in config.LABGEN_ENABLED_LAB_IDS and not auth_manager.is_admin(username):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="该实验当前暂不对外开放",
+        )
+
     vm_id = body.vm_id
     if vm_id is None:
         # Linux learner sessions require no VM — check allowlist before VM discovery

@@ -343,6 +343,14 @@ LABGEN_LINUX_LEARNER_ENABLED_LAB_IDS: frozenset = _parse_lab_id_set(
     os.getenv("LABGEN_LINUX_LEARNER_ENABLED_LAB_IDS", "")
 )
 
+# LABGEN_ENABLED_LAB_IDS: comma-separated list of lab IDs (any domain) that
+# non-admin users may create sessions for. Empty = no lab accessible to the
+# general public (default — LabGen stays admin-only while under development).
+# Admins (config.ADMIN_USERNAMES) always bypass this gate.
+LABGEN_ENABLED_LAB_IDS: frozenset = _parse_lab_id_set(
+    os.getenv("LABGEN_ENABLED_LAB_IDS", "")
+)
+
 # Sandbox root directory for Linux learner workspaces.
 LABGEN_LINUX_SANDBOX_ROOT: str = os.getenv(
     "LABGEN_LINUX_SANDBOX_ROOT", "/tmp/labgen-linux-sandboxes"

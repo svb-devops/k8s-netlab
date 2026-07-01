@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 import uuid
 from typing import Optional
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -116,13 +116,25 @@ def mem_repo() -> _MemRepo:
     return _MemRepo()
 
 
+class _ContainsEverything:
+    """Stand-in for LABGEN_ENABLED_LAB_IDS when the allowlist gate itself isn't
+    under test — drafts here get fresh UUIDs per test, so membership must
+    trivially hold for any of them without pre-enumerating IDs."""
+
+    def __contains__(self, item: object) -> bool:
+        return True
+
+
 @pytest.fixture()
 def client(mem_repo):
     from backend.main import app
 
     app.dependency_overrides[get_lab_draft_repository] = lambda: mem_repo
     c = TestClient(app, raise_server_exceptions=True)
+    allowlist_patch = patch("backend.articles_routes.config.LABGEN_ENABLED_LAB_IDS", _ContainsEverything())
+    allowlist_patch.start()
     yield c
+    allowlist_patch.stop()
     app.dependency_overrides.pop(get_lab_draft_repository, None)
 
 
@@ -149,6 +161,19 @@ class TestArticleLabCTAEndpoint:
 
     def test_no_linked_lab_returns_has_cta_false(self, client, mem_repo):
         r = client.get("/api/articles/nonexistent-slug/lab-cta")
+        assert r.status_code == 200
+        assert r.json()["has_cta"] is False
+        assert r.json().get("lab_id") is None
+
+    def test_published_but_not_allowlisted_lab_returns_has_cta_false(self, client, mem_repo):
+        """Regression: safety-reviewer found this endpoint didn't know about
+        LABGEN_ENABLED_LAB_IDS — a published+cta_enabled lab that just isn't
+        allowlisted yet would still leak lab_id/cta_url to unauthenticated
+        visitors, bypassing the whole point of the allowlist gate."""
+        draft = _make_published_draft(article_url=LINUX_ARTICLE_URL)
+        mem_repo.create(draft)
+        with patch("backend.articles_routes.config.LABGEN_ENABLED_LAB_IDS", frozenset()):
+            r = client.get("/api/articles/linux-files-permissions-basics/lab-cta")
         assert r.status_code == 200
         assert r.json()["has_cta"] is False
         assert r.json().get("lab_id") is None
@@ -271,7 +296,8 @@ class TestFindLabByArticleSlug:
     def test_matches_exact_slug(self, mem_repo):
         draft = _make_published_draft(article_url=LINUX_ARTICLE_URL)
         mem_repo.create(draft)
-        found = _find_lab_by_article_slug("linux-files-permissions-basics", mem_repo)
+        with patch("backend.articles_routes.config.LABGEN_ENABLED_LAB_IDS", _ContainsEverything()):
+            found = _find_lab_by_article_slug("linux-files-permissions-basics", mem_repo)
         assert found is not None
         assert found.lab_id == draft.lab_id
 

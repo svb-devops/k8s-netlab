@@ -189,12 +189,20 @@ def get_lab_draft_repository() -> "LabDraftRepository":
 
 
 def _find_lab_by_article_slug(slug: str, repo: "LabDraftRepository") -> Optional["LabDraft"]:
-    """Return the first PUBLISHED+cta_enabled draft whose article_url slug param matches."""
+    """Return the first PUBLISHED+cta_enabled+allowlisted draft whose article_url slug param matches.
+
+    Must mirror the same LABGEN_ENABLED_LAB_IDS gate as session creation
+    (backend/labgen/routes.py::create_lab_session) — otherwise this
+    unauthenticated endpoint leaks lab_id/cta_url for labs that aren't
+    actually startable, defeating the allowlist as an access boundary.
+    """
     from backend.labgen.models import LabDraft as _LabDraft, PublishStatus
     for draft in repo.list_all():
         if draft.publish_status != PublishStatus.PUBLISHED:
             continue
         if not getattr(draft, "cta_enabled", False):
+            continue
+        if draft.lab_id not in config.LABGEN_ENABLED_LAB_IDS:
             continue
         article_url = getattr(draft, "article_url", None) or ""
         if not article_url:

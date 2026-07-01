@@ -20,6 +20,7 @@ import re
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -235,6 +236,15 @@ class _StubImageResolver:
 # ===========================================================================
 
 
+class _ContainsEverything:
+    """Stand-in for LABGEN_ENABLED_LAB_IDS when the allowlist gate itself isn't
+    under test — drafts get fresh UUIDs per test, so membership must trivially
+    hold for any of them without pre-enumerating IDs."""
+
+    def __contains__(self, item: object) -> bool:
+        return True
+
+
 @contextmanager
 def _rc_ctx(*, student: str = "student1"):
     """Wire all LabGen deps with shared in-memory stores.
@@ -325,6 +335,11 @@ def _rc_ctx(*, student: str = "student1"):
         # Remove require_admin_user override so admin-only endpoints correctly 403.
         app.dependency_overrides.pop(require_admin_user, None)
 
+    # This suite tests RC/production-readiness contracts, not the LABGEN_ENABLED_LAB_IDS
+    # allowlist gate itself — drafts get fresh UUIDs per test, so bypass with a stand-in
+    # rather than pre-enumerating IDs.
+    allowlist_patch = patch("backend.labgen.routes.config.LABGEN_ENABLED_LAB_IDS", _ContainsEverything())
+    allowlist_patch.start()
     try:
         yield {
             "client": client,
@@ -336,6 +351,7 @@ def _rc_ctx(*, student: str = "student1"):
             "as_learner": _as_learner,
         }
     finally:
+        allowlist_patch.stop()
         app.dependency_overrides.clear()
         app.dependency_overrides.update(saved)
 

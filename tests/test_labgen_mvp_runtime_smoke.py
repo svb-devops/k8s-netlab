@@ -357,6 +357,15 @@ class _MissingCredentialStore:
         raise RuntimeError("no credentials")
 
 
+class _ContainsEverything:
+    """Stand-in for LABGEN_ENABLED_LAB_IDS when the allowlist gate itself isn't
+    under test — drafts get fresh UUIDs per test, so membership must trivially
+    hold for any of them without pre-enumerating IDs."""
+
+    def __contains__(self, item: object) -> bool:
+        return True
+
+
 # ===========================================================================
 # Smoke context manager
 # ===========================================================================
@@ -438,6 +447,13 @@ def _smoke_ctx(
 
     client = TestClient(app, raise_server_exceptions=True)
 
+    # This suite tests runtime/schema/permission contracts, not the LABGEN_ENABLED_LAB_IDS
+    # allowlist gate itself — every draft here gets a fresh UUID per test, so instead of
+    # pre-enumerating IDs, swap in a "contains everything" stand-in. This must NOT touch
+    # auth_manager.is_admin — several tests assert ownership-based 403s for "stranger"
+    # users, which patching is_admin globally would silently defeat.
+    allowlist_patch = patch("backend.labgen.routes.config.LABGEN_ENABLED_LAB_IDS", _ContainsEverything())
+    allowlist_patch.start()
     try:
         yield {
             "client": client,
@@ -447,6 +463,7 @@ def _smoke_ctx(
             "as_user": _set_user,
         }
     finally:
+        allowlist_patch.stop()
         app.dependency_overrides.clear()
         app.dependency_overrides.update(saved)
 

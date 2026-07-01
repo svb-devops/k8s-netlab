@@ -227,6 +227,8 @@ class LabSessionService:
         credential_reclaim_exempt_vm_ids: frozenset = frozenset(),
         linux_adapter: Optional["LinuxRuntimeAdapter"] = None,
         linux_learner_enabled_lab_ids: frozenset = frozenset(),
+        enabled_lab_ids: Optional[frozenset] = None,
+        admin_usernames: frozenset = frozenset(),
     ) -> None:
         self._session_repo = session_repo
         self._draft_repo = draft_repo
@@ -242,6 +244,8 @@ class LabSessionService:
         self._credential_reclaim_exempt_vm_ids = credential_reclaim_exempt_vm_ids
         self._linux_adapter = linux_adapter
         self._linux_learner_enabled_lab_ids = linux_learner_enabled_lab_ids
+        self._enabled_lab_ids = enabled_lab_ids
+        self._admin_usernames = admin_usernames
 
     def _audit(
         self,
@@ -264,6 +268,21 @@ class LabSessionService:
         student_username: str,
     ) -> PrecheckResult:
         failures: list[str] = []
+
+        # Defense-in-depth: the route layer (create_lab_session) already gates on
+        # this allowlist, but the service must not trust callers unconditionally —
+        # any future call site (new route, script, job) that reaches run_precheck
+        # must not be able to start a session for a non-allowlisted lab.
+        # enabled_lab_ids=None means the gate is not configured for this service
+        # instance (default — most callers, including nearly all tests, don't
+        # care about the public-access allowlist and shouldn't need to know
+        # about it); production wiring always passes a real frozenset.
+        if self._enabled_lab_ids is not None and (
+            lab_id not in self._enabled_lab_ids
+            and student_username not in self._admin_usernames
+        ):
+            failures.append(FailureReason.PRECHECK_LAB_ACCESS_NOT_ENABLED.value)
+            return PrecheckResult(passed=False, failures=failures)
 
         draft = self._draft_repo.get(lab_id)
         _is_linux_learner = False
