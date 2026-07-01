@@ -163,12 +163,24 @@ class TestEnsureRole:
         _ensure_role(mock_rbac, "lab-ns")
         mock_rbac.create_namespaced_role.assert_called_once()
 
-    def test_ignores_409_conflict(self):
-        from backend.labgen.learner_credentials import _ensure_role
+    def test_role_includes_pods_log_subresource(self):
+        # Regression: kubectl logs requires pods/log subresource; pods alone is not enough.
+        from backend.labgen.learner_credentials import _ensure_role, _ROLE_NAME
+        mock_rbac = MagicMock()
+        _ensure_role(mock_rbac, "lab-ns")
+        role_obj = mock_rbac.create_namespaced_role.call_args[0][1]
+        all_resources = [r for rule in role_obj.rules for r in rule.resources]
+        assert "pods/log" in all_resources, "pods/log subresource must be in the learner Role"
+
+    def test_409_triggers_replace_not_silent_skip(self):
+        # Regression: 409 (Role already exists) must update the role via replace,
+        # so existing sessions get new RBAC permissions (e.g. pods/log added later).
+        from backend.labgen.learner_credentials import _ensure_role, _ROLE_NAME
         from kubernetes.client.exceptions import ApiException
         mock_rbac = MagicMock()
         mock_rbac.create_namespaced_role.side_effect = ApiException(status=409)
         _ensure_role(mock_rbac, "lab-ns")
+        mock_rbac.replace_namespaced_role.assert_called_once_with(_ROLE_NAME, "lab-ns", mock_rbac.replace_namespaced_role.call_args[0][2])
 
     def test_propagates_non_409_error(self):
         from backend.labgen.learner_credentials import _ensure_role

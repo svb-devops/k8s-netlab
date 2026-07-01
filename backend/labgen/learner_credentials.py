@@ -12,6 +12,7 @@ RBAC granted to the learner SA (namespace-scoped only):
   - configmaps:   create / get / list / watch / delete / update / patch
   - secrets:      create / get / list / watch / delete
   - pods:         get / list / watch  (controller creates them; learner only reads)
+  - pods/log:     get  (required for kubectl logs)
   - events:       get / list / watch
   - deployments:  create / get / list / watch / delete / update / patch
   - replicasets:  get / list / watch
@@ -99,6 +100,11 @@ def _ensure_role(rbac_v1: k8s_client.RbacAuthorizationV1Api, namespace: str) -> 
                 verbs=["get", "list", "watch"],
             ),
             k8s_client.V1PolicyRule(
+                api_groups=[""],
+                resources=["pods/log"],
+                verbs=["get"],
+            ),
+            k8s_client.V1PolicyRule(
                 api_groups=["apps"],
                 resources=["deployments"],
                 verbs=["create", "get", "list", "watch", "delete", "update", "patch"],
@@ -114,7 +120,10 @@ def _ensure_role(rbac_v1: k8s_client.RbacAuthorizationV1Api, namespace: str) -> 
         rbac_v1.create_namespaced_role(namespace, role)
         logger.debug("Created learner Role %s in %s", _ROLE_NAME, namespace)
     except ApiException as exc:
-        if exc.status != 409:
+        if exc.status == 409:
+            rbac_v1.replace_namespaced_role(_ROLE_NAME, namespace, role)
+            logger.debug("Replaced learner Role %s in %s", _ROLE_NAME, namespace)
+        else:
             raise
 
 

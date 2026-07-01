@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- fix(labgen): lab-learner RBAC Role 缺少 pods/log 子资源导致 kubectl logs 403 Forbidden — 新增 pods/log:get 规则，409 处理改为 create-or-replace 确保已有 session 自动升级，kubectl patch 修复当前 live session；补 2 个回归测试防止重现
 - fix(labgen): lab draft bb4fe651 step-3/4 使用 shell 变量语法（POD_NAME=$(...) / $POD_NAME / -o jsonpath）在受限 kubectl executor 中全部失败 — 改为 label selector 命令（kubectl describe pods -l app=crash-demo / kubectl logs -l app=crash-demo --previous），补回归测试防止重现
 - fix(labgen): kubectl executor 误拦截 -n/--namespace flag 导致实验步骤命令无法执行 — 改为验证阶段放行、execute() 阶段静默剥离用户提供的 namespace flag（executor 始终注入自身 --namespace），6 个单元测试 + test_labgen_lab_kubectl_ws.py 期望更新
 - fix(tests): delete VM 相关测试未 mock _get_lab_session_repo，真实数据（VM 500 有活跃 session）导致 409 干扰测试结果 — 补全 mock 覆盖 test_api_routes/test_contract/test_robustness/test_security/test_e2e
