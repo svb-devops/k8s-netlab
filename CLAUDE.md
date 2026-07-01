@@ -20,6 +20,7 @@
 |------|------|
 | 修 bug | [rules/bug-fix.md](.claude/rules/bug-fix.md) |
 | 加新功能 | [rules/feature.md](.claude/rules/feature.md) |
+| 手动修复 LabGen LLM 生成内容的 bug | [rules/labgen-content-fix.md](.claude/rules/labgen-content-fix.md) |
 | 重构代码（不改行为） | [rules/refactor.md](.claude/rules/refactor.md) |
 | 发版 | [rules/release.md](.claude/rules/release.md) |
 | 重启服务后 | [rules/deploy.md](.claude/rules/deploy.md) |
