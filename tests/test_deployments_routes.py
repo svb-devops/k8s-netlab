@@ -1,7 +1,7 @@
 """HTTP integration tests for /api/deployments/* routes."""
 
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -18,6 +18,7 @@ from backend.deployments_routes import router, DEPLOYMENT_CASES
 def deploy_setup(tmp_path):
     """TestClient with DEPLOYMENTS_DIR pointing to tmp_path.
 
+    Directus is patched to return None so all tests use the local-file fallback.
     Creates a real markdown file for D01 only.
     Other cases are absent to test 404 paths separately.
     """
@@ -29,7 +30,9 @@ def deploy_setup(tmp_path):
     app = FastAPI()
     app.include_router(router)
 
-    with patch("backend.deployments_routes.DEPLOYMENTS_DIR", dep_dir):
+    with patch("backend.deployments_routes.DEPLOYMENTS_DIR", dep_dir), \
+         patch("backend.deployments_routes.fetch_deployment_list", new=AsyncMock(return_value=None)), \
+         patch("backend.deployments_routes.fetch_deployment_detail", new=AsyncMock(return_value=None)):
         yield TestClient(app, raise_server_exceptions=True)
 
 
@@ -121,3 +124,116 @@ class TestGetDeployment:
                 cookies={"session_token": "tok"},
             )
             assert resp.status_code == 200
+
+
+# ============================================================
+# Directus integration: list_deployments
+# ============================================================
+
+class TestListDeploymentsDirectus:
+    def _make_client(self, tmp_path):
+        dep_dir = tmp_path / "deployments"
+        dep_dir.mkdir()
+        app = FastAPI()
+        app.include_router(router)
+        return TestClient(app, raise_server_exceptions=True), dep_dir
+
+    def test_uses_directus_when_available(self, tmp_path):
+        client, dep_dir = self._make_client(tmp_path)
+        directus_list = [{"id": "D01", "title": "From Directus", "difficulty": 1,
+                          "duration": "10 分钟", "phase": 1}]
+        with patch("backend.deployments_routes.fetch_deployment_list",
+                   new=AsyncMock(return_value=directus_list)), \
+             patch("backend.deployments_routes.DEPLOYMENTS_DIR", dep_dir):
+            resp = client.get("/api/deployments")
+
+        assert resp.status_code == 200
+        deployments = resp.json()["deployments"]
+        assert deployments[0]["title"] == "From Directus"
+
+    def test_falls_back_to_local_when_directus_returns_none(self, tmp_path):
+        client, dep_dir = self._make_client(tmp_path)
+        with patch("backend.deployments_routes.fetch_deployment_list",
+                   new=AsyncMock(return_value=None)), \
+             patch("backend.deployments_routes.DEPLOYMENTS_DIR", dep_dir):
+            resp = client.get("/api/deployments")
+
+        assert resp.status_code == 200
+        assert len(resp.json()["deployments"]) == len(DEPLOYMENT_CASES)
+
+
+# ============================================================
+# Directus integration: get_deployment
+# ============================================================
+
+class TestGetDeploymentDirectus:
+    def _make_client(self, tmp_path):
+        dep_dir = tmp_path / "deployments"
+        dep_dir.mkdir()
+        app = FastAPI()
+        app.include_router(router)
+        return TestClient(app, raise_server_exceptions=True), dep_dir
+
+    def test_uses_directus_detail_when_available(self, tmp_path):
+        client, dep_dir = self._make_client(tmp_path)
+        directus_detail = {
+            "id": "D01", "title": "From Directus", "difficulty": 3,
+            "duration": "30 分钟", "phase": 1,
+            "background": "## BG", "content": "# Content from CMS",
+        }
+        with patch("backend.deployments_routes.fetch_deployment_detail",
+                   new=AsyncMock(return_value=directus_detail)), \
+             patch("backend.deployments_routes.DEPLOYMENTS_DIR", dep_dir):
+            resp = client.get("/api/deployments/D01")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["content"] == "# Content from CMS"
+        assert data["background"] == "## BG"
+
+    def test_falls_back_to_local_file_when_directus_returns_none(self, tmp_path):
+        client, dep_dir = self._make_client(tmp_path)
+        (dep_dir / "D01-guestbook.md").write_text("# Local", encoding="utf-8")
+        with patch("backend.deployments_routes.fetch_deployment_detail",
+                   new=AsyncMock(return_value=None)), \
+             patch("backend.deployments_routes.DEPLOYMENTS_DIR", dep_dir):
+            resp = client.get("/api/deployments/D01")
+
+        assert resp.status_code == 200
+        assert resp.json()["content"] == "# Local"
+
+    def test_returns_404_when_directus_none_and_local_missing(self, tmp_path):
+        client, dep_dir = self._make_client(tmp_path)
+        with patch("backend.deployments_routes.fetch_deployment_detail",
+                   new=AsyncMock(return_value=None)), \
+             patch("backend.deployments_routes.DEPLOYMENTS_DIR", dep_dir):
+            resp = client.get("/api/deployments/D02")
+
+        assert resp.status_code == 404
+
+    def test_directus_updates_activity_with_session(self, tmp_path):
+        client, dep_dir = self._make_client(tmp_path)
+        directus_detail = {
+            "id": "D01", "title": "T", "difficulty": 1,
+            "duration": "10m", "phase": 1, "background": "", "content": "x",
+        }
+        mock_auth = MagicMock()
+        with patch("backend.deployments_routes.fetch_deployment_detail",
+                   new=AsyncMock(return_value=directus_detail)), \
+             patch("backend.deployments_routes.auth_manager", mock_auth), \
+             patch("backend.deployments_routes.DEPLOYMENTS_DIR", dep_dir):
+            client.cookies.set("session_token", "tok")
+            resp = client.get("/api/deployments/D01")
+
+        assert resp.status_code == 200
+        mock_auth.update_session_activity.assert_called_once_with("tok", current_experiment="D01")
+
+    def test_oversized_id_never_reaches_directus(self, tmp_path):
+        client, dep_dir = self._make_client(tmp_path)
+        mock_fetch = AsyncMock(return_value=None)
+        with patch("backend.deployments_routes.fetch_deployment_detail", mock_fetch), \
+             patch("backend.deployments_routes.DEPLOYMENTS_DIR", dep_dir):
+            resp = client.get("/api/deployments/" + "A" * 21)
+
+        assert resp.status_code == 404
+        mock_fetch.assert_not_called()

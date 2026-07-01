@@ -170,6 +170,189 @@ class TestFetchExperimentDetail:
         assert result is None
 
 
+# ── fetch_deployment_list ───────────────────────────────────────────────────────
+
+class TestFetchDeploymentList:
+    @pytest.mark.asyncio
+    async def test_returns_none_when_directus_url_unset(self):
+        with patch("backend.directus_client.config") as cfg:
+            cfg.DIRECTUS_URL = ""
+            from backend.directus_client import fetch_deployment_list
+            result = await fetch_deployment_list()
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_list_on_success(self):
+        directus_items = [
+            {"slug": "D01", "title": "留言板应用", "difficulty": 3,
+             "duration": "30 分钟", "phase": 1, "sort_order": 1},
+        ]
+        resp = _resp(200, {"data": directus_items})
+
+        with patch("backend.directus_client.config") as cfg, \
+             patch("backend.directus_client.httpx.AsyncClient") as mock_client_cls:
+            cfg.DIRECTUS_URL = "http://localhost:8055"
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=resp)
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            from backend.directus_client import fetch_deployment_list
+            result = await fetch_deployment_list()
+
+        assert result is not None
+        assert result[0] == {"id": "D01", "title": "留言板应用", "difficulty": 3,
+                             "duration": "30 分钟", "phase": 1}
+
+    @pytest.mark.asyncio
+    async def test_filters_by_deployment_category(self):
+        resp = _resp(200, {"data": []})
+        with patch("backend.directus_client.config") as cfg, \
+             patch("backend.directus_client.httpx.AsyncClient") as mock_client_cls:
+            cfg.DIRECTUS_URL = "http://localhost:8055"
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=resp)
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            from backend.directus_client import fetch_deployment_list
+            await fetch_deployment_list()
+
+        params = mock_client.get.call_args.kwargs["params"]
+        assert params["filter[category][_eq]"] == "deployment"
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_http_error(self):
+        resp = _resp(500, {})
+        with patch("backend.directus_client.config") as cfg, \
+             patch("backend.directus_client.httpx.AsyncClient") as mock_client_cls:
+            cfg.DIRECTUS_URL = "http://localhost:8055"
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=resp)
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            from backend.directus_client import fetch_deployment_list
+            result = await fetch_deployment_list()
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_network_exception(self):
+        with patch("backend.directus_client.config") as cfg, \
+             patch("backend.directus_client.httpx.AsyncClient") as mock_client_cls:
+            cfg.DIRECTUS_URL = "http://localhost:8055"
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(side_effect=Exception("connection refused"))
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            from backend.directus_client import fetch_deployment_list
+            result = await fetch_deployment_list()
+
+        assert result is None
+
+
+# ── fetch_deployment_detail ───────────────────────────────────────────────────
+
+class TestFetchDeploymentDetail:
+    @pytest.mark.asyncio
+    async def test_returns_none_when_directus_url_unset(self):
+        with patch("backend.directus_client.config") as cfg:
+            cfg.DIRECTUS_URL = ""
+            from backend.directus_client import fetch_deployment_detail
+            result = await fetch_deployment_detail("D01")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_detail_on_success(self):
+        item = {
+            "slug": "D01", "title": "留言板应用", "difficulty": 3,
+            "duration": "30 分钟", "phase": 1,
+            "background": "## 背景", "content": "# 案例内容",
+        }
+        resp = _resp(200, {"data": [item]})
+        with patch("backend.directus_client.config") as cfg, \
+             patch("backend.directus_client.httpx.AsyncClient") as mock_client_cls:
+            cfg.DIRECTUS_URL = "http://localhost:8055"
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=resp)
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            from backend.directus_client import fetch_deployment_detail
+            result = await fetch_deployment_detail("D01")
+
+        assert result is not None
+        assert result["id"] == "D01"
+        assert result["content"] == "# 案例内容"
+        assert result["background"] == "## 背景"
+
+    @pytest.mark.asyncio
+    async def test_filters_by_deployment_category(self):
+        resp = _resp(200, {"data": []})
+        with patch("backend.directus_client.config") as cfg, \
+             patch("backend.directus_client.httpx.AsyncClient") as mock_client_cls:
+            cfg.DIRECTUS_URL = "http://localhost:8055"
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=resp)
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            from backend.directus_client import fetch_deployment_detail
+            await fetch_deployment_detail("D01")
+
+        params = mock_client.get.call_args.kwargs["params"]
+        assert params["filter[category][_eq]"] == "deployment"
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_not_found(self):
+        resp = _resp(200, {"data": []})
+        with patch("backend.directus_client.config") as cfg, \
+             patch("backend.directus_client.httpx.AsyncClient") as mock_client_cls:
+            cfg.DIRECTUS_URL = "http://localhost:8055"
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=resp)
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            from backend.directus_client import fetch_deployment_detail
+            result = await fetch_deployment_detail("D99")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_http_error(self):
+        resp = _resp(503, {})
+        with patch("backend.directus_client.config") as cfg, \
+             patch("backend.directus_client.httpx.AsyncClient") as mock_client_cls:
+            cfg.DIRECTUS_URL = "http://localhost:8055"
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(return_value=resp)
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            from backend.directus_client import fetch_deployment_detail
+            result = await fetch_deployment_detail("D01")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_on_network_exception(self):
+        with patch("backend.directus_client.config") as cfg, \
+             patch("backend.directus_client.httpx.AsyncClient") as mock_client_cls:
+            cfg.DIRECTUS_URL = "http://localhost:8055"
+            mock_client = AsyncMock()
+            mock_client.get = AsyncMock(side_effect=ConnectionError("timeout"))
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            from backend.directus_client import fetch_deployment_detail
+            result = await fetch_deployment_detail("D01")
+
+        assert result is None
+
+
 # ── directus_auth_login ───────────────────────────────────────────────────────
 
 class TestDirectusAuthLogin:

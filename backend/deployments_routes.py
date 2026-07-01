@@ -2,6 +2,8 @@
 K8S NetLab - Deployment Cases API Routes
 
 Provides endpoints to list and serve Markdown deployment case documents.
+When DIRECTUS_URL is configured, content is fetched from Directus CMS;
+otherwise falls back to the hardcoded metadata + local Markdown files.
 """
 
 from pathlib import Path
@@ -11,6 +13,7 @@ from fastapi import APIRouter, Cookie
 from fastapi.responses import JSONResponse
 
 from backend.auth import auth_manager
+from backend.directus_client import fetch_deployment_detail, fetch_deployment_list
 
 router = APIRouter(prefix="/api/deployments", tags=["deployments"])
 
@@ -164,7 +167,13 @@ DEPLOYMENT_CASES = [
 
 @router.get("", summary="List all deployment cases")
 async def list_deployments() -> JSONResponse:
-    """Return the list of all deployment case metadata."""
+    """
+    Return the list of all deployment case metadata.
+    Fetches from Directus when available; falls back to hardcoded list.
+    """
+    directus_deployments = await fetch_deployment_list()
+    if directus_deployments is not None:
+        return JSONResponse({"deployments": directus_deployments})
     return JSONResponse({"deployments": DEPLOYMENT_CASES})
 
 
@@ -173,9 +182,21 @@ async def get_deployment(
     case_id: str,
     session_token: Optional[str] = Cookie(None),
 ) -> JSONResponse:
-    """Return the Markdown content of a specific deployment case."""
+    """
+    Return the Markdown content of a specific deployment case.
+    Fetches from Directus when available; falls back to local Markdown file.
+    """
     if len(case_id) > 20:
         return JSONResponse({"error": "Invalid case ID"}, status_code=404)
+
+    directus_detail = await fetch_deployment_detail(case_id)
+    if directus_detail is not None:
+        if session_token:
+            try:
+                auth_manager.update_session_activity(session_token, current_experiment=case_id)
+            except Exception:
+                pass
+        return JSONResponse(directus_detail)
 
     case = next((c for c in DEPLOYMENT_CASES if c["id"] == case_id), None)
     if not case:

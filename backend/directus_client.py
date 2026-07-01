@@ -19,10 +19,10 @@ _FIELDS_LIST = "slug,title,difficulty,duration,phase,sort_order"
 _FIELDS_DETAIL = "slug,title,difficulty,duration,phase,background,content"
 
 
-async def fetch_experiment_list() -> Optional[list[dict]]:
+async def _fetch_category_list(category: str) -> Optional[list[dict]]:
     """
-    Return published network experiments sorted by sort_order.
-    Each item: {id, title, difficulty, duration, phase}.
+    Return published experiments collection items filtered by category,
+    sorted by sort_order. Each item: {id, title, difficulty, duration, phase}.
     Returns None if Directus is unavailable or not configured.
     """
     if not config.DIRECTUS_URL:
@@ -30,7 +30,7 @@ async def fetch_experiment_list() -> Optional[list[dict]]:
     url = f"{config.DIRECTUS_URL}/items/experiments"
     params = {
         "filter[status][_eq]": "published",
-        "filter[category][_eq]": "network",
+        "filter[category][_eq]": category,
         "fields": _FIELDS_LIST,
         "sort": "sort_order",
     }
@@ -38,11 +38,11 @@ async def fetch_experiment_list() -> Optional[list[dict]]:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(url, params=params)
     except Exception as exc:
-        logger.warning("Directus experiment list fetch failed: %s", exc)
+        logger.warning("Directus %s list fetch failed: %s", category, exc)
         return None
 
     if resp.status_code != 200:
-        logger.warning("Directus experiment list: HTTP %s", resp.status_code)
+        logger.warning("Directus %s list: HTTP %s", category, resp.status_code)
         return None
 
     items = resp.json().get("data", [])
@@ -58,9 +58,9 @@ async def fetch_experiment_list() -> Optional[list[dict]]:
     ]
 
 
-async def fetch_experiment_detail(slug: str) -> Optional[dict]:
+async def _fetch_category_detail(category: str, slug: str) -> Optional[dict]:
     """
-    Return full experiment content for the given slug.
+    Return full content for the given slug within the given category.
     Returns None if not found or Directus is unavailable.
     """
     if not config.DIRECTUS_URL:
@@ -69,7 +69,7 @@ async def fetch_experiment_detail(slug: str) -> Optional[dict]:
     params = {
         "filter[slug][_eq]": slug,
         "filter[status][_eq]": "published",
-        "filter[category][_eq]": "network",
+        "filter[category][_eq]": category,
         "fields": _FIELDS_DETAIL,
         "limit": "1",
     }
@@ -77,11 +77,11 @@ async def fetch_experiment_detail(slug: str) -> Optional[dict]:
         async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(url, params=params)
     except Exception as exc:
-        logger.warning("Directus experiment detail fetch failed (slug=%s): %s", slug, exc)
+        logger.warning("Directus %s detail fetch failed (slug=%s): %s", category, slug, exc)
         return None
 
     if resp.status_code != 200:
-        logger.warning("Directus experiment detail: HTTP %s (slug=%s)", resp.status_code, slug)
+        logger.warning("Directus %s detail: HTTP %s (slug=%s)", category, resp.status_code, slug)
         return None
 
     items = resp.json().get("data", [])
@@ -98,6 +98,26 @@ async def fetch_experiment_detail(slug: str) -> Optional[dict]:
         "background": item.get("background", ""),
         "content": item.get("content", ""),
     }
+
+
+async def fetch_experiment_list() -> Optional[list[dict]]:
+    """Return published network experiments. See _fetch_category_list."""
+    return await _fetch_category_list("network")
+
+
+async def fetch_experiment_detail(slug: str) -> Optional[dict]:
+    """Return a published network experiment's content. See _fetch_category_detail."""
+    return await _fetch_category_detail("network", slug)
+
+
+async def fetch_deployment_list() -> Optional[list[dict]]:
+    """Return published deployment cases. See _fetch_category_list."""
+    return await _fetch_category_list("deployment")
+
+
+async def fetch_deployment_detail(slug: str) -> Optional[dict]:
+    """Return a published deployment case's content. See _fetch_category_detail."""
+    return await _fetch_category_detail("deployment", slug)
 
 
 async def directus_auth_login(username: str, password: str) -> Optional[str]:

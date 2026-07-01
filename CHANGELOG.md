@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Changed
+- feat(docs): 部署案例栏目（deployments_routes.py）接入 Directus CMS，与网络实验（docs_routes.py）对称——`fetch_deployment_list`/`fetch_deployment_detail` 优先读 experiments 集合 category=deployment，Directus 不可用时降级为本地 Markdown 文件；directus_client.py 抽取 `_fetch_category_list`/`_fetch_category_detail` 消除与网络实验的重复逻辑；补 22 个测试（directus_client 部署案例分支 + deployments_routes Directus 集成），消除此前部署案例栏目落后于网络实验的技术债
 - fix(tests): test_health_response_time 全量 suite 负载下偶发超时 — 改为预热一次后取 3 次最小值，消除冷启动 import 偏差
 - fix(ops): mypy SmartLogger.warning 参数类型修复（dict→str）
 - fix(ops): delete_vm 对非 pool VM 的 403 status-check 盲目失败改为 blind destroy fallback — Proxmox K8SNetLab 角色新增 VM.Allocate（pool 范围），delete_vm 捕获 403 ResourceException 后跳过 status-check 直接调用 destroy（VM.Allocate 全局授权），补 2 个回归测试防止重现
