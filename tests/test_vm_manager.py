@@ -320,6 +320,45 @@ class TestDeleteVm:
             assert result["success"] is False
             assert "down" in result["error"]
 
+    def test_delete_vm_not_in_pool_403_status_blind_destroy_succeeds(self, mock_proxmox):
+        """
+        Regression: VM not in Proxmox pool gets 403 on status check.
+        delete_vm must fall through to blind destroy using VM.Allocate (global perm).
+        sfl-test-02 postmortem: VM 500 was not in k8s-netlab pool, destroy got 403 on
+        status check, causing silent untrack instead of actual deletion.
+        """
+        from proxmoxer.core import ResourceException
+        from backend.vm_manager import delete_vm
+
+        node = mock_proxmox.nodes("pve")
+        vm = node.qemu(500)
+        vm.status.current.get.side_effect = ResourceException(
+            403,
+            "Forbidden",
+            "Permission check failed (user k8s-netlab@pve!netlab-token, path /vms/500, perm VM.Audit)",
+        )
+        vm.delete.return_value = None
+
+        result = delete_vm(vm_id=500, force=True)
+
+        assert result["success"] is True, f"blind destroy should succeed: {result['error']}"
+        vm.status.stop.post.assert_not_called()
+        vm.delete.assert_called_once()
+
+    def test_delete_vm_non_permission_resource_exception_propagates(self, mock_proxmox):
+        """Non-403 ResourceException (e.g. 500 internal error) must propagate, not be swallowed."""
+        from proxmoxer.core import ResourceException
+        from backend.vm_manager import delete_vm
+
+        node = mock_proxmox.nodes("pve")
+        vm = node.qemu(501)
+        vm.status.current.get.side_effect = ResourceException(500, "Internal Server Error", "Internal server error")
+
+        result = delete_vm(vm_id=501)
+
+        assert result["success"] is False
+        assert "500" in result["error"] or "Internal" in result["error"]
+
 
 # --- list_vms Tests ---
 

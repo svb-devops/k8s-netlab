@@ -197,33 +197,47 @@ def delete_vm(vm_id: int, force: bool = False) -> Dict[str, Any]:
         node = proxmox.nodes(config.PROXMOX_NODE)
         vm = node.qemu(vm_id)
 
-        # Step 1: Check VM status and stop if running
-        status_data = vm.status.current.get()
-        vm_status = status_data.get("status", "unknown")
-        slog.info(f"VM {vm_id} current status: {vm_status}")
+        # Step 1: Check VM status and stop if running.
+        # Pool-scoped VMs have VM.Audit via K8SNetLab role; non-pool VMs may get 403 here.
+        # If 403, attempt blind destroy (VM.Allocate is granted globally via K8SNetLabCreate).
+        try:
+            status_data = vm.status.current.get()
+            vm_status = status_data.get("status", "unknown")
+            slog.info(f"VM {vm_id} current status: {vm_status}")
 
-        if vm_status == "running":
-            if force:
-                slog.info("Force-stopping VM")
-                vm.status.stop.post()
-            else:
-                slog.info("Gracefully shutting down VM")
-                vm.status.shutdown.post()
-            slog.info(f"VM {vm_id} stop requested, waiting for VM to stop...")
+            if vm_status == "running":
+                if force:
+                    slog.info("Force-stopping VM")
+                    vm.status.stop.post()
+                else:
+                    slog.info("Gracefully shutting down VM")
+                    vm.status.shutdown.post()
+                slog.info(f"VM {vm_id} stop requested, waiting for VM to stop...")
 
-            # Wait for VM to stop
-            max_wait = 60  # seconds
-            wait_interval = 2  # seconds
-            for i in range(max_wait // wait_interval):
-                status_data = vm.status.current.get()
-                current_status = status_data.get("status", "unknown")
-                if current_status == "stopped":
-                    elapsed = (i + 1) * wait_interval
-                    slog.success(f"VM {vm_id} stopped after {elapsed}s")
-                    break
-                time.sleep(wait_interval)
+                max_wait = 60
+                wait_interval = 2
+                for i in range(max_wait // wait_interval):
+                    status_data = vm.status.current.get()
+                    current_status = status_data.get("status", "unknown")
+                    if current_status == "stopped":
+                        elapsed = (i + 1) * wait_interval
+                        slog.success(f"VM {vm_id} stopped after {elapsed}s")
+                        break
+                    time.sleep(wait_interval)
+                else:
+                    raise RuntimeError(f"VM {vm_id} did not stop within {max_wait}s")
+        except ResourceException as status_err:
+            if "403" in str(status_err) or "Permission check failed" in str(status_err):
+                # VM not in pool — K8SNetLab role doesn't apply. Log warning and proceed
+                # with blind destroy using VM.Allocate (granted globally via K8SNetLabCreate).
+                # If VM is still running, destroy will fail; caller should check success flag.
+                slog.warning(
+                    f"VM {vm_id} status check 403 (not in pool); attempting blind destroy",
+                    {"error": str(status_err)},
+                )
+                vm_status = "unknown"
             else:
-                raise RuntimeError(f"VM {vm_id} did not stop within {max_wait}s")
+                raise
 
         # Step 2: Delete VM
         slog.info("Deleting VM")
