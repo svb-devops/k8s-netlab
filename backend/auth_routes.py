@@ -15,6 +15,7 @@ from backend.auth import auth_manager
 from backend.config import SESSION_COOKIE_SECURE
 from backend.directus_client import directus_auth_login
 from backend.auth_directus import verify_directus_token
+from backend.email_client import send_verification_email
 from backend.rate_limiter import rate_limiter
 
 logger = logging.getLogger(__name__)
@@ -59,12 +60,24 @@ class AuthResponse(BaseModel):
     message: str
     username: Optional[str] = None
     is_admin: Optional[bool] = None
+    verification_required: bool = False
 
 
 class ChangePasswordRequest(BaseModel):
     """Change-password request."""
     old_password: str = Field(..., min_length=1, max_length=72)  # bcrypt max is 72 bytes
     new_password: str = Field(..., min_length=6, max_length=72)  # bcrypt max is 72 bytes
+
+
+class VerifyEmailRequest(BaseModel):
+    """Registration email verification request."""
+    username: str = Field(..., min_length=3, max_length=20, pattern="^[a-zA-Z0-9_-]+$")
+    code: str = Field(..., min_length=6, max_length=6, pattern="^[0-9]{6}$")
+
+
+class ResendVerificationRequest(BaseModel):
+    """Resend registration verification code request."""
+    username: str = Field(..., min_length=3, max_length=20, pattern="^[a-zA-Z0-9_-]+$")
 
 
 def _normalize_ip(ip: str) -> str:
@@ -157,10 +170,24 @@ async def register(http_request: Request, request: RegisterRequest) -> AuthRespo
         )
 
         if success:
+            verification_required = not auth_manager.is_email_verified(request.username)
+            if verification_required:
+                code = auth_manager.generate_verification_code(request.username)
+                if code:
+                    sent = await send_verification_email(request.email, code)
+                    if not sent:
+                        logger.warning(
+                            f"Verification email send failed for '{request.username}' "
+                            "(user can retry via /api/auth/resend-verification)"
+                        )
             return AuthResponse(
                 success=True,
-                message="User registered successfully",
-                username=request.username
+                message=(
+                    "验证码已发送至邮箱，请查收" if verification_required
+                    else "User registered successfully"
+                ),
+                username=request.username,
+                verification_required=verification_required,
             )
         else:
             raise HTTPException(
@@ -217,6 +244,12 @@ async def login(credentials: LoginRequest, response: Response, request: Request)
                 detail="Invalid username or password"
             )
 
+        if not auth_manager.is_email_verified(credentials.username):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="请先验证邮箱后再登录",
+            )
+
         # Create session (record login IP for admin observability)
         token = auth_manager.create_session(credentials.username, login_ip=client_ip)
 
@@ -244,6 +277,93 @@ async def login(credentials: LoginRequest, response: Response, request: Request)
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Login failed"
         )
+
+
+_VERIFY_FAILURE_MESSAGES = {
+    "not_found": "用户不存在",
+    "too_many_attempts": "验证码错误次数过多，请重新发送验证码",
+    "expired": "验证码已过期，请重新发送",
+    "invalid_code": "验证码错误",
+}
+
+
+@router.post(
+    "/verify-email",
+    response_model=AuthResponse,
+    summary="Verify registration email code"
+)
+async def verify_email(http_request: Request, request: VerifyEmailRequest) -> AuthResponse:
+    """
+    Verify the 6-digit code sent to the user's email during registration.
+
+    Max 5 attempts per code before it must be resent via /resend-verification.
+    Also IP rate-limited — the per-code attempt counter alone doesn't stop an
+    attacker from probing many different (possibly fabricated) usernames.
+    """
+    client_ip = _get_client_ip(http_request)
+    rl_key = f"verify-email:{client_ip}"
+    if rate_limiter.is_over_limit(rl_key, max_requests=10, window_seconds=60):
+        wait = rate_limiter.retry_after(rl_key, window_seconds=60)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"请求过于频繁，请 {wait} 秒后重试",
+            headers={"Retry-After": str(wait)},
+        )
+    rate_limiter.record(rl_key)
+
+    result = auth_manager.verify_email(request.username, request.code)
+
+    if not result["success"]:
+        message = _VERIFY_FAILURE_MESSAGES.get(result["reason"], "验证失败")
+        if result["reason"] == "invalid_code":
+            message = f"{message}，剩余 {result['attempts_remaining']} 次机会"
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message)
+
+    return AuthResponse(success=True, message="邮箱验证成功，请登录", username=request.username)
+
+
+@router.post(
+    "/resend-verification",
+    response_model=AuthResponse,
+    summary="Resend registration verification code"
+)
+async def resend_verification(http_request: Request, request: ResendVerificationRequest) -> AuthResponse:
+    """
+    Resend a fresh verification code. Rate-limited per username (stop bombing one
+    account) and per IP (stop cycling through many usernames to run up email sends).
+
+    Always returns success (even for unknown usernames) to avoid leaking account existence.
+    """
+    client_ip = _get_client_ip(http_request)
+    ip_rl_key = f"resend-verification-ip:{client_ip}"
+    if rate_limiter.is_over_limit(ip_rl_key, max_requests=5, window_seconds=60):
+        wait = rate_limiter.retry_after(ip_rl_key, window_seconds=60)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"请求过于频繁，请 {wait} 秒后重试",
+            headers={"Retry-After": str(wait)},
+        )
+    rate_limiter.record(ip_rl_key)
+
+    rl_key = f"resend-verification:{request.username}"
+    if rate_limiter.is_over_limit(rl_key, max_requests=1, window_seconds=60):
+        wait = rate_limiter.retry_after(rl_key, window_seconds=60)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"请 {wait} 秒后重试",
+            headers={"Retry-After": str(wait)},
+        )
+    rate_limiter.record(rl_key)
+
+    code = auth_manager.generate_verification_code(request.username)
+    if code:
+        email = auth_manager.get_user_email(request.username)
+        if email:
+            sent = await send_verification_email(email, code)
+            if not sent:
+                logger.warning(f"Resend verification email failed for '{request.username}'")
+
+    return AuthResponse(success=True, message="如账号存在，验证码已发送", username=request.username)
 
 
 @router.post(

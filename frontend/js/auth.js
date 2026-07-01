@@ -11,9 +11,20 @@ const tabRegister = document.getElementById('tab-register');
 const loginForm = document.getElementById('login-form');
 const directusForm = document.getElementById('directus-form');
 const registerForm = document.getElementById('register-form');
+const verifyForm = document.getElementById('verify-form');
 
 const ALL_TABS = [tabLogin, tabDirectus, tabRegister];
-const ALL_FORMS = [loginForm, directusForm, registerForm];
+const ALL_FORMS = [loginForm, directusForm, registerForm, verifyForm];
+
+// Username pending email verification (set on register success, consumed by verify/resend)
+let pendingVerificationUsername = null;
+
+function showVerifyForm(username, email) {
+    pendingVerificationUsername = username;
+    document.getElementById('verify-email-display').textContent = email;
+    ALL_FORMS.forEach(f => f.classList.add('hidden'));
+    verifyForm.classList.remove('hidden');
+}
 
 function activateTab(activeTab, activeForm) {
     ALL_TABS.forEach(t => {
@@ -120,16 +131,67 @@ registerForm.addEventListener('submit', async (e) => {
         const result = await response.json();
 
         if (response.ok) {
-            showMessage('注册成功！请登录', false);
-            setTimeout(() => {
-                tabLogin.click();
-                document.getElementById('login-username').value = username;
-            }, 2000);
+            if (result.verification_required) {
+                showMessage('注册成功！请查收邮箱验证码', false);
+                showVerifyForm(username, email);
+            } else {
+                showMessage('注册成功！请登录', false);
+                setTimeout(() => {
+                    tabLogin.click();
+                    document.getElementById('login-username').value = username;
+                }, 2000);
+            }
         } else {
             showMessage(result.detail || '注册失败', true);
         }
     } catch (error) {
         console.error('Register error:', error);
+        showMessage('网络错误，请稍后重试', true);
+    }
+});
+
+// Email verification handler
+verifyForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const code = document.getElementById('verify-code').value.trim();
+
+    try {
+        const response = await fetch('/api/auth/verify-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: pendingVerificationUsername, code }),
+        });
+        const result = await response.json();
+
+        if (response.ok) {
+            showMessage('验证成功！请登录', false);
+            const verifiedUsername = pendingVerificationUsername;
+            pendingVerificationUsername = null;
+            setTimeout(() => {
+                tabLogin.click();
+                document.getElementById('login-username').value = verifiedUsername;
+            }, 1500);
+        } else {
+            showMessage(result.detail || '验证失败', true);
+        }
+    } catch (error) {
+        console.error('Verify email error:', error);
+        showMessage('网络错误，请稍后重试', true);
+    }
+});
+
+// Resend verification code handler
+document.getElementById('verify-resend').addEventListener('click', async () => {
+    try {
+        const response = await fetch('/api/auth/resend-verification', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: pendingVerificationUsername }),
+        });
+        const result = await response.json();
+        showMessage(response.ok ? '验证码已重新发送' : (result.detail || '发送失败'), !response.ok);
+    } catch (error) {
+        console.error('Resend verification error:', error);
         showMessage('网络错误，请稍后重试', true);
     }
 });

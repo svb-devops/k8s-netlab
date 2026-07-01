@@ -239,6 +239,17 @@ if DIRECTUS_URL:
 else:
     logger.info("Directus integration disabled (DIRECTUS_URL not set)")
 
+# --- Email Verification Configuration ---
+# Resend API key for sending registration verification codes. Leave empty to
+# disable email verification (registration proceeds unverified, as before).
+RESEND_API_KEY: str = os.getenv("RESEND_API_KEY", "")
+RESEND_FROM_EMAIL: str = os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev")
+
+if RESEND_API_KEY:
+    logger.info("Email verification enabled (RESEND_API_KEY set)")
+else:
+    logger.info("Email verification disabled (RESEND_API_KEY not set)")
+
 # --- AI Tutor Configuration ---
 DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_MODEL: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")

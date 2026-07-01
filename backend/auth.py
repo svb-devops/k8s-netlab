@@ -4,6 +4,7 @@ K8S NetLab - User Authentication
 Lightweight user authentication and session management.
 """
 
+import hashlib
 import logging
 import secrets
 from datetime import datetime, timedelta
@@ -58,7 +59,13 @@ class AuthManager:
         Returns:
             True if successful, False if username or email already exists
         """
+        from backend import config
+
         registered = False
+        # Email verification is only enforced when an email provider is configured
+        # (RESEND_API_KEY set). Otherwise new users are treated as pre-verified —
+        # this preserves current behavior when the feature is not yet configured.
+        email_verified = not bool(config.RESEND_API_KEY)
 
         def _add(users: Dict) -> Dict:
             nonlocal registered
@@ -72,6 +79,7 @@ class AuthManager:
             record: Dict = {
                 "password_hash": hash_password(password),
                 "created_at": datetime.now().isoformat(),
+                "email_verified": email_verified,
             }
             if email:
                 record["email"] = email
@@ -91,6 +99,101 @@ class AuthManager:
         """Return True if any existing user already has this email (case-insensitive)."""
         users = self._load_users()
         return any(u.get("email") == email for u in users.values())
+
+    def get_user_email(self, username: str) -> Optional[str]:
+        """Return the registered email for username, or None if not set/found."""
+        users = self._load_users()
+        user = users.get(username)
+        return user.get("email") if user else None
+
+    def is_email_verified(self, username: str) -> bool:
+        """
+        Return True if the user's email is verified (or verification isn't required).
+
+        Users created before this feature (or while RESEND_API_KEY was unset) have
+        no `email_verified` field — default True so existing accounts stay usable.
+        """
+        users = self._load_users()
+        user = users.get(username)
+        if not user:
+            return True
+        return bool(user.get("email_verified", True))
+
+    def generate_verification_code(self, username: str) -> Optional[str]:
+        """
+        Generate and store a 6-digit verification code for username (15 min TTL).
+
+        The code is stored as a sha256 hash, never in plaintext. Returns the
+        plaintext code (for the caller to email), or None if user not found.
+        """
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        code_hash = hashlib.sha256(code.encode()).hexdigest()
+        expires_at = (datetime.now() + timedelta(minutes=15)).isoformat()
+        found = False
+
+        def _update(users: Dict) -> Dict:
+            nonlocal found
+            if username in users:
+                found = True
+                users[username]["verification_code_hash"] = code_hash
+                users[username]["verification_code_expires_at"] = expires_at
+                users[username]["verification_attempts"] = 0
+            return users
+
+        safe_update_json(USERS_FILE, _update)
+        return code if found else None
+
+    def verify_email(self, username: str, code: str) -> Dict:
+        """
+        Verify a registration code for username.
+
+        Returns {"success": bool, "reason": Optional[str], "attempts_remaining": int}.
+        reason (when success is False) is one of:
+        "not_found", "too_many_attempts", "expired", "invalid_code".
+        Max 5 attempts per code before it must be resent.
+        """
+        result: Dict = {"success": False, "reason": "not_found", "attempts_remaining": 0}
+
+        def _update(users: Dict) -> Dict:
+            user = users.get(username)
+            if not user:
+                return users
+            if user.get("email_verified", True):
+                result["success"] = True
+                result["reason"] = None
+                return users
+
+            attempts = user.get("verification_attempts", 0)
+            if attempts >= 5:
+                result["reason"] = "too_many_attempts"
+                return users
+
+            expires_at = user.get("verification_code_expires_at")
+            code_hash = user.get("verification_code_hash")
+            if not expires_at or not code_hash or datetime.fromisoformat(expires_at) < datetime.now():
+                result["reason"] = "expired"
+                result["attempts_remaining"] = max(0, 5 - attempts)
+                return users
+
+            if not secrets.compare_digest(hashlib.sha256(code.encode()).hexdigest(), code_hash):
+                attempts += 1
+                user["verification_attempts"] = attempts
+                result["reason"] = "invalid_code"
+                result["attempts_remaining"] = max(0, 5 - attempts)
+                return users
+
+            user["email_verified"] = True
+            user.pop("verification_code_hash", None)
+            user.pop("verification_code_expires_at", None)
+            user["verification_attempts"] = 0
+            result["success"] = True
+            result["reason"] = None
+            return users
+
+        safe_update_json(USERS_FILE, _update)
+        if result["success"]:
+            logger.info(f"Email verified for user '{username}'")
+        return result
 
     def verify_credentials(self, username: str, password: str) -> bool:
         """
