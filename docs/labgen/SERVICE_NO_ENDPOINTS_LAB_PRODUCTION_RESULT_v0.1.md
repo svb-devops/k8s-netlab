@@ -55,19 +55,20 @@
 ## 本地 commits / git status
 
 ```
+c092bb7 feat(labgen): 生产 Service-no-Endpoints lab，补齐 verify.type_implemented 校验
 cccb143 feat(labgen): 学员 RBAC 新增 services/endpoints 权限，8 轮安全审查收敛
 7d85e73 fix(tests): 邮件失败告警功能污染生产数据 — 补测试隔离防止重现
 b4e1323 fix(security): resend-verification 时延侧信道 + 新增数据清理/告警运维能力
 ```
 
-（本文件对应的 commit 将在资产沉淀改动落地后追加）
+git status: clean（全部改动已 commit）
 
 ## GitHub Push 状态
 
 ```
 if_push_blocked:
   reason: "Invalid username or token — GitHub PAT 已失效（curl 直接调 GitHub API 确认 401，非网络问题）"
-  local_commit_sha: cccb143（及本次资产沉淀新增的 commit）
+  local_commit_sha: c092bb7
   patch_file: 无需要（本地仓库完整，只是无法 push 到远端）
   retry_command: |
     git remote set-url origin https://x-access-token:<新TOKEN>@github.com/svb-devops/k8s-netlab.git
@@ -81,4 +82,5 @@ if_push_blocked:
 1. **GitHub token 需要用户提供新的 PAT** 才能 push。
 2. `docs/labgen/SERVICE_NO_ENDPOINTS_LAB_DESIGN_CONTRACT_v0.1.md` 里记录的 Known Gap：`service_has_endpoints` verify 原语不存在，Endpoints 是否填充目前只能人工 observe，无法机器化断言——建议下一个 sprint 补上。
 3. `_BLOCKED_SUBCOMMANDS` 是黑名单而非白名单（第 8 轮审查确认的架构性观察，非本次引入，暂不构成真实攻击面）——建议后续评估转白名单子命令集。
-4. MEDIUM UX 回退：`kubectl -n <ns> get pods`（`-n` 写在子命令前）这种合法写法现在会被拒绝——可接受的安全/体验权衡，记录在案。
+4. **新发现的预置技术债**：`generation_templates.py` 的 `PYTHON_BASICS`/`HTTP_API_BASICS`/`DATA_TRANSFORM_BASICS` 三个 demo_seed 模板使用未实现的 verify 类型（`job_completed`/`pod_ready`）且引用不存在的 manifest 文件，已用 `xfail(strict=True)` 标记 7 个测试文件里的 26 个测试（非静默隐藏，详见 CHANGELOG）——建议独立立项修复：要么补齐 Job 校验能力（需要给 `KubernetesApiFactory` 增加 BatchV1Api，会牵动另外 2 个测试文件的 2-tuple 约定），要么重写这 3 个模板的实际内容（9 个步骤）。
+5. MEDIUM UX 回退：`kubectl -n <ns> get pods`（`-n` 写在子命令前）这种合法写法现在会被拒绝——可接受的安全/体验权衡，记录在案。
