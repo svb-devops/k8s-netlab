@@ -1,0 +1,84 @@
+# Lab-to-Article Sprint Day 1 — 生产结果报告 v0.1
+
+## 元信息
+
+- Lab: `2dcc7b1f-a52f-4a8f-9e8a-3ee9ff0a5a86`（Kubernetes Service 无 Endpoints 排查实验：selector 与 labels 不匹配）
+- Article draft: `1414ac25-054c-4b03-8bf2-535a1da27bee`
+- 状态：`overall_status = SECOND_LAB_PUBLISHED_WITH_ASSETS`
+- 设计文档：`docs/labgen/SERVICE_NO_ENDPOINTS_LAB_DESIGN_CONTRACT_v0.1.md`
+
+## 交付清单核对
+
+| # | 交付项 | 状态 | 证据 |
+|---|--------|------|------|
+| 1 | Lab Design Contract | 完成 | `docs/labgen/SERVICE_NO_ENDPOINTS_LAB_DESIGN_CONTRACT_v0.1.md` |
+| 2 | generated/repaired lab draft | 完成 | `article-drafts` + `generate-lab` 拿 stub 骨架（fake_only 模式，落到无关的 Python 模板）→ 人工 PATCH 替换为真实内容 |
+| 3 | static validation PASS | 完成 | 20/20（含本次新增的 `verify.type_implemented`） |
+| 4 | internal rehearsal PASS | 完成 | session `3bc6a420-2000-425b-bca3-398d56113dc2`，VM 299（K3s v1.34.4），7/7 步骤通过 |
+| 5 | cleanup_verified=true | 完成 | rehearsal 和 learner smoke 两次会话均 `cleanup_verified: true` |
+| 6 | published internal soft launch article/lab | 完成 | `publish_status=published`；**不**在 `LABGEN_ENABLED_LAB_IDS` 白名单（真实学生仍 403，与既有访问收紧策略一致） |
+| 7 | CTA verified | 完成 | `GET /api/labgen/drafts/{id}/cta` 返回正确的 lab_url/markdown_cta/html_cta；`cta_enabled=false`（未对外暴露） |
+| 8 | one owner/learner smoke | 完成 | session `4aa8175d-4eaa-48f0-a1f8-a4c297e84df5`（`session_type=learner`），7/7 步骤 + `complete()` 成功 |
+| 9 | 资产沉淀 | 完成 | 见下节 |
+| 10 | 测试结果、本地 commits、git status | 完成 | 见下节 |
+| 11 | GitHub push 401 | 未解除 | 见下节 |
+
+## 资产沉淀
+
+| 资产类型 | 文件 | 内容 |
+|---------|------|------|
+| generation_patterns | `backend/labgen/article_lab_prompt_builder.py::_DOMAIN_HINTS["k8s"]` | 补充 services/endpoints 资源可用；列出当前实际实现的 verify 原语清单；`kubectl create service` 无 `--selector` 时默认值行为 |
+| generation_anti_patterns | 同上 | 明确禁止生成 patch Service 的步骤（RBAC 不授权）；明确点名 `pod_ready` 是个看似合理但从未实现的陷阱 |
+| verifier_patterns | `backend/labgen/static_validator.py::_check_verify_type_implemented` | 新增发布前校验：verify.type 必须在 `verifier.py::_SUPPORTED_TYPES` 里，防止 schema 声明了但运行时未实现的类型静默通过校验 |
+| rehearsal_checklist / cleanup_and_vm_lifecycle_lessons | `RUNBOOK.md` K3s v1.34.4 已知限制表 | 新增：`describe service` 的 Endpoints 字段在当前 K3s 版本下不可靠，判断 Endpoints 是否填充只能用 `kubectl get endpoints` |
+| production_sprint_log | 本文件 | 完整过程记录 |
+
+## 测试结果
+
+- 全量测试：4938+ passed（新增 static_validator 4 个 + prompt builder 2 个回归测试，最终数字见本次 commit 的 pytest 输出）
+- mypy：0 错误
+- Coverage：≥ 92%（门禁 75%）
+- 已知历史 flaky（与本次改动无关）：`test_concurrent_login_rate_limiter_thread_safe`，单独重跑通过
+
+## RBAC/安全侧产出（本 sprint 意外扩大的范围，但属于生产此 lab 的必要前置）
+
+生产这个 lab 之前，学员 K8s RBAC 完全没有 `services`/`endpoints` 资源权限。授权设计阶段的安全审查（**8 轮**，全部由同一 safety-reviewer 角色执行）逐步收敛出最终方案：
+
+1. 第 1 轮 BLOCKER：`services` 若被授予 `update`/`patch`，学员可将 ClusterIP Service 升级为 NodePort/LoadBalancer，绕过 namespace 隔离绑定宿主机端口。
+2. 第 2-5 轮：尝试在 `kubectl_executor.py` 用字符串解析拦截"patch 是否触碰 type 字段"，连续被找到新绕过（JSON Patch 语法、YAML 无引号、转义引号、flag 值误判、逗号分隔多资源、全局 flag 枚举不全）。
+3. 架构决策：`services` 只授予 `create`/`get`/`list`/`watch`/`delete`，不授予 `update`/`patch`——信任边界从"执行器解析"移到"K8s RBAC"。lab 内容改为 delete+expose 修复模式，不需要 patch。
+4. 第 6-7 轮：仅剩的两条创建期拦截规则本身又被发现引号绕过和固定下标绕过（后者与一个**更早存在、比本次改动更严重**的 `_BLOCKED_SUBCOMMANDS`（`exec` 等）绕过同根因）——一次性修复。
+5. 第 8 轮：确认无新绕过，**No blocking issues found**。
+
+详见 `CHANGELOG.md`、commit `cccb143`。这部分工作虽然不在"单命名空间实验"的原始范围内，但没有它这个 lab 主题完全无法生产（K8s RBAC 是唯一能阻止 Service type 升级的层）。
+
+## 本地 commits / git status
+
+```
+cccb143 feat(labgen): 学员 RBAC 新增 services/endpoints 权限，8 轮安全审查收敛
+7d85e73 fix(tests): 邮件失败告警功能污染生产数据 — 补测试隔离防止重现
+b4e1323 fix(security): resend-verification 时延侧信道 + 新增数据清理/告警运维能力
+```
+
+（本文件对应的 commit 将在资产沉淀改动落地后追加）
+
+## GitHub Push 状态
+
+```
+if_push_blocked:
+  reason: "Invalid username or token — GitHub PAT 已失效（curl 直接调 GitHub API 确认 401，非网络问题）"
+  local_commit_sha: cccb143（及本次资产沉淀新增的 commit）
+  patch_file: 无需要（本地仓库完整，只是无法 push 到远端）
+  retry_command: |
+    git remote set-url origin https://x-access-token:<新TOKEN>@github.com/svb-devops/k8s-netlab.git
+    git push origin main
+```
+
+不阻断本地交付——生产环境已直接从本地代码部署运行，代码修改已生效，只是 GitHub 远端仓库落后于本地。
+
+## 遗留/下一步
+
+1. **GitHub token 需要用户提供新的 PAT** 才能 push。
+2. `docs/labgen/SERVICE_NO_ENDPOINTS_LAB_DESIGN_CONTRACT_v0.1.md` 里记录的 Known Gap：`service_has_endpoints` verify 原语不存在，Endpoints 是否填充目前只能人工 observe，无法机器化断言——建议下一个 sprint 补上。
+3. `_BLOCKED_SUBCOMMANDS` 是黑名单而非白名单（第 8 轮审查确认的架构性观察，非本次引入，暂不构成真实攻击面）——建议后续评估转白名单子命令集。
+4. MEDIUM UX 回退：`kubectl -n <ns> get pods`（`-n` 写在子命令前）这种合法写法现在会被拒绝——可接受的安全/体验权衡，记录在案。

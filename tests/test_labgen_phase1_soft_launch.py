@@ -1278,6 +1278,41 @@ class TestCommandGenerationConstraints:
         )
         assert "COMMAND GENERATION" in system or "command generation" in system.lower()
 
+    def test_only_lists_implemented_verify_types(self):
+        """Regression (Service-no-Endpoints lab, Lab-to-Article Sprint Day 1):
+        rehearsal discovered that VerifyType.POD_READY is a valid schema enum
+        value that was never wired up in verifier.py's runtime dispatch — using
+        it silently blocks step progression forever (verify_type_not_implemented),
+        and this was only caught by live rehearsal, not static validation. The
+        prompt must steer generation toward only the types verifier.py actually
+        implements, and must not mention pod_ready."""
+        from backend.labgen.article_lab_prompt_builder import build_article_to_lab_messages
+
+        system, _ = build_article_to_lab_messages(
+            _K8S_ARTICLE, article_title="A", target_domain="k8s",
+        )
+        # pod_ready is allowed to appear only as a named cautionary example
+        # (warning against it) — verified via the "e.g. pod_ready" phrasing
+        # rather than plain absence, since it must be named to warn about it.
+        assert "e.g. pod_ready" in system or "unimplemented" in system.lower()
+        for implemented_type in ("pod_running", "service_exists", "deployment_ready"):
+            assert implemented_type in system
+
+    def test_prohibits_patching_services(self):
+        """Regression: LEARNER_ALLOWED_PERMISSIONS deliberately withholds
+        update/patch on services (K8s RBAC can't restrict by spec.type — patch
+        would let a learner escalate a ClusterIP Service to NodePort/LoadBalancer).
+        The prompt must steer generation toward delete+expose instead of patch
+        for fixing a Service, or every future Service-related lab will generate
+        an unusable patch step that fails at RBAC coverage / runtime."""
+        from backend.labgen.article_lab_prompt_builder import build_article_to_lab_messages
+
+        system, _ = build_article_to_lab_messages(
+            _K8S_ARTICLE, article_title="A", target_domain="k8s",
+        )
+        assert "patch" in system.lower() and "service" in system.lower()
+        assert "expose" in system.lower()
+
 
 # ---------------------------------------------------------------------------
 # H. Regression Tests

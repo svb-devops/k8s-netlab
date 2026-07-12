@@ -157,6 +157,7 @@ load_ops_env()  # 自动加载两层，正确顺序
 | Storage index by-name 不可靠 | `kubectl get <resource> <name>` 有时返回空 | 用 python kubernetes client list+filter |
 | TokenRequest 短有效期 | K3s 将 SA token 缩短至 ~3-5min | 每次 step check 前 reprovision verifier credentials |
 | local registry 要求 | 公网不可达 → ImagePullBackOff | Lab image 必须使用 `172.16.100.1:5000/library/` 前缀 |
+| `describe service` 的 Endpoints 字段永久 `<none>` | `kubectl get endpoints <svc>` 正确显示已填充的 IP，但同一时刻 `kubectl describe service <svc>` 的 "Endpoints:" 行永远显示 `<none>`（实测持续 20s+ 不自愈，`Selector:`/`Type:` 等其它字段正常），与 v1 Endpoints 已废弃、kubectl 内部改走 EndpointSlice 聚合但该聚合路径在此 K3s 版本下失效有关 | Lab 内容/排障文档里验证 Endpoints 是否填充只能用 `kubectl get endpoints`，不能依赖 `describe service` 输出里的 Endpoints 行（Selector 行本身仍可靠，只是 Endpoints 聚合行不可靠）——2026-07-12 生产第二个 lab（Service-no-Endpoints）rehearsal 时发现 |
 
 ---
 

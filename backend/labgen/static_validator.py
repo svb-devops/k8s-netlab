@@ -242,6 +242,7 @@ class StaticValidator:
         results.extend(self._check_explain_verified_if_published(draft))
         results.extend(self._check_namespace_no_hardcoded(draft))
         results.extend(self._check_verify_no_shell_commands(draft))
+        results.extend(self._check_verify_type_implemented(draft))
         results.extend(self._check_verify_no_secret_value(draft))
         results.extend(self._check_cleanup_declared(draft))
         results.extend(self._check_cluster_scoped_cleanup_declared(draft))
@@ -518,6 +519,31 @@ class StaticValidator:
                         f"Verify '{vt.verify_id}' uses shell type — forbidden in MVP",
                     ))
         return failures or [_pass("verify.no_shell_commands", "steps[*].verify[*].type")]
+
+    def _check_verify_type_implemented(self, draft: LabDraft) -> list[ValidatorResult]:
+        """VerifyType (models.py) declares more schema values than
+        verifier.py's runtime dispatch actually implements (_SUPPORTED_TYPES)
+        — e.g. POD_READY looks plausible but was never wired up. Using an
+        unimplemented type previously passed static validation silently and
+        only failed at live rehearsal, permanently stuck on that step with
+        error_code=verify_type_not_implemented. Catch the mismatch here
+        instead, the same way commands.rbac_coverage catches RBAC gaps
+        before they reach rehearsal."""
+        from backend.labgen.verifier import _SUPPORTED_TYPES
+
+        failures = []
+        for i, step in enumerate(draft.steps):
+            for j, vt in enumerate(step.verify):
+                if vt.type not in _SUPPORTED_TYPES:
+                    failures.append(_fail(
+                        "verify.type_implemented",
+                        BlockingLevel.PUBLISH_BLOCKING,
+                        f"steps[{i}].verify[{j}].type",
+                        f"Verify '{vt.verify_id}' uses type '{vt.type.value}' which is not "
+                        "implemented in the verifier runtime — this step would pass static "
+                        "validation but permanently block step progression at rehearsal/runtime.",
+                    ))
+        return failures or [_pass("verify.type_implemented", "steps[*].verify[*].type")]
 
     def _check_verify_no_secret_value(self, draft: LabDraft) -> list[ValidatorResult]:
         """secret_key_exists and secret_value_equals are MVP non-goals (§1, §6)."""

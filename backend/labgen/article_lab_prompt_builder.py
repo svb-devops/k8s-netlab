@@ -59,9 +59,28 @@ def _redact_article_text(text: str) -> str:
 
 _DOMAIN_HINTS = {
     "k8s": (
-        "Kubernetes domain (kubectl, pods, deployments, namespaces, configmaps, secrets). "
-        "Verifier primitives: namespace_exists, pod_running, configmap_exists, "
-        "secret_exists, deployment_ready. "
+        "Kubernetes domain (kubectl, pods, deployments, namespaces, configmaps, secrets, "
+        "services, endpoints — services/endpoints added for the Service-no-Endpoints lab, "
+        "Lab-to-Article Sprint Day 1). "
+        "Verifier primitives actually implemented at runtime — use ONLY these, never "
+        "any other VerifyType schema enum value (the schema declares more types than "
+        "the runtime supports; using an unimplemented one — e.g. pod_ready, which looks "
+        "plausible but was never wired up — permanently blocks step progression with "
+        "verify_type_not_implemented and was only caught by live rehearsal, not static "
+        "validation): namespace_exists, namespace_not_exists, pod_running, "
+        "service_exists, deployment_ready, deployment_unavailable, configmap_exists, "
+        "secret_exists. "
+        "Services: learner RBAC grants create/get/list/watch/delete only — no update/patch "
+        "(K8s RBAC can't restrict by spec.type, so patch was withheld entirely to prevent "
+        "escalating a ClusterIP Service to NodePort/LoadBalancer; see kubectl_executor.py "
+        "and learner_credentials.py). Never generate a step that patches a Service — fix "
+        "a wrong selector via `kubectl delete service` + `kubectl expose deployment ... "
+        "--name=<svc>` instead, which derives the selector from the Deployment's real Pod "
+        "labels and needs no patch permission at all. Also note: `kubectl create service "
+        "clusterip <name> --tcp=...` without --selector defaults selector to "
+        "`app=<service-name>`, not to any existing Deployment's labels — useful for "
+        "authentically constructing a Service-selector-mismatch scenario without needing "
+        "any patch step. "
         "Cleanup: namespace deletion only. No cluster-scoped resource creation."
     ),
     "linux": (

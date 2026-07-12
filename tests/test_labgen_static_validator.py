@@ -886,3 +886,45 @@ class TestCommandRequiredPermissions:
         from backend.labgen.static_validator import _command_required_permissions
         perms = _command_required_permissions("kubectl patch service web-svc --type=json -p='[]'")
         assert ("", "services", "patch") in perms
+
+
+# ---------------------------------------------------------------------------
+# verify.type_implemented
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyTypeImplemented:
+    """Regression (Service-no-Endpoints lab, Lab-to-Article Sprint Day 1):
+    VerifyType.POD_READY is a valid schema enum value (models.py) but was
+    never wired up in verifier.py's runtime dispatch (_SUPPORTED_TYPES).
+    Using it in a lab draft passed static validation with zero warnings and
+    only failed at live rehearsal — permanently stuck on that step with
+    error_code=verify_type_not_implemented. This check catches the mismatch
+    at publish time instead, the same way commands.rbac_coverage catches
+    RBAC mismatches before they reach rehearsal."""
+
+    def test_pass_pod_running_is_implemented(self):
+        draft = _draft(steps=[_step(verify=[_vt(type=VerifyType.POD_RUNNING)])])
+        results = validator.validate(draft)
+        assert "verify.type_implemented" in _passed_ids(results)
+
+    def test_pass_all_currently_implemented_types(self):
+        from backend.labgen.verifier import _SUPPORTED_TYPES
+        draft = _draft(steps=[
+            _step(step_id=f"s-{t.value}", verify=[_vt(verify_id=f"v-{t.value}", type=t)])
+            for t in _SUPPORTED_TYPES
+        ])
+        results = validator.validate(draft)
+        assert "verify.type_implemented" in _passed_ids(results)
+
+    def test_fail_pod_ready_not_implemented(self):
+        draft = _draft(steps=[_step(verify=[_vt(type=VerifyType.POD_READY)])])
+        results = validator.validate(draft)
+        assert "verify.type_implemented" in _failed_ids(results)
+        assert _blocking_levels(results, "verify.type_implemented") == [BlockingLevel.PUBLISH_BLOCKING]
+
+    def test_fail_reports_verify_id_and_type_in_message(self):
+        draft = _draft(steps=[_step(verify=[_vt(verify_id="v-broken", type=VerifyType.POD_READY)])])
+        results = validator.validate(draft)
+        failed = [r for r in results if r.check_id == "verify.type_implemented" and r.status.value == "failed"]
+        assert any("v-broken" in r.message and "pod_ready" in r.message for r in failed)
