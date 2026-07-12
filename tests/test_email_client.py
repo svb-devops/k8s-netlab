@@ -1,6 +1,7 @@
 """Unit tests for backend/email_client.py."""
 
 import json
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -89,6 +90,45 @@ class TestSendVerificationEmail:
 # revoked API key) went unnoticed until a student complained. These
 # failures must now persist to a small file so /api/health can surface
 # them (see tests/test_health_email_alerting.py).
+
+class TestFailureLogIsolation:
+    def test_default_failure_log_is_not_the_production_path(self):
+        """A test that triggers a failure without explicitly patching
+        _FAILURE_LOG must not write to the real production
+        data/email_send_failures.json — the tests/conftest.py autouse
+        fixture must redirect it for every test in the suite, otherwise
+        running `pytest tests/test_email_client.py` pollutes prod data."""
+        import backend.email_client as email_client_mod
+
+        real_prod_path = (
+            Path(email_client_mod.__file__).parent.parent / "data" / "email_send_failures.json"
+        )
+        assert email_client_mod._FAILURE_LOG != real_prod_path
+
+    @pytest.mark.asyncio
+    async def test_failure_without_explicit_patch_does_not_touch_production_file(self):
+        import backend.email_client as email_client_mod
+
+        real_prod_path = (
+            Path(email_client_mod.__file__).parent.parent / "data" / "email_send_failures.json"
+        )
+        before = real_prod_path.read_text() if real_prod_path.exists() else None
+
+        with patch("backend.email_client.config") as cfg, \
+             patch("backend.email_client.httpx.AsyncClient") as mock_client_cls:
+            cfg.RESEND_API_KEY = "re_test_key"
+            cfg.RESEND_FROM_EMAIL = "onboarding@resend.dev"
+            mock_client = AsyncMock()
+            mock_client.post = AsyncMock(side_effect=Exception("connection refused"))
+            mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            from backend.email_client import send_verification_email
+            await send_verification_email("student@example.com", "123456")
+
+        after = real_prod_path.read_text() if real_prod_path.exists() else None
+        assert before == after, "production email_send_failures.json must not change"
+
 
 class TestFailureRecording:
     @pytest.mark.asyncio
