@@ -562,6 +562,56 @@ def _check_labgen_session_health() -> Dict[str, Any]:
         return {"status": "unknown", "error": "health check failed"}
 
 
+_EMAIL_FAILURE_ALERT_THRESHOLD = 3
+
+
+def _check_email_health() -> Dict[str, Any]:
+    """Aggregate recent Resend send failures for /api/health.
+
+    Only exposes a count, never raw failure entries (which may embed
+    recipient addresses in the failure reason string).
+    """
+    try:
+        import json as _json
+        from datetime import datetime, timedelta, timezone
+
+        from backend.email_client import _FAILURE_LOG
+
+        if not _FAILURE_LOG.exists():
+            return {"status": "ok", "failures_last_24h": 0, "warnings": []}
+
+        raw = _json.loads(_FAILURE_LOG.read_text())
+        failures = raw.get("failures", []) if isinstance(raw, dict) else []
+
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        recent_count = 0
+        for entry in failures:
+            try:
+                ts = datetime.fromisoformat(entry["timestamp"])
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+            except (KeyError, ValueError, TypeError):
+                continue
+            if ts >= cutoff:
+                recent_count += 1
+
+        warnings: list[str] = []
+        if recent_count >= _EMAIL_FAILURE_ALERT_THRESHOLD:
+            warnings.append(
+                f"{recent_count} Resend email send failure(s) in last 24h — "
+                "check RESEND_API_KEY/quota"
+            )
+
+        return {
+            "status": "degraded" if warnings else "ok",
+            "failures_last_24h": recent_count,
+            "warnings": warnings,
+        }
+    except Exception as exc:
+        logger.warning("email_health check failed: %s", exc)
+        return {"status": "unknown", "error": "health check failed"}
+
+
 def _check_verifier_credentials_health() -> Dict[str, Any]:
     """Check verifier credential store for configured exempt/staging VMs.
 
@@ -624,6 +674,7 @@ async def api_health_check() -> Dict[str, Any]:
 
     labgen_health = await loop.run_in_executor(None, _check_verifier_credentials_health)
     session_health = await loop.run_in_executor(None, _check_labgen_session_health)
+    email_health = await loop.run_in_executor(None, _check_email_health)
 
     if not proxmox_ok:
         return {
@@ -632,6 +683,7 @@ async def api_health_check() -> Dict[str, Any]:
             "proxmox": {"connected": False},
             "labgen": labgen_health,
             "sessions": session_health,
+            "email": email_health,
         }
 
     return {
@@ -639,6 +691,7 @@ async def api_health_check() -> Dict[str, Any]:
         "proxmox": {"connected": True},
         "labgen": labgen_health,
         "sessions": session_health,
+        "email": email_health,
     }
 
 

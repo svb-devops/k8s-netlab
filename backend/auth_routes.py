@@ -4,9 +4,10 @@ K8S NetLab - Authentication API Routes
 User registration, login, and session management.
 """
 
+import asyncio
 import logging
 import re
-from typing import Optional
+from typing import Any, Coroutine, Optional
 
 from fastapi import APIRouter, Cookie, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -22,6 +23,23 @@ logger = logging.getLogger(__name__)
 
 # Create auth router
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+# Strong references for fire-and-forget background tasks (asyncio.create_task
+# alone doesn't keep the Task alive against GC before it completes).
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _fire(coro: Coroutine[Any, Any, None]) -> asyncio.Task:
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
+
+async def _send_verification_email_background(username: str, email: str, code: str) -> None:
+    sent = await send_verification_email(email, code)
+    if not sent:
+        logger.warning(f"Resend verification email failed for '{username}'")
 
 
 # ============================================================
@@ -359,9 +377,12 @@ async def resend_verification(http_request: Request, request: ResendVerification
     if code:
         email = auth_manager.get_user_email(request.username)
         if email:
-            sent = await send_verification_email(email, code)
-            if not sent:
-                logger.warning(f"Resend verification email failed for '{request.username}'")
+            # Fired in the background, not awaited: awaiting the real Resend
+            # HTTP call here would make response latency depend on whether
+            # the username exists (network round-trip vs. instant), leaking
+            # exactly the account-existence signal this endpoint is designed
+            # to hide behind its always-success response.
+            _fire(_send_verification_email_background(request.username, email, code))
 
     return AuthResponse(success=True, message="如账号存在，验证码已发送", username=request.username)
 

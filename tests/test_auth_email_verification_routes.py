@@ -6,6 +6,8 @@ unverified accounts. Legacy accounts (no email_verified field) must be
 unaffected — that's the backward-compatibility guarantee this feature promises.
 """
 
+import asyncio
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -14,6 +16,18 @@ from fastapi.testclient import TestClient
 
 from backend.auth import AuthManager
 from backend.auth_routes import router
+
+
+def _wait_until(predicate, timeout=1.0, interval=0.01):
+    """Poll predicate() until True or timeout — used to observe fire-and-forget
+    background tasks that keep running on the TestClient's event loop after
+    the HTTP response has already been returned."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(interval)
+    return predicate()
 
 
 @pytest.fixture
@@ -160,7 +174,7 @@ class TestResendVerificationRoute:
 
         resp = client.post("/api/auth/resend-verification", json={"username": "alice"})
         assert resp.status_code == 200
-        mock_send.assert_awaited_once()
+        assert _wait_until(lambda: mock_send.await_count == 1)
 
     def test_resend_unknown_username_still_returns_success(self, verify_setup):
         """Must not leak whether a username exists."""
@@ -195,6 +209,41 @@ class TestResendVerificationRoute:
 
         resp = client.post("/api/auth/resend-verification", json={"username": "someone"})
         assert resp.status_code == 429
+
+
+# ============================================================
+# POST /api/auth/resend-verification — timing side-channel
+# ============================================================
+
+class TestResendVerificationTimingSideChannel:
+    def test_response_does_not_wait_for_slow_email_send(self, verify_setup):
+        """The endpoint always returns success to avoid leaking whether a
+        username exists — but if the response only returns *after* the real
+        Resend HTTP call completes, an attacker can still distinguish real
+        vs. fake usernames purely from response latency (real username =
+        network round-trip delay, fake username = near-instant). The email
+        send must happen in the background so response time is independent
+        of whether the account exists."""
+        client, mgr, _, mock_send = verify_setup
+        _register(client)
+        mock_send.reset_mock()
+
+        async def slow_send(*_args, **_kwargs):
+            await asyncio.sleep(0.3)
+            return True
+
+        mock_send.side_effect = slow_send
+
+        start = time.monotonic()
+        resp = client.post("/api/auth/resend-verification", json={"username": "alice"})
+        elapsed = time.monotonic() - start
+
+        assert resp.status_code == 200
+        assert elapsed < 0.15, (
+            f"response took {elapsed:.3f}s — must not block on the email send, "
+            "otherwise response latency leaks account existence"
+        )
+        assert _wait_until(lambda: mock_send.await_count == 1)
 
 
 # ============================================================

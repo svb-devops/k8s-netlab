@@ -269,3 +269,47 @@ class TestActualRun:
         assert result.archive_paths == []
         assert result.lab_review_diffs_archived == 0
         assert result.llm_audit_entries_archived == 0
+
+    def test_zombie_drafts_are_archived(self, svc: DataRetentionService, data_dir: Path, archive_dir: Path) -> None:
+        """report() has always counted zombie-eligible drafts, but run() never
+        actually archived them — the count grew unbounded in production
+        (155 zombie drafts) with no way to act on it besides deleting the
+        file by hand. run(dry_run=False) must archive them like it already
+        does for orphaned diffs."""
+        fresh_id, old_id, pub_id = "fresh", "old", "pub"
+        _write(data_dir / "lab_drafts.json", {
+            fresh_id: _make_draft(fresh_id, days_ago=5),
+            old_id: _make_draft(old_id, days_ago=45),
+            pub_id: _make_draft(pub_id, status="published", days_ago=45),
+        })
+        _write(data_dir / "lab_review_diffs.json", {})
+        _write(data_dir / "llm_audit_log.json", [])
+        _write(data_dir / "lab_runtime_audit.json", [])
+
+        result = svc.run(dry_run=False)
+
+        remaining = json.loads((data_dir / "lab_drafts.json").read_text())
+        assert fresh_id in remaining, "fresh draft must stay"
+        assert pub_id in remaining, "published draft must never be archived"
+        assert old_id not in remaining, "zombie draft must be archived out"
+        assert result.lab_drafts_archived == 1
+
+        archive_files = [p for p in result.archive_paths if "lab_drafts_zombie" in p]
+        assert len(archive_files) == 1
+        archived = json.loads(Path(archive_files[0]).read_text())
+        assert old_id in archived
+
+    def test_zombie_draft_dry_run_does_not_modify_file(self, svc: DataRetentionService, data_dir: Path, archive_dir: Path) -> None:
+        old_id = "old-dry"
+        _write(data_dir / "lab_drafts.json", {old_id: _make_draft(old_id, days_ago=45)})
+        _write(data_dir / "lab_review_diffs.json", {})
+        _write(data_dir / "llm_audit_log.json", [])
+        _write(data_dir / "lab_runtime_audit.json", [])
+
+        original = (data_dir / "lab_drafts.json").read_text()
+        result = svc.run(dry_run=True)
+        after = (data_dir / "lab_drafts.json").read_text()
+
+        assert original == after, "dry_run must not modify lab_drafts.json"
+        assert result.lab_drafts_archived == 1
+        assert not archive_dir.exists()

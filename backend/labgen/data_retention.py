@@ -299,13 +299,37 @@ class DataRetentionService:
         if not dry_run:
             self.archive_dir.mkdir(parents=True, exist_ok=True)
 
-        # --- lab_review_diffs: archive orphaned draft groups ---
+        # --- lab_drafts: archive zombie (long-idle, unpublished) drafts ---
         diffs_path = self.data_dir / "lab_review_diffs.json"
         drafts_path = self.data_dir / "lab_drafts.json"
         raw_drafts = _read_json_locked(drafts_path)
-        drafts = raw_drafts if isinstance(raw_drafts, list) else list(raw_drafts.values())
+        drafts_is_dict = isinstance(raw_drafts, dict)
+        drafts = list(raw_drafts.values()) if drafts_is_dict else raw_drafts
         protected = self._get_protected_draft_ids(drafts)
-        existing_ids = {d.get("lab_id", "") for d in drafts}
+        zombies = self._identify_zombie_drafts(drafts, protected)
+        zombie_ids = {d.get("lab_id", "") for d in zombies}
+
+        if zombie_ids:
+            if not dry_run:
+                archive_path = self.archive_dir / f"lab_drafts_zombie_{stamp}.json"
+                if drafts_is_dict:
+                    archived_drafts: Any = {k: v for k, v in raw_drafts.items() if k in zombie_ids}
+                    pruned_drafts: Any = {k: v for k, v in raw_drafts.items() if k not in zombie_ids}
+                else:
+                    archived_drafts = [d for d in drafts if d.get("lab_id") in zombie_ids]
+                    pruned_drafts = [d for d in drafts if d.get("lab_id") not in zombie_ids]
+                _write_json_locked(archive_path, archived_drafts)
+                _write_json_locked(drafts_path, pruned_drafts)
+                result.archive_paths.append(str(archive_path))
+                logger.info(
+                    "lab_drafts: archived %d zombie draft(s) → %s",
+                    len(zombie_ids), archive_path,
+                )
+            result.lab_drafts_archived = len(zombie_ids)
+
+        # Diffs belonging to a zombie draft become orphaned in the same run —
+        # exclude them from existing_ids so they're archived alongside it.
+        existing_ids = {d.get("lab_id", "") for d in drafts} - zombie_ids
 
         diffs_data: dict[str, Any] = _read_json_locked(diffs_path)
         orphaned_keys = self._identify_orphaned_diffs(diffs_data, existing_ids, protected)
