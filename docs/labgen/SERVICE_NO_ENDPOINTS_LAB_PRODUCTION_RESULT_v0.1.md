@@ -77,6 +77,14 @@ if_push_blocked:
 
 不阻断本地交付——生产环境已直接从本地代码部署运行，代码修改已生效，只是 GitHub 远端仓库落后于本地。
 
+## 附注（2026-07-12 Post-Sprint Stabilization 回归发现，已修复状态但未修复根因）
+
+回归检查时发现：本文档写作时记录的 `publish_status=published` 在写作完成后的一次 `/drafts/{lab_id}/validate` 调用（大概率是本 sprint 收尾阶段的一次误触发的再校验）后被**静默重置为 `draft`**——根因是 `routes.py::_compute_publish_status()` 只会返回 `PUBLISH_BLOCKED`/`REVIEW_REQUIRED`/`DRAFT` 三种值，从不返回 `PUBLISHED`，而 `/validate` 端点（`routes.py:544-545`）无条件用这个函数的返回值覆盖 `draft.publish_status`。也就是说：**任何对已发布 lab 的重新校验调用都会把它静默打回草稿**，即使内容和 rehearsal 结果完全没变。
+
+已通过重新调用 `/drafts/{lab_id}/publish` 端点（该端点会原子性地重跑 StaticValidator + PublishDecisionService gate，非绕过）恢复 `publish_status=published`，恢复后重新确认：`bb4fe651-7687-4457-9056-885172d9017b` 与本 lab 均为 `published`，真实学生账号对两者仍返回 403（gate 逻辑在 `LABGEN_ENABLED_LAB_IDS`，与 `publish_status` 无关，未受影响）。
+
+**这是一个真实的产品 bug，本次只做了状态恢复，未修复根因**，已计入下一步任务：`/validate` 端点不应该在草稿已经是 `PUBLISHED` 且校验仍然全部通过时把它降级——至少应保留 `PUBLISHED` 状态，或要求显式调用 `/publish` 才能改变已发布状态。见 `TECHNICAL_DEBT_TRIAGE_v0.1.md`（本次归类为 issue 而非 tech debt，因为它有具体复现路径和明确修复方案，走 bug-fix.md 流程即可）。
+
 ## 遗留/下一步
 
 1. **GitHub token 需要用户提供新的 PAT** 才能 push。
