@@ -59,6 +59,19 @@ LEARNER_ALLOWED_PERMISSIONS: tuple[tuple[str, frozenset, frozenset], ...] = (
     ("", frozenset({"pods/log"}),     frozenset({"get"})),
     ("apps", frozenset({"deployments"}),  frozenset({"create", "get", "list", "watch", "delete", "update", "patch"})),
     ("apps", frozenset({"replicasets"}),  frozenset({"get", "list", "watch"})),
+    # No update/patch on services deliberately: K8s RBAC can't restrict by
+    # spec.type, so granting patch/update would let a learner flip a
+    # ClusterIP Service to NodePort/LoadBalancer (binds a port on every
+    # cluster node's host network) or ExternalName (DNS SSRF) via any of
+    # several patch/replace syntaxes — five rounds of safety review kept
+    # finding new bypasses in string-based command parsing trying to block
+    # this after the fact. Not granting the verb at all closes it at the
+    # RBAC layer instead: the K8s API server rejects the request regardless
+    # of CLI syntax. Lab content that needs to "fix" a Service must delete
+    # and recreate it (e.g. via `kubectl expose`, which derives selector
+    # from the target Deployment's real pod labels) rather than patch.
+    ("", frozenset({"services"}),     frozenset({"create", "get", "list", "watch", "delete"})),
+    ("", frozenset({"endpoints"}),    frozenset({"get", "list", "watch"})),
 )
 
 # Validate session_id is a UUID (36 chars: 8-4-4-4-12 hex + dashes).

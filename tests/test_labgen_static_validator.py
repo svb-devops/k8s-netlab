@@ -758,10 +758,43 @@ class TestCommandsRbacCoverage:
         results = validator.validate(draft)
         assert "commands.rbac_coverage" in _passed_ids(results)
 
-    def test_fail_service_create_not_in_role(self):
-        # services are not in the learner Role — would fail at K8s level
+    def test_pass_service_and_endpoints_commands_within_role(self):
+        # Regression (Service-no-Endpoints lab, Lab-to-Article Sprint Day 1):
+        # services/endpoints are core to this lab topic and must be granted —
+        # previously services were entirely absent from the learner Role, and
+        # endpoints wasn't even recognised by _KUBECTL_RESOURCE_MAP (a verifier
+        # blind spot: rbac_coverage would silently pass a command that RBAC
+        # would actually reject at K8s API level during rehearsal). Note:
+        # create/get/describe/delete only — no patch (see next test).
         draft = _draft(steps=[_step(commands=[
-            "kubectl create service clusterip my-svc --tcp=80:8080",
+            "kubectl create service clusterip web-svc --tcp=80:80",
+            "kubectl get endpoints web-svc",
+            "kubectl describe service web-svc",
+            "kubectl delete service web-svc",
+        ])])
+        results = validator.validate(draft)
+        assert "commands.rbac_coverage" in _passed_ids(results)
+
+    def test_fail_service_patch_not_in_role(self):
+        # Deliberate: LEARNER_ALLOWED_PERMISSIONS does NOT grant update/patch
+        # on services (see learner_credentials.py comment) — K8s RBAC can't
+        # restrict by spec.type, so granting patch would let a learner
+        # escalate a ClusterIP Service to NodePort/LoadBalancer via any of
+        # several patch syntaxes (five rounds of safety review kept finding
+        # new bypasses trying to block this after the fact at the executor
+        # layer instead). This check must keep catching it.
+        draft = _draft(steps=[_step(commands=[
+            "kubectl patch service web-svc --type=json -p='[{\"op\":\"replace\",\"path\":\"/spec/selector\",\"value\":{\"app\":\"web-backend\"}}]'",
+        ])])
+        results = validator.validate(draft)
+        assert "commands.rbac_coverage" in _failed_ids(results)
+
+    def test_fail_secret_patch_not_in_role(self):
+        # secrets Role grants create/get/list/watch/delete but not update/patch —
+        # still a genuine gap after the services/endpoints extension, proving
+        # the check keeps catching real out-of-role commands.
+        draft = _draft(steps=[_step(commands=[
+            "kubectl patch secret my-secret --type=json -p='[]'",
         ])])
         results = validator.validate(draft)
         assert "commands.rbac_coverage" in _failed_ids(results)
@@ -769,11 +802,11 @@ class TestCommandsRbacCoverage:
 
     def test_fail_reports_missing_permission_in_message(self):
         draft = _draft(steps=[_step(commands=[
-            "kubectl create service clusterip my-svc --tcp=80:8080",
+            "kubectl patch secret my-secret --type=json -p='[]'",
         ])])
         results = validator.validate(draft)
         failed = [r for r in results if r.check_id == "commands.rbac_coverage" and r.status.value == "failed"]
-        assert any("services" in r.message for r in failed)
+        assert any("secrets" in r.message for r in failed)
 
 
 # ---------------------------------------------------------------------------
@@ -834,3 +867,22 @@ class TestCommandRequiredPermissions:
         # namespaces not in _KUBECTL_RESOURCE_MAP — executor blocks it first anyway
         perms = _command_required_permissions("kubectl delete namespace lab-xxx")
         assert perms == []
+
+    def test_get_endpoints_returns_endpoints_get_list(self):
+        # Regression: "endpoints" was previously absent from _KUBECTL_RESOURCE_MAP,
+        # so this command was silently invisible to rbac_coverage — it would pass
+        # static validation and only fail at rehearsal time with a real 403.
+        from backend.labgen.static_validator import _command_required_permissions
+        perms = _command_required_permissions("kubectl get endpoints web-svc")
+        assert ("", "endpoints", "get") in perms
+        assert ("", "endpoints", "list") in perms
+
+    def test_describe_service_returns_services_get_list(self):
+        from backend.labgen.static_validator import _command_required_permissions
+        perms = _command_required_permissions("kubectl describe service web-svc")
+        assert ("", "services", "get") in perms
+
+    def test_patch_service_returns_services_patch(self):
+        from backend.labgen.static_validator import _command_required_permissions
+        perms = _command_required_permissions("kubectl patch service web-svc --type=json -p='[]'")
+        assert ("", "services", "patch") in perms

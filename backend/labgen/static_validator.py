@@ -93,6 +93,7 @@ _KUBECTL_RESOURCE_MAP: dict[str, tuple[str, str]] = {
     "replicaset": ("apps", "replicasets"), "rs": ("apps", "replicasets"),
     "replicasets": ("apps", "replicasets"),
     "event": ("", "events"), "events": ("", "events"),
+    "endpoint": ("", "endpoints"), "ep": ("", "endpoints"), "endpoints": ("", "endpoints"),
 }
 
 # kubectl subcommand → K8s verbs required on the target resource
