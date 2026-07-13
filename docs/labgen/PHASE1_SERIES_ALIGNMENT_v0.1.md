@@ -2,7 +2,11 @@
 
 ## 状态
 
-`documentation_only` —— 本文档不改变任何代码行为、不开放任何访问权限。目的是把已经产出的两个 lab（CrashLoopBackOff、Service 无 Endpoints）放进一个明确的系列结构里，为后续排期提供依据。
+`documentation_only` —— 本文档不改变任何代码行为、不开放任何访问权限。目的是把已经产出的三个 lab（CrashLoopBackOff、Service 无 Endpoints、ImagePullBackOff）放进一个明确的系列结构里，为后续排期提供依据。
+
+## 2026-07-13 更新（Phase 1 First Wave Sprint #3）
+
+ImagePullBackOff 已完成生产：`publish_status=published`（internal soft launch，未加入 `LABGEN_ENABLED_LAB_IDS`），两轮真实 K3s rehearsal + 一次 owner-as-learner smoke 全部通过，`cleanup_verified=true`。详见 `IMAGE_PULL_BACKOFF_LAB_PRODUCTION_RESULT_v0.1.md`。至此 first_wave 三个 lab 全部完成，second_wave 尚未开始。
 
 ## 系列定义
 
@@ -17,16 +21,18 @@ runtime_scope: 单命名空间、single K3s runtime（不涉及多 VM / 多节�
 |---|------|------|
 | 1 | CrashLoopBackOff | 已发布（internal soft launch，未对外） |
 | 2 | Service 没有 Endpoints（selector 与 labels 不匹配） | 已发布（internal soft launch，未对外） |
-| 3 | ImagePullBackOff | 未生产 |
+| 3 | ImagePullBackOff | 已发布（internal soft launch，未对外） |
 | 4 | ConfigMap 修改后不生效 | 未生产 |
 | 5 | DNS 服务发现失败 | 未生产 |
 | 6 | Pod Pending | 未生产 |
 
-## first_wave（优先生产顺序，与已完成的两个 lab 保持连续）
+## first_wave（优先生产顺序，与已完成的 lab 保持连续）
 
 1. CrashLoopBackOff（已完成）
 2. Service 没有 Endpoints（已完成）
-3. ImagePullBackOff（下一个候选 —— 与前两个共享"Pod 状态类"故障诊断心智模型，学习曲线平滑）
+3. ImagePullBackOff（已完成 —— 与前两个共享"Pod 状态类"故障诊断心智模型，学习曲线平滑；三者共同覆盖"起不来 / 起来了没流量 / 从没起来"三条互补诊断路径）
+
+first_wave 全部完成，下一步排期进入 second_wave。
 
 ## second_wave
 
