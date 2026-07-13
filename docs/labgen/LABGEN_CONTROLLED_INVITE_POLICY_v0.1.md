@@ -8,11 +8,17 @@
 
 `LABGEN_ENABLED_LAB_IDS` 当前为空（`backend/config.py:346-351`），两个已发布的 internal lab（CrashLoopBackOff、Service-no-Endpoints）均对真实学生返回 403（`backend/labgen/routes.py:1153`）。此前的软发布已被主动收紧为仅 admin 可见，本文档设计的是"未来如果决定重新开放"时需要满足的 gate，不代表决定重新开放。
 
-## 1. allowed_users model
+## 1. allowed_users model（已实现，见 P0 Access Model Fix sprint）
 
-- 不采用全局开关（"所有注册用户可用"），采用**白名单账号名单**：新增 `LABGEN_ENABLED_USERNAMES`（与 `LABGEN_ENABLED_LAB_IDS` 同构，逗号分隔环境变量 → frozenset）
-- 邀测阶段账号必须是已知的、可追责的测试账号（复用 `sfl-test-01`/`sfl-test-02` 这类命名约定），不接受生产环境注册用户自助加入
-- 白名单校验应在 `create_lab_session`（`routes.py:1143`）里与 `LABGEN_ENABLED_LAB_IDS` 做**逻辑与**：必须同时满足"lab 在白名单" AND "用户在白名单"，缺一不可
+**更新**：最初设计提案是新增 `LABGEN_ENABLED_USERNAMES`（扁平环境变量，全局用户名单）。实现时改为 `InviteRegistry`（`backend/labgen/invite_registry.py`），原因：任务要求"支持 per-lab invite"——同一批测试账号可能只被邀请到部分 lab，而不是所有已开放 lab；扁平的全局用户名单无法表达"用户 A 只能进 CrashLoopBackOff，不能进 Service-no-Endpoints"这种粒度。
+
+- 配置来源：`data/labgen_invites.json`（flock 原子读写，与其它 `data/*.json` 同一约定；gitignored，不进版控，不写死真实用户名进代码）。格式：`{"<lab_id>": ["username1", "username2"]}`
+- 文件缺失或某 lab_id 不作为 key 存在 → 该 lab **完全不受邀请名单约束**（等价于"未配置该网关"），这保证核心课程（从未加入本文件）行为完全不受影响
+- 一旦某 lab_id 作为 key 出现（哪怕列表为空），该 lab 即变为"邀请门禁"状态：只有列表内用户名（或 admin）可访问，其余已认证用户一律拒绝
+- 校验点：`LabSessionService.run_precheck()`（真正的会话启动路径）与 `LearnerCatalogService`（学员目录/详情/eligibility 只读展示路径）**共用同一套判断逻辑**（`requires_invite()` + `is_invited()`），避免重蹈 HIGH-001 的覆辙（目录与启动端点各说各话）
+- 与 `LABGEN_ENABLED_LAB_IDS` 是**逻辑与**关系：必须同时满足"lab 在 `LABGEN_ENABLED_LAB_IDS` 白名单" AND （该 lab 未被加入邀请名单机制 OR 用户在该 lab 的邀请名单里），admin 账号（`config.ADMIN_USERNAMES`）无条件绕过两个网关
+- 新增/移除邀请：直接编辑 `data/labgen_invites.json`（每次调用都重新读取文件，不缓存），无需重启服务；未来如需要 admin API 直接编辑，可在此基础上加一层 `PATCH` 端点，本次未实现（不在任务范围内）
+- 邀测阶段账号仍应是已知的、可追责的测试账号（复用 `sfl-test-01`/`sfl-test-02` 这类命名约定），不接受生产环境注册用户自助加入
 
 ## 2. allowed_labs model
 
@@ -58,11 +64,11 @@
 - [ ] 至少一个 lab 完成过真实人类学员（非 admin/owner smoke）的完整闭环验证
 - [ ] `service_has_endpoints` verify 原语已补齐，或该 lab 明确从本轮邀测范围排除
 - [ ] `/api/health` 三项核心指标（missing_credentials/tainted_vm_count/zombie_draft_count）均为健康值
-- [ ] `LABGEN_ENABLED_USERNAMES`（本文档第 1 节设计，当前未实现）已实现并测试覆盖
+- [x] 按用户名邀请机制（本文档第 1 节，已实现为 `InviteRegistry` + `data/labgen_invites.json`，见 P0 Access Model Fix sprint）已实现并测试覆盖（`test_labgen_invite_registry.py` + `test_labgen_lab_session.py::TestPrecheck` + `test_labgen_learner_catalog.py::TestNamedUserInviteGate`）；`data/labgen_invites.json` 当前**不存在**（默认关闭状态，未添加任何真实用户）
 - [ ] 单用户并发 session 软限制（本文档第 5 节设计，当前未实现）已实现并测试覆盖
 - [ ] 回滚步骤已在非生产环境演练过一次
 - [ ] official article 已满足其自身的发布 blockers（见 `SERVICE_NO_ENDPOINTS_OFFICIAL_ARTICLE_DRAFT_v0.1.md` 底部）
 
 ## 明确声明
 
-本文档产出后，`LABGEN_ENABLED_LAB_IDS`、`LABGEN_ENABLED_USERNAMES`（尚不存在）均未发生任何变化。第 1 节和第 5 节提到的机制**均为设计提案，尚未实现代码**，go/no-go checklist 前两项未完成也是如此。
+本文档更新后，`LABGEN_ENABLED_LAB_IDS` 未发生任何变化（仍为空），`data/labgen_invites.json` 未被创建（默认关闭，无任何真实用户被加入邀请名单）。第 1 节的按用户邀请机制**已实现代码并通过测试**（见上方 checklist），但**未被实际使用**——没有任何 lab_id 被加入邀请注册表，本次任务是"实现机制"，不是"执行邀请"，两者严格分离。第 5 节（单用户并发 session 软限制）仍是设计提案，尚未实现代码。

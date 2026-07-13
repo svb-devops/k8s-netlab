@@ -388,6 +388,75 @@ class TestPrecheck:
         result = svc.run_precheck(draft.lab_id, "vm-500", "admin1")
         assert result.passed
 
+    def test_precheck_fails_when_lab_invite_gated_and_user_not_invited(self):
+        """Controlled Micro Invite second gate: a lab_id present in the invite
+        registry requires the user to be explicitly listed under it, on top of
+        the allowlist check above."""
+
+        class _FakeRegistry:
+            def requires_invite(self, lab_id):
+                return True
+
+            def is_invited(self, lab_id, username):
+                return False
+
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft})
+        svc._enabled_lab_ids = frozenset({draft.lab_id})
+        svc._invite_registry = _FakeRegistry()
+        result = svc.run_precheck(draft.lab_id, "vm-500", "student1")
+        assert not result.passed
+        assert "precheck.lab_access_not_invited" in result.failures
+
+    def test_precheck_passes_when_lab_invite_gated_and_user_invited(self):
+        class _FakeRegistry:
+            def requires_invite(self, lab_id):
+                return True
+
+            def is_invited(self, lab_id, username):
+                return username == "alice"
+
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft})
+        svc._enabled_lab_ids = frozenset({draft.lab_id})
+        svc._invite_registry = _FakeRegistry()
+        result = svc.run_precheck(draft.lab_id, "vm-500", "alice")
+        assert result.passed
+
+    def test_precheck_admin_bypasses_invite_gate(self):
+        class _FakeRegistry:
+            def requires_invite(self, lab_id):
+                return True
+
+            def is_invited(self, lab_id, username):
+                return False
+
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft})
+        svc._enabled_lab_ids = frozenset({draft.lab_id})
+        svc._admin_usernames = frozenset({"admin1"})
+        svc._invite_registry = _FakeRegistry()
+        result = svc.run_precheck(draft.lab_id, "vm-500", "admin1")
+        assert result.passed
+
+    def test_precheck_lab_not_in_registry_is_unaffected_core_course(self):
+        """A lab_id absent from the registry is not invite-gated at all —
+        core courses must keep exactly the pre-existing allowlist-only
+        behavior."""
+        class _EmptyRegistry:
+            def requires_invite(self, lab_id):
+                return False
+
+            def is_invited(self, lab_id, username):
+                return False
+
+        draft = _make_published_draft()
+        svc, _ = _make_svc(drafts={draft.lab_id: draft})
+        svc._enabled_lab_ids = frozenset({draft.lab_id})
+        svc._invite_registry = _EmptyRegistry()
+        result = svc.run_precheck(draft.lab_id, "vm-500", "any-student")
+        assert result.passed
+
     def test_precheck_fails_when_draft_not_published(self):
         draft = _make_published_draft(publish_status=PublishStatus.DRAFT)
         svc, _ = _make_svc(drafts={draft.lab_id: draft})

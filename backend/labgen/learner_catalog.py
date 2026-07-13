@@ -25,6 +25,7 @@ from backend.labgen.models import (
 from backend.labgen.static_validator import StaticValidator
 
 if TYPE_CHECKING:
+    from backend.labgen.invite_registry import InviteRegistry
     from backend.labgen.lab_session_repository import LabSessionRepository
     from backend.labgen.models import LabDraft
     from backend.labgen.repository import LabDraftRepository
@@ -39,7 +40,8 @@ class EligibilityIssueCode:
     VALIDATION_FAILED = "VALIDATION_FAILED"
     IMAGE_STATUS_UNKNOWN = "IMAGE_STATUS_UNKNOWN"
     RUNTIME_CHECKS_DEFERRED = "RUNTIME_CHECKS_DEFERRED"
-    UNAUTHORIZED = "UNAUTHORIZED"
+    LAB_NOT_ENABLED = "LAB_NOT_ENABLED"
+    NOT_INVITED = "NOT_INVITED"
     INTERNAL_UNAVAILABLE = "INTERNAL_UNAVAILABLE"
     SESSION_ALREADY_ACTIVE = "SESSION_ALREADY_ACTIVE"
 
@@ -135,6 +137,7 @@ class LearnerCatalogService:
         session_repo: Optional["LabSessionRepository"] = None,
         enabled_lab_ids: Optional[frozenset] = None,
         admin_usernames: frozenset = frozenset(),
+        invite_registry: Optional["InviteRegistry"] = None,
     ) -> None:
         self._draft_repo = draft_repo
         self._validator = validator
@@ -147,6 +150,10 @@ class LearnerCatalogService:
         # lab as startable and only discover the 403 after clicking Start.
         self._enabled_lab_ids = enabled_lab_ids
         self._admin_usernames = admin_usernames
+        # Controlled Micro Invite second gate — mirrors run_precheck's
+        # invite_registry check exactly. None means not configured (test
+        # convenience / labs never invite-gated); production always passes one.
+        self._invite_registry = invite_registry
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -184,10 +191,23 @@ class LearnerCatalogService:
             and actor_user not in self._admin_usernames
         )
 
+    def _is_not_invited(self, lab_id: str, actor_user: str) -> bool:
+        """True when lab_id is invite-gated and actor_user is not admin and not
+        on its list — same rule run_precheck enforces (PRECHECK_LAB_ACCESS_NOT_INVITED).
+        Labs never added to the registry are unaffected (core courses)."""
+        return (
+            self._invite_registry is not None
+            and actor_user not in self._admin_usernames
+            and self._invite_registry.requires_invite(lab_id)
+            and not self._invite_registry.is_invited(lab_id, actor_user)
+        )
+
     def _compute_is_startable(self, draft: "LabDraft", actor_user: str) -> bool:
         if draft.publish_status != PublishStatus.PUBLISHED:
             return False
         if self._is_access_denied(draft.lab_id, actor_user):
+            return False
+        if self._is_not_invited(draft.lab_id, actor_user):
             return False
         if self._has_blocking_validation_failures(draft):
             return False
@@ -305,7 +325,19 @@ class LearnerCatalogService:
         if self._is_access_denied(lab_id, actor_user):
             is_startable = False
             issues.append(LearnerLabEligibilityIssue(
-                code=EligibilityIssueCode.UNAUTHORIZED,
+                code=EligibilityIssueCode.LAB_NOT_ENABLED,
+                message=self._sanitize(
+                    "This lab is not yet available to your account"
+                ),
+                severity="error",
+                source="catalog",
+            ))
+        elif self._is_not_invited(lab_id, actor_user):
+            # elif: only meaningful once the lab-level gate above already passed —
+            # avoids emitting two overlapping "you can't start this" issues.
+            is_startable = False
+            issues.append(LearnerLabEligibilityIssue(
+                code=EligibilityIssueCode.NOT_INVITED,
                 message=self._sanitize(
                     "This lab is not yet available to your account"
                 ),

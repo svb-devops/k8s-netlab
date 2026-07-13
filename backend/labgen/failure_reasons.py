@@ -17,6 +17,7 @@ class FailureReason(str, Enum):
     PRECHECK_CLEANUP_NOT_DECLARED = "precheck.cleanup_not_declared"
     PRECHECK_LINUX_LEARNER_NOT_SUPPORTED = "precheck.linux_learner_not_yet_available"
     PRECHECK_LAB_ACCESS_NOT_ENABLED = "precheck.lab_access_not_enabled"
+    PRECHECK_LAB_ACCESS_NOT_INVITED = "precheck.lab_access_not_invited"
     PRECHECK_VM_NOT_FOUND = "precheck.vm_not_found"
     PRECHECK_VM_NOT_OWNED_BY_STUDENT = "precheck.vm_not_owned_by_student"
     PRECHECK_VM_TAINTED = "precheck.vm_tainted"

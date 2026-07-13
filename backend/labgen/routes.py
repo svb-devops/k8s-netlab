@@ -75,6 +75,7 @@ from backend.labgen.verifier import VerifierService
 from backend.labgen.verifier_credentials import VerifierCredentialReclaimer, VerifierCredentialStore
 from backend.labgen.draft_preview import DraftPreviewService, DraftPreviewSnapshot
 from backend.labgen.image_readiness import ImageReadinessService
+from backend.labgen.invite_registry import InviteRegistry
 from backend.labgen.publish_decision import PublishDecision, PublishDecisionService, PublishDecisionStatus
 from backend.labgen.topic_consistency import check_article_lab_consistency
 from backend.labgen.learner_catalog import (
@@ -184,6 +185,7 @@ def get_session_service() -> LabSessionService:
             linux_learner_enabled_lab_ids=config.LABGEN_LINUX_LEARNER_ENABLED_LAB_IDS,
             enabled_lab_ids=config.LABGEN_ENABLED_LAB_IDS,
             admin_usernames=frozenset(config.ADMIN_USERNAMES),
+            invite_registry=InviteRegistry(),
         )
     return _session_svc
 
@@ -296,6 +298,7 @@ def get_catalog_service(
         session_repo=_SessionRepo(),
         enabled_lab_ids=config.LABGEN_ENABLED_LAB_IDS,
         admin_usernames=frozenset(config.ADMIN_USERNAMES),
+        invite_registry=InviteRegistry(),
     )
 
 

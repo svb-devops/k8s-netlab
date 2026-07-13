@@ -181,6 +181,19 @@ class _MemSessionRepo:
 # ---------------------------------------------------------------------------
 
 
+class _FakeInviteRegistry:
+    """In-memory stand-in for InviteRegistry — same interface, no file I/O."""
+
+    def __init__(self, registry: Optional[dict] = None) -> None:
+        self._registry = registry or {}
+
+    def requires_invite(self, lab_id: str) -> bool:
+        return lab_id in self._registry
+
+    def is_invited(self, lab_id: str, username: str) -> bool:
+        return username in self._registry.get(lab_id, [])
+
+
 @contextmanager
 def _catalog_ctx(
     mem_repo: _MemDraftRepo,
@@ -189,6 +202,7 @@ def _catalog_ctx(
     session_repo: Optional[_MemSessionRepo] = None,
     enabled_lab_ids: Optional[frozenset] = None,
     admin_usernames: frozenset = frozenset(),
+    invite_registry: Optional[_FakeInviteRegistry] = None,
 ) -> Iterator[TestClient]:
     """Override repo + auth for catalog endpoint tests."""
     from backend.main import app
@@ -199,6 +213,7 @@ def _catalog_ctx(
         session_repo=session_repo,
         enabled_lab_ids=enabled_lab_ids,
         admin_usernames=admin_usernames,
+        invite_registry=invite_registry,
     )
     overrides = {
         get_repository: lambda: mem_repo,
@@ -717,7 +732,7 @@ class TestAccessAllowlistGate:
         body = r.json()
         assert body["start_eligibility"]["is_startable"] is False
         codes = [i["code"] for i in body["start_eligibility"]["issues"]]
-        assert EligibilityIssueCode.UNAUTHORIZED in codes
+        assert EligibilityIssueCode.LAB_NOT_ENABLED in codes
 
     def test_enabled_lab_authorized_learner_catalog_is_startable_true(self) -> None:
         mem = _MemDraftRepo()
@@ -785,6 +800,128 @@ class TestAccessAllowlistGate:
             r = client.get(f"/api/labs/{draft.lab_id}/start-eligibility")
         codes = [i["code"] for i in r.json()["issues"]]
         assert EligibilityIssueCode.RUNTIME_CHECKS_DEFERRED not in codes
+
+
+# ---------------------------------------------------------------------------
+# D3. Named-user invite gate (Controlled Micro Invite second gate)
+# ---------------------------------------------------------------------------
+
+
+class TestNamedUserInviteGate:
+    """LABGEN_ENABLED_LAB_IDS alone is not sufficient for Controlled Micro
+    Invite — any authenticated non-admin user is authorized once a lab_id is
+    enabled. This registry adds a second, per-lab named-user gate. A lab_id
+    absent from the registry is not invite-gated at all (core courses)."""
+
+    def test_lab_not_in_registry_is_unaffected_core_course(self) -> None:
+        """Core courses (never added to the invite registry) must keep
+        exactly the pre-existing LABGEN_ENABLED_LAB_IDS-only behavior."""
+        mem = _MemDraftRepo()
+        draft = _make_published_draft()
+        mem.create(draft)
+
+        with _catalog_ctx(
+            mem,
+            user="any-student",
+            enabled_lab_ids=frozenset({draft.lab_id}),
+            invite_registry=_FakeInviteRegistry({}),  # empty registry, no gating
+        ) as client:
+            r = client.get(f"/api/labs/{draft.lab_id}/start-eligibility")
+        assert r.json()["is_startable"] is True
+
+    def test_enabled_lab_invite_gated_uninvited_user_denied(self) -> None:
+        mem = _MemDraftRepo()
+        draft = _make_published_draft()
+        mem.create(draft)
+
+        with _catalog_ctx(
+            mem,
+            user="stranger",
+            enabled_lab_ids=frozenset({draft.lab_id}),
+            invite_registry=_FakeInviteRegistry({draft.lab_id: ["alice"]}),
+        ) as client:
+            r = client.get(f"/api/labs/{draft.lab_id}/start-eligibility")
+        body = r.json()
+        assert body["is_startable"] is False
+        assert EligibilityIssueCode.NOT_INVITED in [i["code"] for i in body["issues"]]
+
+    def test_enabled_lab_invite_gated_uninvited_user_catalog_false(self) -> None:
+        mem = _MemDraftRepo()
+        draft = _make_published_draft()
+        mem.create(draft)
+
+        with _catalog_ctx(
+            mem,
+            user="stranger",
+            enabled_lab_ids=frozenset({draft.lab_id}),
+            invite_registry=_FakeInviteRegistry({draft.lab_id: ["alice"]}),
+        ) as client:
+            r = client.get("/api/labs")
+        item = next(i for i in r.json() if i["lab_id"] == draft.lab_id)
+        assert item["is_startable"] is False
+
+    def test_enabled_lab_invite_gated_invited_user_startable(self) -> None:
+        mem = _MemDraftRepo()
+        draft = _make_published_draft()
+        mem.create(draft)
+
+        with _catalog_ctx(
+            mem,
+            user="alice",
+            enabled_lab_ids=frozenset({draft.lab_id}),
+            invite_registry=_FakeInviteRegistry({draft.lab_id: ["alice"]}),
+        ) as client:
+            r = client.get(f"/api/labs/{draft.lab_id}/start-eligibility")
+        assert r.json()["is_startable"] is True
+
+    def test_admin_bypasses_invite_gate(self) -> None:
+        mem = _MemDraftRepo()
+        draft = _make_published_draft()
+        mem.create(draft)
+
+        with _catalog_ctx(
+            mem,
+            user="adminuser",
+            enabled_lab_ids=frozenset({draft.lab_id}),
+            admin_usernames=frozenset({"adminuser"}),
+            invite_registry=_FakeInviteRegistry({draft.lab_id: ["alice"]}),
+        ) as client:
+            r = client.get(f"/api/labs/{draft.lab_id}/start-eligibility")
+        assert r.json()["is_startable"] is True
+
+    def test_lab_not_enabled_takes_priority_over_invite_status(self) -> None:
+        """A lab that is both un-enabled AND invite-gated must report
+        LAB_NOT_ENABLED, not NOT_INVITED — even for an invited user, since the
+        outer LABGEN_ENABLED_LAB_IDS gate hasn't opened yet."""
+        mem = _MemDraftRepo()
+        draft = _make_published_draft()
+        mem.create(draft)
+
+        with _catalog_ctx(
+            mem,
+            user="alice",
+            enabled_lab_ids=frozenset({"some-other-lab-id"}),
+            invite_registry=_FakeInviteRegistry({draft.lab_id: ["alice"]}),
+        ) as client:
+            r = client.get(f"/api/labs/{draft.lab_id}/start-eligibility")
+        body = r.json()
+        assert body["is_startable"] is False
+        codes = [i["code"] for i in body["issues"]]
+        assert EligibilityIssueCode.LAB_NOT_ENABLED in codes
+        assert EligibilityIssueCode.NOT_INVITED not in codes
+
+    def test_registry_not_configured_defaults_unaffected(self) -> None:
+        """invite_registry=None (default) means the second gate is not
+        configured — must not silently deny everything."""
+        mem = _MemDraftRepo()
+        draft = _make_published_draft()
+        mem.create(draft)
+
+        with _catalog_ctx(
+            mem, user="student1", enabled_lab_ids=frozenset({draft.lab_id})
+        ) as client:
+            r = client.get(f"/api/labs/{draft.lab_id}/start-eligibility")
+        assert r.json()["is_startable"] is True
 
 
 # ---------------------------------------------------------------------------

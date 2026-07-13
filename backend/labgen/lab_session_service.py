@@ -33,6 +33,7 @@ from backend.labgen.runtime_audit import RuntimeAuditService
 if TYPE_CHECKING:
     from backend.labgen.article_models import ArticleDraftLabContract
     from backend.labgen.image_resolver import ImageResolver
+    from backend.labgen.invite_registry import InviteRegistry
     from backend.labgen.lab_session_repository import LabSessionRepository
     from backend.labgen.linux_runtime_adapter import LinuxRuntimeAdapter
     from backend.labgen.models import LabDraft
@@ -229,6 +230,7 @@ class LabSessionService:
         linux_learner_enabled_lab_ids: frozenset = frozenset(),
         enabled_lab_ids: Optional[frozenset] = None,
         admin_usernames: frozenset = frozenset(),
+        invite_registry: Optional["InviteRegistry"] = None,
     ) -> None:
         self._session_repo = session_repo
         self._draft_repo = draft_repo
@@ -246,6 +248,7 @@ class LabSessionService:
         self._linux_learner_enabled_lab_ids = linux_learner_enabled_lab_ids
         self._enabled_lab_ids = enabled_lab_ids
         self._admin_usernames = admin_usernames
+        self._invite_registry = invite_registry
 
     def _audit(
         self,
@@ -282,6 +285,20 @@ class LabSessionService:
             and student_username not in self._admin_usernames
         ):
             failures.append(FailureReason.PRECHECK_LAB_ACCESS_NOT_ENABLED.value)
+            return PrecheckResult(passed=False, failures=failures)
+
+        # Controlled Micro Invite: a lab_id present in the invite registry
+        # requires the acting user to be explicitly listed under it, on top of
+        # the LABGEN_ENABLED_LAB_IDS gate above. Labs never added to the
+        # registry (all core courses) are unaffected — this is a strictly
+        # additive second gate, admin still bypasses it.
+        if (
+            self._invite_registry is not None
+            and student_username not in self._admin_usernames
+            and self._invite_registry.requires_invite(lab_id)
+            and not self._invite_registry.is_invited(lab_id, student_username)
+        ):
+            failures.append(FailureReason.PRECHECK_LAB_ACCESS_NOT_INVITED.value)
             return PrecheckResult(passed=False, failures=failures)
 
         draft = self._draft_repo.get(lab_id)
