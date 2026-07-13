@@ -90,4 +90,5 @@ Service 连不通
 1. `article_url` 为空 —— 尚未在 Directus 创建正式文章记录
 2. `cta_enabled=false` —— CTA 未对外暴露，"配套实验"段落里的引导文字是占位性质，不能上线成死链接或误导性 CTA
 3. 真实学生对该 lab 仍 403（`LABGEN_ENABLED_LAB_IDS` 未包含此 lab_id）—— 文章一旦公开发布但学生点不进实验，会造成负面体验，因此文章发布必须晚于或同步于白名单开放决策，不能抢跑
-4. 本文档从未经过真实读者可读性 review（对照 lab #1 CrashLoopBackOff 走过的 `LINUX_READER_FACING_CTA_DRY_RUN` 一类 dry-run 流程），本次 sprint 范围不包含该 review 步骤
+4. ~~本文档从未经过真实读者可读性 review~~ —— 已于 Service Official Article Publish Gate 准备 sprint 完成内容可读性 dry-run review（非完整 learner session E2E，lab 功能性已在此前 sprint 验证），结论：内容与真实 lab 一致、无夸大表述、无死链接，遗留 MEDIUM/LOW 项（CTA 默认文案措辞需人工改写、配套实验段落需人工二次编辑），详见 `SERVICE_ARTICLE_PUBLISH_GATE_PREP_v0.1.md` 第 4 节。**该 review 通过不构成可以发布的理由**——blocker #1/#2/#3 仍未满足
+5. **新增（本轮发现）**：`LearnerCatalogService`（`learner_catalog.py`）的目录可见性/`is_startable` 计算未纳入 `LABGEN_ENABLED_LAB_IDS` 判断——已登录学生浏览目录会看到本 lab 显示"可开始"，直到真正点击才 403。详见 `SERVICE_ARTICLE_PUBLISH_GATE_PREP_v0.1.md` 第 6 节 HIGH-001。建议在正式开放白名单前排期修复，避免造成困惑的用户体验（非安全问题，403 网关本身仍然有效）
