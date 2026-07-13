@@ -133,10 +133,20 @@ class LearnerCatalogService:
         draft_repo: "LabDraftRepository",
         validator: StaticValidator,
         session_repo: Optional["LabSessionRepository"] = None,
+        enabled_lab_ids: Optional[frozenset] = None,
+        admin_usernames: frozenset = frozenset(),
     ) -> None:
         self._draft_repo = draft_repo
         self._validator = validator
         self._session_repo = session_repo
+        # Mirrors LabSessionService.run_precheck's allowlist gate exactly (same
+        # semantics: enabled_lab_ids=None means the gate is not configured for
+        # this instance — most tests don't care and shouldn't need to know about
+        # it; production wiring always passes the real LABGEN_ENABLED_LAB_IDS).
+        # Catalog visibility (is_startable) must match this or learners see a
+        # lab as startable and only discover the 403 after clicking Start.
+        self._enabled_lab_ids = enabled_lab_ids
+        self._admin_usernames = admin_usernames
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -164,8 +174,20 @@ class LearnerCatalogService:
     def _has_blocked_images(draft: "LabDraft") -> bool:
         return any(r.image_status == ImageStatus.BLOCKED for r in draft.image_resolution)
 
-    def _compute_is_startable(self, draft: "LabDraft") -> bool:
+    def _is_access_denied(self, lab_id: str, actor_user: str) -> bool:
+        """True when the allowlist gate is configured and actor_user is not
+        admin and lab_id is not in it — same rule LabSessionService.run_precheck
+        enforces at actual start time (PRECHECK_LAB_ACCESS_NOT_ENABLED)."""
+        return (
+            self._enabled_lab_ids is not None
+            and lab_id not in self._enabled_lab_ids
+            and actor_user not in self._admin_usernames
+        )
+
+    def _compute_is_startable(self, draft: "LabDraft", actor_user: str) -> bool:
         if draft.publish_status != PublishStatus.PUBLISHED:
+            return False
+        if self._is_access_denied(draft.lab_id, actor_user):
             return False
         if self._has_blocking_validation_failures(draft):
             return False
@@ -205,7 +227,7 @@ class LearnerCatalogService:
                 estimated_difficulty=None,
                 template_id=None,
                 published_at=None,
-                is_startable=self._compute_is_startable(draft),
+                is_startable=self._compute_is_startable(draft, actor_user),
             ))
         return items
 
@@ -276,6 +298,20 @@ class LearnerCatalogService:
         checked_at = datetime.now(tz=timezone.utc).isoformat()
         issues: list[LearnerLabEligibilityIssue] = []
         is_startable = True
+
+        # 0. Access allowlist check — mirrors LabSessionService.run_precheck's
+        #    PRECHECK_LAB_ACCESS_NOT_ENABLED gate. Must run first: a lab outside
+        #    the allowlist is not startable regardless of validation/image state.
+        if self._is_access_denied(lab_id, actor_user):
+            is_startable = False
+            issues.append(LearnerLabEligibilityIssue(
+                code=EligibilityIssueCode.UNAUTHORIZED,
+                message=self._sanitize(
+                    "This lab is not yet available to your account"
+                ),
+                severity="error",
+                source="catalog",
+            ))
 
         # 1. Validation check
         if self._has_blocking_validation_failures(draft):

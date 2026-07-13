@@ -187,6 +187,8 @@ def _catalog_ctx(
     *,
     user: str = "student1",
     session_repo: Optional[_MemSessionRepo] = None,
+    enabled_lab_ids: Optional[frozenset] = None,
+    admin_usernames: frozenset = frozenset(),
 ) -> Iterator[TestClient]:
     """Override repo + auth for catalog endpoint tests."""
     from backend.main import app
@@ -195,6 +197,8 @@ def _catalog_ctx(
         draft_repo=mem_repo,
         validator=StaticValidator(),
         session_repo=session_repo,
+        enabled_lab_ids=enabled_lab_ids,
+        admin_usernames=admin_usernames,
     )
     overrides = {
         get_repository: lambda: mem_repo,
@@ -674,6 +678,113 @@ class TestPermissions:
         with _catalog_ctx(mem) as client:
             r = client.get("/api/labs")
         assert r.json() == []
+
+
+# ---------------------------------------------------------------------------
+# D2. Access allowlist gate (LABGEN_ENABLED_LAB_IDS consistency)
+# ---------------------------------------------------------------------------
+
+
+class TestAccessAllowlistGate:
+    """Regression (HIGH-001): catalog is_startable / start_eligibility must
+    match LabSessionService.run_precheck's real LABGEN_ENABLED_LAB_IDS gate.
+    Before this fix, a published-but-not-enabled lab showed is_startable=true
+    in the catalog and only failed with 403 at actual Start click."""
+
+    def test_published_not_enabled_catalog_is_startable_false(self) -> None:
+        mem = _MemDraftRepo()
+        draft = _make_published_draft()
+        mem.create(draft)
+
+        with _catalog_ctx(
+            mem, user="student1", enabled_lab_ids=frozenset({"some-other-lab-id"})
+        ) as client:
+            r = client.get("/api/labs")
+        assert r.status_code == 200
+        item = next(i for i in r.json() if i["lab_id"] == draft.lab_id)
+        assert item["is_startable"] is False
+
+    def test_published_not_enabled_detail_is_startable_false_with_reason(self) -> None:
+        mem = _MemDraftRepo()
+        draft = _make_published_draft()
+        mem.create(draft)
+
+        with _catalog_ctx(
+            mem, user="student1", enabled_lab_ids=frozenset({"some-other-lab-id"})
+        ) as client:
+            r = client.get(f"/api/labs/{draft.lab_id}")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["start_eligibility"]["is_startable"] is False
+        codes = [i["code"] for i in body["start_eligibility"]["issues"]]
+        assert EligibilityIssueCode.UNAUTHORIZED in codes
+
+    def test_enabled_lab_authorized_learner_catalog_is_startable_true(self) -> None:
+        mem = _MemDraftRepo()
+        draft = _make_published_draft()
+        mem.create(draft)
+
+        with _catalog_ctx(
+            mem, user="student1", enabled_lab_ids=frozenset({draft.lab_id})
+        ) as client:
+            r = client.get("/api/labs")
+        item = next(i for i in r.json() if i["lab_id"] == draft.lab_id)
+        assert item["is_startable"] is True
+
+    def test_enabled_lab_any_authenticated_learner_is_startable_true(self) -> None:
+        """No separate per-user invite allowlist exists in the codebase today —
+        LABGEN_ENABLED_LAB_IDS is the only access gate besides admin bypass.
+        Once a lab_id is enabled, any authenticated (non-admin) user is
+        authorized. This test documents that real current behavior rather
+        than assume a per-user invite mechanism that does not exist."""
+        mem = _MemDraftRepo()
+        draft = _make_published_draft()
+        mem.create(draft)
+
+        with _catalog_ctx(
+            mem, user="any-authenticated-student", enabled_lab_ids=frozenset({draft.lab_id})
+        ) as client:
+            r = client.get(f"/api/labs/{draft.lab_id}/start-eligibility")
+        assert r.json()["is_startable"] is True
+
+    def test_admin_bypasses_allowlist_gate(self) -> None:
+        mem = _MemDraftRepo()
+        draft = _make_published_draft()
+        mem.create(draft)
+
+        with _catalog_ctx(
+            mem,
+            user="adminuser",
+            enabled_lab_ids=frozenset({"some-other-lab-id"}),
+            admin_usernames=frozenset({"adminuser"}),
+        ) as client:
+            r = client.get(f"/api/labs/{draft.lab_id}/start-eligibility")
+        assert r.json()["is_startable"] is True
+
+    def test_gate_not_configured_defaults_startable(self) -> None:
+        """enabled_lab_ids=None (default, most tests/dev) means the gate is not
+        configured — must not silently deny everything."""
+        mem = _MemDraftRepo()
+        draft = _make_published_draft()
+        mem.create(draft)
+
+        with _catalog_ctx(mem, user="student1") as client:
+            r = client.get(f"/api/labs/{draft.lab_id}/start-eligibility")
+        assert r.json()["is_startable"] is True
+
+    def test_denied_lab_does_not_leak_runtime_checks_deferred_issue(self) -> None:
+        """Denied labs must be a clean error state, not mixed with the
+        'proceed, runtime will recheck' warning used for startable labs."""
+        mem = _MemDraftRepo()
+        draft = _make_published_draft()
+        mem.create(draft)
+
+        with _catalog_ctx(
+            mem, user="student1", enabled_lab_ids=frozenset({"some-other-lab-id"})
+        ) as client:
+            r = client.get(f"/api/labs/{draft.lab_id}/start-eligibility")
+        codes = [i["code"] for i in r.json()["issues"]]
+        assert EligibilityIssueCode.RUNTIME_CHECKS_DEFERRED not in codes
 
 
 # ---------------------------------------------------------------------------

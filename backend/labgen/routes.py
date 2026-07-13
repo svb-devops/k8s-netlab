@@ -294,6 +294,8 @@ def get_catalog_service(
         draft_repo=repo,
         validator=StaticValidator(),
         session_repo=_SessionRepo(),
+        enabled_lab_ids=config.LABGEN_ENABLED_LAB_IDS,
+        admin_usernames=frozenset(config.ADMIN_USERNAMES),
     )
 
 
