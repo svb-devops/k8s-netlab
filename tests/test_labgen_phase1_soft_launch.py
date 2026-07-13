@@ -1313,6 +1313,23 @@ class TestCommandGenerationConstraints:
         assert "patch" in system.lower() and "service" in system.lower()
         assert "expose" in system.lower()
 
+    def test_lists_service_has_endpoints_and_warns_off_describe_service(self):
+        """Regression (Verifier Gap Fix): service_has_endpoints closes the gap
+        that used to force Service-no-Endpoints-style labs to leave the
+        'Endpoints repaired' step unverified. The prompt must list it as an
+        available primitive, and must steer generation away from `kubectl
+        describe service`'s Endpoints field as learner-facing evidence — that
+        field is unreliable on this K3s version and can show <none> even when
+        the Service is correctly routing traffic."""
+        from backend.labgen.article_lab_prompt_builder import build_article_to_lab_messages
+
+        system, _ = build_article_to_lab_messages(
+            _K8S_ARTICLE, article_title="A", target_domain="k8s",
+        )
+        assert "service_has_endpoints" in system
+        assert "kubectl get endpoints" in system
+        assert "describe service" in system.lower()
+
 
 # ---------------------------------------------------------------------------
 # H. Regression Tests

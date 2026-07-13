@@ -113,7 +113,8 @@ class TestSchemaVersion:
 class TestVerifyType:
     def test_all_mvp_types_present(self):
         expected = {
-            "pod_running", "pod_ready", "service_exists", "deployment_ready",
+            "pod_running", "pod_ready", "service_exists", "service_has_endpoints",
+            "deployment_ready",
             "deployment_unavailable", "configmap_exists", "secret_exists",
             "namespace_exists", "namespace_not_exists",
             "node_ready", "pvc_bound", "job_completed",

@@ -345,15 +345,18 @@ class TestClusterRoleManifestGuardrail:
             "get_namespace or list_namespace — remove from ClusterRole"
         )
 
-    def test_endpoints_not_in_core_rule(self):
+    def test_endpoints_has_list_watch_only(self):
+        # endpoints is used by service_has_endpoints (K8sVerifierClientAdapter) —
+        # must be granted list+watch, same as pods/services/configmaps, never 'get'.
         rules = _parse_cluster_role_rules(_CLUSTER_ROLE_MANIFEST)
-        core_rules = [r for r in rules if "" in r.get("apiGroups", [])]
-        all_core_resources: list[str] = []
-        for r in core_rules:
-            all_core_resources.extend(r.get("resources", []))
-        assert "endpoints" not in all_core_resources, (
-            "endpoints is not used by any verifier method — remove from ClusterRole"
-        )
+        for rule in rules:
+            if "endpoints" in rule.get("resources", []):
+                verbs = set(rule.get("verbs", []))
+                assert verbs == {"list", "watch"}, (
+                    f"endpoints must grant exactly list+watch, got {verbs}"
+                )
+                return
+        raise AssertionError("endpoints resource not found in any ClusterRole rule")
 
     def test_secrets_has_list_watch_only(self):
         rules = _parse_cluster_role_rules(_CLUSTER_ROLE_MANIFEST)

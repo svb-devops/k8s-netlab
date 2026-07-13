@@ -57,6 +57,9 @@ class K8sVerifierClientPort(ABC):
     def service_exists(self, namespace: str, name: str) -> bool: ...
 
     @abstractmethod
+    def service_has_endpoints(self, namespace: str, name: str) -> bool: ...
+
+    @abstractmethod
     def configmap_exists(self, namespace: str, name: str) -> bool: ...
 
     @abstractmethod
@@ -106,6 +109,9 @@ class FakeK8sVerifierClient(K8sVerifierClientPort):
     def service_exists(self, namespace: str, name: str) -> bool:
         return self._get(("service_exists", namespace, name))
 
+    def service_has_endpoints(self, namespace: str, name: str) -> bool:
+        return self._get(("service_has_endpoints", namespace, name))
+
     def configmap_exists(self, namespace: str, name: str) -> bool:
         return self._get(("configmap_exists", namespace, name))
 
@@ -130,6 +136,7 @@ _SUPPORTED_TYPES: frozenset[VerifyType] = frozenset({
     VerifyType.DEPLOYMENT_READY,
     VerifyType.DEPLOYMENT_UNAVAILABLE,
     VerifyType.SERVICE_EXISTS,
+    VerifyType.SERVICE_HAS_ENDPOINTS,
     VerifyType.CONFIGMAP_EXISTS,
     VerifyType.SECRET_EXISTS,
 })
@@ -263,6 +270,15 @@ class VerifierService:
                 if passed
                 else f'Service "{name}" was not found. Check the service name and namespace.'
             )
+        if vtype == VerifyType.SERVICE_HAS_ENDPOINTS:
+            return (
+                f'Service "{name}" has at least one Endpoint address — '
+                "it is now routing traffic to a matching Pod."
+                if passed
+                else f'Service "{name}" has no Endpoints yet. Its selector does not match any '
+                f'Ready Pod\'s labels. Check with: kubectl get endpoints {name} '
+                "(not kubectl describe service — its Endpoints field is unreliable on this K3s version)."
+            )
         if vtype == VerifyType.DEPLOYMENT_UNAVAILABLE:
             return (
                 f'Deployment "{name}" has no available replicas — '
@@ -296,6 +312,8 @@ class VerifierService:
             return client.deployment_ready(namespace, name)
         if vtype == VerifyType.SERVICE_EXISTS:
             return client.service_exists(namespace, name)
+        if vtype == VerifyType.SERVICE_HAS_ENDPOINTS:
+            return client.service_has_endpoints(namespace, name)
         if vtype == VerifyType.CONFIGMAP_EXISTS:
             return client.configmap_exists(namespace, name)
         if vtype == VerifyType.SECRET_EXISTS:

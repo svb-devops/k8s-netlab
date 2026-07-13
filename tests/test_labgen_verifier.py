@@ -163,6 +163,7 @@ class TestFakeK8sVerifierClient:
         assert c.pod_running("any-ns", "any-pod") is True
         assert c.deployment_ready("any-ns", "any-deploy") is True
         assert c.service_exists("any-ns", "any-svc") is True
+        assert c.service_has_endpoints("any-ns", "any-svc") is True
         assert c.configmap_exists("any-ns", "any-cm") is True
         assert c.secret_exists("any-ns", "any-secret") is True
 
@@ -197,6 +198,13 @@ class TestFakeK8sVerifierClient:
             responses={("service_exists", "lab-ns", "my-svc"): False},
         )
         assert c.service_exists("lab-ns", "my-svc") is False
+
+    def test_per_key_service_has_endpoints(self) -> None:
+        c = FakeK8sVerifierClient(
+            responses={("service_has_endpoints", "lab-ns", "web-svc"): False},
+        )
+        assert c.service_has_endpoints("lab-ns", "web-svc") is False
+        assert c.service_has_endpoints("lab-ns", "other-svc") is True
 
     def test_per_key_configmap_exists(self) -> None:
         c = FakeK8sVerifierClient(
@@ -447,6 +455,23 @@ class TestVerifierServiceDispatch:
         )
         assert result.passed
 
+    def test_service_has_endpoints_true(self) -> None:
+        result = self._svc(FakeK8sVerifierClient(default=True)).check(
+            self._session.session_id,
+            _make_template(vtype=VerifyType.SERVICE_HAS_ENDPOINTS, name="web-svc"),
+        )
+        assert result.passed
+        assert result.verify_type == "service_has_endpoints"
+
+    def test_service_has_endpoints_false(self) -> None:
+        result = self._svc(
+            FakeK8sVerifierClient({("service_has_endpoints", "lab-test-ns", "web-svc"): False})
+        ).check(
+            self._session.session_id,
+            _make_template(vtype=VerifyType.SERVICE_HAS_ENDPOINTS, name="web-svc"),
+        )
+        assert not result.passed
+
     def test_configmap_exists_true(self) -> None:
         result = self._svc(FakeK8sVerifierClient(default=True)).check(
             self._session.session_id,
@@ -599,6 +624,22 @@ class TestMakeDetail:
         assert result.passed is True
         assert "my-svc" in result.detail
 
+    def test_service_has_endpoints_pass_detail(self, tmp_path: Path) -> None:
+        svc, session = self._svc(tmp_path, default_pass=True)
+        tmpl = _make_template(vtype=VerifyType.SERVICE_HAS_ENDPOINTS, name="web-svc")
+        result = svc.check(session.session_id, tmpl)
+        assert result.passed is True
+        assert "web-svc" in result.detail
+
+    def test_service_has_endpoints_fail_detail(self, tmp_path: Path) -> None:
+        svc, session = self._svc(tmp_path, default_pass=False)
+        tmpl = _make_template(vtype=VerifyType.SERVICE_HAS_ENDPOINTS, name="web-svc")
+        result = svc.check(session.session_id, tmpl)
+        assert result.passed is False
+        assert "web-svc" in result.detail
+        assert "kubectl get endpoints" in result.detail
+        assert "describe service" in result.detail
+
     def test_security_fail_paths_no_detail(self, tmp_path: Path) -> None:
         """_fail() paths (session_not_found, not_active, etc.) must keep detail=""."""
         store = _make_store(tmp_path)
@@ -633,10 +674,11 @@ class TestMakeDetail:
 
 class TestSupportedTypesSet:
     def test_supported_types_count(self) -> None:
-        # 6 original + 2 added for CrashLoopBackOff and cleanup verification
-        assert len(_SUPPORTED_TYPES) == 8
+        # 6 original + 2 for CrashLoopBackOff/cleanup + 1 for service_has_endpoints
+        assert len(_SUPPORTED_TYPES) == 9
         assert VerifyType.DEPLOYMENT_UNAVAILABLE in _SUPPORTED_TYPES
         assert VerifyType.NAMESPACE_NOT_EXISTS in _SUPPORTED_TYPES
+        assert VerifyType.SERVICE_HAS_ENDPOINTS in _SUPPORTED_TYPES
 
     def test_shell_not_supported(self) -> None:
         unsupported = {

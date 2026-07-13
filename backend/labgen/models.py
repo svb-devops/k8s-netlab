@@ -43,6 +43,7 @@ class VerifyType(str, Enum):
     POD_RUNNING = "pod_running"
     POD_READY = "pod_ready"
     SERVICE_EXISTS = "service_exists"
+    SERVICE_HAS_ENDPOINTS = "service_has_endpoints"
     DEPLOYMENT_READY = "deployment_ready"
     DEPLOYMENT_UNAVAILABLE = "deployment_unavailable"
     CONFIGMAP_EXISTS = "configmap_exists"

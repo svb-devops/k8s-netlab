@@ -70,7 +70,7 @@ _CLUSTER_ROLE_MANIFEST = (
     "  name: lab-verifier-namespace-readonly\n"
     "rules:\n"
     "- apiGroups: [\"\"]\n"
-    "  resources: [\"pods\", \"services\", \"configmaps\"]\n"
+    "  resources: [\"pods\", \"services\", \"configmaps\", \"endpoints\"]\n"
     "  verbs: [\"list\", \"watch\"]\n"
     "- apiGroups: [\"\"]\n"
     "  resources: [\"secrets\"]\n"
@@ -600,7 +600,7 @@ class PlatformVerifierInitializer:
             rules=[
                 _k8s.V1PolicyRule(
                     api_groups=[""],
-                    resources=["pods", "services", "configmaps"],
+                    resources=["pods", "services", "configmaps", "endpoints"],
                     verbs=["list", "watch"],
                 ),
                 _k8s.V1PolicyRule(

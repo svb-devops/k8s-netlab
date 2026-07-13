@@ -5,7 +5,7 @@ No real K3s cluster is accessed.  KubernetesApiFactory.build() is replaced
 with a stub that injects mock CoreV1Api / AppsV1Api objects.
 
 Test scope:
-- K8sVerifierClientAdapter: all 6 methods, True/False/404/non-404 paths
+- K8sVerifierClientAdapter: all 7 methods, True/False/404/non-404 paths
 - KubernetesApiFactory: import + build() calls KubeConfigLoader (smoke only)
 - K8sVerifierClientFactory: module-level factory returns correct type
 - secret_exists: uses list, not read (no data access)
@@ -359,6 +359,80 @@ class TestServiceExists:
         core.list_namespaced_service.side_effect = _api_500()
         with pytest.raises(ApiException):
             _adapter(core, MagicMock()).service_exists("lab-ns", "nginx-svc")
+
+
+# ---------------------------------------------------------------------------
+# service_has_endpoints
+# ---------------------------------------------------------------------------
+
+
+def _mock_endpoints_list(subsets: Optional[list] = None) -> MagicMock:
+    """subsets=None -> no Endpoints object found (empty items list)."""
+    ep_list = MagicMock()
+    if subsets is None:
+        ep_list.items = []
+    else:
+        ep = MagicMock()
+        ep.subsets = subsets
+        ep_list.items = [ep]
+    return ep_list
+
+
+def _subset(addresses: Optional[list]) -> MagicMock:
+    s = MagicMock()
+    s.addresses = addresses
+    return s
+
+
+class TestServiceHasEndpoints:
+    def test_returns_true_when_subset_has_addresses(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_endpoints.return_value = _mock_endpoints_list(
+            subsets=[_subset(["10.0.0.5"])]
+        )
+        assert _adapter(core, MagicMock()).service_has_endpoints("lab-ns", "web-svc") is True
+        core.list_namespaced_endpoints.assert_called_once_with(
+            "lab-ns", field_selector="metadata.name=web-svc"
+        )
+
+    def test_returns_false_when_endpoints_object_missing(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_endpoints.return_value = _mock_endpoints_list(subsets=None)
+        assert _adapter(core, MagicMock()).service_has_endpoints("lab-ns", "web-svc") is False
+
+    def test_returns_false_when_subsets_empty_list(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_endpoints.return_value = _mock_endpoints_list(subsets=[])
+        assert _adapter(core, MagicMock()).service_has_endpoints("lab-ns", "web-svc") is False
+
+    def test_returns_false_when_subset_has_no_addresses(self) -> None:
+        """selector-mismatch case: Endpoints object exists but every subset's
+        addresses list is empty (or None) — this is the exact state the
+        Service-no-Endpoints lab reproduces before the selector fix."""
+        core = MagicMock()
+        core.list_namespaced_endpoints.return_value = _mock_endpoints_list(
+            subsets=[_subset(None)]
+        )
+        assert _adapter(core, MagicMock()).service_has_endpoints("lab-ns", "web-svc") is False
+
+    def test_returns_false_on_404(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_endpoints.side_effect = _api_404()
+        assert _adapter(core, MagicMock()).service_has_endpoints("lab-ns", "web-svc") is False
+
+    def test_propagates_non_404(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_endpoints.side_effect = _api_500()
+        with pytest.raises(ApiException):
+            _adapter(core, MagicMock()).service_has_endpoints("lab-ns", "web-svc")
+
+    def test_does_not_call_read_namespaced_endpoints(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_endpoints.return_value = _mock_endpoints_list(
+            subsets=[_subset(["10.0.0.5"])]
+        )
+        _adapter(core, MagicMock()).service_has_endpoints("lab-ns", "web-svc")
+        core.read_namespaced_endpoints.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

@@ -917,6 +917,11 @@ class TestVerifyTypeImplemented:
         results = validator.validate(draft)
         assert "verify.type_implemented" in _passed_ids(results)
 
+    def test_pass_service_has_endpoints_is_implemented(self):
+        draft = _draft(steps=[_step(verify=[_vt(type=VerifyType.SERVICE_HAS_ENDPOINTS)])])
+        results = validator.validate(draft)
+        assert "verify.type_implemented" in _passed_ids(results)
+
     def test_fail_pod_ready_not_implemented(self):
         draft = _draft(steps=[_step(verify=[_vt(type=VerifyType.POD_READY)])])
         results = validator.validate(draft)
@@ -928,3 +933,19 @@ class TestVerifyTypeImplemented:
         results = validator.validate(draft)
         failed = [r for r in results if r.check_id == "verify.type_implemented" and r.status.value == "failed"]
         assert any("v-broken" in r.message and "pod_ready" in r.message for r in failed)
+
+    def test_service_no_endpoints_repair_step_shape_passes(self):
+        """Regression (Verifier Gap Fix): mirrors the real published Service-no-
+        Endpoints lab's step-6 shape after this fix — service_exists + pod_running
+        + service_has_endpoints together on one step, confirming the selector
+        repair worked. All three types must validate cleanly together."""
+        draft = _draft(steps=[
+            _step(verify=[
+                _vt(verify_id="v1", type=VerifyType.SERVICE_EXISTS, name="web-svc"),
+                _vt(verify_id="v2", type=VerifyType.POD_RUNNING, name="web-backend"),
+                _vt(verify_id="v3", type=VerifyType.SERVICE_HAS_ENDPOINTS, name="web-svc"),
+            ])
+        ])
+        results = validator.validate(draft)
+        assert "verify.type_implemented" in _passed_ids(results)
+        assert "verify.type_implemented" not in _failed_ids(results)

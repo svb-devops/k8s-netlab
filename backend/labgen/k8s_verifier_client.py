@@ -163,6 +163,33 @@ class K8sVerifierClientAdapter(K8sVerifierClientPort):
                 return False
             raise
 
+    def service_has_endpoints(self, namespace: str, name: str) -> bool:
+        """Return True if the named Service has at least one ready Endpoint address.
+
+        Uses list_namespaced_endpoints with field_selector — equivalent to
+        `kubectl get endpoints <name>` (does not require 'get' RBAC — only 'list').
+        Deliberately does NOT use `kubectl describe service`'s Endpoints field: on
+        this K3s version that field is unreliable and can show <none> even when
+        the Service is correctly routing to Ready Pods (see SERVICE_NO_ENDPOINTS_
+        OFFICIAL_ARTICLE_DRAFT_v0.1.md). The core/v1 Endpoints object queried here
+        is the same data `kubectl get endpoints` reads and is not affected by that bug.
+        Returns False if the Endpoints object does not exist, or exists with zero
+        subsets, or every subset has an empty addresses list.
+        """
+        try:
+            result = self._core.list_namespaced_endpoints(
+                namespace, field_selector=f"metadata.name={name}"
+            )
+            if not result.items:
+                return False
+            endpoints = result.items[0]
+            subsets = endpoints.subsets or []
+            return any(subset.addresses for subset in subsets)
+        except ApiException as exc:
+            if exc.status == 404:
+                return False
+            raise
+
     def configmap_exists(self, namespace: str, name: str) -> bool:
         """Return True if a configmap with this name exists.
 

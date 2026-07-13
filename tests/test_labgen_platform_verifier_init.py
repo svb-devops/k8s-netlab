@@ -300,13 +300,17 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         all_resources = [r for rule in cr_arg.rules for r in (rule.resources or [])]
         assert "namespaces" not in all_resources
 
-    def test_cluster_role_no_endpoints_resource(self, store: VerifierCredentialStore) -> None:
-        # endpoints is not used by any verifier method.
+    def test_cluster_role_endpoints_list_watch_only(self, store: VerifierCredentialStore) -> None:
+        # endpoints is used by service_has_endpoints (K8sVerifierClientAdapter) —
+        # must be granted list+watch, same as pods/services/configmaps, never 'get'.
         init, factory = self._make(store)
         init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
         cr_arg = factory.rbac.create_cluster_role.call_args[0][0]
-        all_resources = [r for rule in cr_arg.rules for r in (rule.resources or [])]
-        assert "endpoints" not in all_resources
+        for rule in cr_arg.rules:
+            if "endpoints" in (rule.resources or []):
+                assert set(rule.verbs) == {"list", "watch"}
+                return
+        raise AssertionError("endpoints resource not found in any ClusterRole rule")
 
     def test_sa_create_called_with_kube_system(self, store: VerifierCredentialStore) -> None:
         init, factory = self._make(store)
