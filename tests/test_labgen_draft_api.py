@@ -437,3 +437,134 @@ class TestComputePublishStatus:
         from backend.labgen.routes import _compute_publish_status
 
         assert _compute_publish_status([]) == PublishStatus.DRAFT
+
+    def test_default_current_status_is_draft_when_omitted(self):
+        # Backward-compat: callers that don't pass current_status behave exactly
+        # as before this fix (draft-origin state machine).
+        from backend.labgen.routes import _compute_publish_status
+
+        assert _compute_publish_status([]) == PublishStatus.DRAFT
+
+    def test_published_draft_stays_published_when_all_checks_pass(self):
+        # Regression for the publish_status downgrade bug: re-validating an
+        # already-published lab whose content still passes every check must
+        # NOT silently demote it back to draft.
+        from backend.labgen.routes import _compute_publish_status
+        from backend.labgen.models import BlockingLevel, ValidatorResult, ValidatorStatus
+
+        results = [
+            ValidatorResult(
+                check_id="cleanup.declared",
+                status=ValidatorStatus.PASSED,
+                blocking_level=BlockingLevel.DRAFT_WARNING,
+                field_path="cleanup",
+                message="OK",
+            ),
+        ]
+        assert _compute_publish_status(
+            results, current_status=PublishStatus.PUBLISHED
+        ) == PublishStatus.PUBLISHED
+
+    def test_published_draft_stays_published_with_no_results_at_all(self):
+        from backend.labgen.routes import _compute_publish_status
+
+        assert _compute_publish_status(
+            [], current_status=PublishStatus.PUBLISHED
+        ) == PublishStatus.PUBLISHED
+
+    def test_published_draft_downgrades_on_new_publish_blocking_failure(self):
+        # A published lab CAN exit published — but only via an explicit
+        # publish-blocking gate failure (same gate PublishService.publish() uses).
+        from backend.labgen.routes import _compute_publish_status
+        from backend.labgen.models import BlockingLevel, ValidatorResult, ValidatorStatus
+
+        results = [
+            ValidatorResult(
+                check_id="cleanup.declared",
+                status=ValidatorStatus.FAILED,
+                blocking_level=BlockingLevel.PUBLISH_BLOCKING,
+                field_path="cleanup",
+                message="missing",
+            ),
+        ]
+        assert _compute_publish_status(
+            results, current_status=PublishStatus.PUBLISHED
+        ) == PublishStatus.PUBLISH_BLOCKED
+
+    def test_published_draft_does_not_downgrade_on_review_required_only(self):
+        # review_required failures never block PublishService.publish() itself
+        # (see publish_service.py docstring) — validate() must stay consistent
+        # with that gate definition for already-published labs.
+        from backend.labgen.routes import _compute_publish_status
+        from backend.labgen.models import BlockingLevel, ValidatorResult, ValidatorStatus
+
+        results = [
+            ValidatorResult(
+                check_id="helm.no_generation",
+                status=ValidatorStatus.FAILED,
+                blocking_level=BlockingLevel.REVIEW_REQUIRED,
+                field_path="steps",
+                message="helm found",
+            ),
+        ]
+        assert _compute_publish_status(
+            results, current_status=PublishStatus.PUBLISHED
+        ) == PublishStatus.PUBLISHED
+
+    def test_non_published_current_status_behavior_unchanged(self):
+        # draft/review_required/publish_blocked origins keep the pre-fix behavior.
+        from backend.labgen.routes import _compute_publish_status
+        from backend.labgen.models import BlockingLevel, ValidatorResult, ValidatorStatus
+
+        results = [
+            ValidatorResult(
+                check_id="helm.no_generation",
+                status=ValidatorStatus.FAILED,
+                blocking_level=BlockingLevel.REVIEW_REQUIRED,
+                field_path="steps",
+                message="helm found",
+            ),
+        ]
+        for origin in (
+            PublishStatus.DRAFT,
+            PublishStatus.REVIEW_REQUIRED,
+            PublishStatus.PUBLISH_BLOCKED,
+        ):
+            assert _compute_publish_status(
+                results, current_status=origin
+            ) == PublishStatus.REVIEW_REQUIRED
+
+
+class TestValidatePreservesPublishedStatus:
+    """End-to-end regression: POST /validate on a published lab must not downgrade it."""
+
+    def test_validate_after_publish_stays_published(self, client, mem_repo):
+        draft = _insert_draft(mem_repo)
+        # Publish first (bypassing the HTTP publish endpoint's rehearsal gate —
+        # this test only cares about validate()'s interaction with an existing
+        # PUBLISHED status, not the publish endpoint itself).
+        draft.publish_status = PublishStatus.PUBLISHED
+        mem_repo.update(draft)
+
+        r = client.post(f"/api/labgen/drafts/{draft.lab_id}/validate")
+        assert r.status_code == 200
+        assert r.json()["publish_status"] == "published"
+
+    def test_validate_after_publish_downgrades_on_real_publish_blocking_failure(
+        self, client, mem_repo
+    ):
+        draft = _insert_draft(mem_repo, cleanup=None)
+        draft.publish_status = PublishStatus.PUBLISHED
+        mem_repo.update(draft)
+
+        r = client.post(f"/api/labgen/drafts/{draft.lab_id}/validate")
+        assert r.json()["publish_status"] == "publish_blocked"
+
+    def test_validate_on_never_published_draft_still_defaults_to_draft(
+        self, client, mem_repo
+    ):
+        draft = _insert_draft(mem_repo)
+        assert draft.publish_status == PublishStatus.DRAFT
+
+        r = client.post(f"/api/labgen/drafts/{draft.lab_id}/validate")
+        assert r.json()["publish_status"] == "draft"

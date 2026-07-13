@@ -420,9 +420,23 @@ class LabDraftCTAResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _compute_publish_status(results: list[ValidatorResult]) -> PublishStatus:
+def _compute_publish_status(
+    results: list[ValidatorResult],
+    current_status: PublishStatus = PublishStatus.DRAFT,
+) -> PublishStatus:
+    # A PUBLISHED draft only ever leaves PUBLISHED via an explicit publish-blocking
+    # gate failure — the same gate PublishService.publish() itself uses (see its
+    # docstring: "review_required results do not block MVP publish"). Re-validating
+    # a published lab that still has zero publish-blocking failures must be a no-op
+    # on publish_status, otherwise every admin sanity-check re-validation silently
+    # un-publishes content that hasn't actually regressed.
     failed = [r for r in results if r.status == ValidatorStatus.FAILED]
-    if any(r.blocking_level == BlockingLevel.PUBLISH_BLOCKING for r in failed):
+    has_publish_blocking = any(r.blocking_level == BlockingLevel.PUBLISH_BLOCKING for r in failed)
+
+    if current_status == PublishStatus.PUBLISHED:
+        return PublishStatus.PUBLISH_BLOCKED if has_publish_blocking else PublishStatus.PUBLISHED
+
+    if has_publish_blocking:
         return PublishStatus.PUBLISH_BLOCKED
     if any(r.blocking_level == BlockingLevel.REVIEW_REQUIRED for r in failed):
         return PublishStatus.REVIEW_REQUIRED
@@ -542,7 +556,7 @@ async def validate_draft(
     results = sv.validate(draft)
 
     draft.validator_results = results
-    draft.publish_status = _compute_publish_status(results)
+    draft.publish_status = _compute_publish_status(results, current_status=draft.publish_status)
     draft.updated_at = datetime.now(tz=timezone.utc)
 
     return repo.update(draft)
