@@ -7,6 +7,9 @@
 ## [Unreleased]
 
 ### Fixed
+- fix(labgen): 修复"已通过步骤的操作命令永久消失"的产品缺陷 — owner 测 Service No Endpoints lab 时反复卡在步骤2（`kubectl get endpoints web-svc` 持续 NotFound），排查发现根因：`frontend/js/labgenViews.js::renderSessionView()` 的 `stepDo`/`stepCmds`/`stepHint` 只在 `isCurrent` 时渲染——一旦某步骤被标记 `passed`，它的操作说明和命令代码块就从面板里永久消失，没有任何入口能再看到。本次 lab 的步骤1（创建 Deployment + Service）恰好没有配置自动校验条件，点一下"检查当前步骤"就直接 `passed`（不代表命令真的被执行过），用户据此以为已完成，实际上从未在终端里跑过这两条建库命令；进入步骤2后面板上只剩步骤2唯一一条命令可见，学员反复重跑它，而它必然因为对应资源不存在而失败——面板从未再展示过步骤1的命令，学员无从得知需要回头补跑。用 `kubectl get all -n <该 session 的 namespace>` 直接核实该 namespace 确实空无一物，验证了这一诊断。修复：`isPassed` 步骤的操作内容改为默认展开的 `<details open>`（"本步骤命令"，仍可折叠），不再彻底隐藏，`isCurrent` 步骤保持原有展开显示；仅 `locked`/`pending` 步骤维持完全隐藏（尚不可操作）。safety-reviewer 审查 no blocking issues，指出折叠默认收起本身可能延续"发现不了"的问题——鉴于这正是本次真实卡住学员的根因，采纳建议改为默认展开而非默认折叠。新增 1 个前端回归测试（`test_views.mjs`，断言 `passed` 状态步骤的 `step_commands` 仍出现在渲染结果里），先 fail 后 fix 验证过。纯前端改动，无需重启服务即生效
+
+### Fixed
 - fix(labgen): 修复上一条改动（实验步骤抽屉从覆盖层改为可伸缩侧栏）引入的真实回归 — owner 测第二个 lab（Service No Endpoints）时报告终端输出仍然错位，排查后发现根因是 `openDrawer()`/`closeDrawer()` 此前在切换抽屉 CSS class 的同一刻**同步**调用 `_terminal.fit()`，但桌面端 `#lab-drawer` 的宽度变化是 250ms 的 CSS transition，不是瞬时的——`fit()` 在过渡进行到一半时测量容器宽度，拿到的是过渡中间态的错误列数，之后每次终端输出都基于这个错误列数换行，导致后续文本相互覆盖而非正常换行（用户截图里长命令回显在中途被输出内容覆盖，`--replicas=1` 消失不见，正是这个症状）。这个问题在抽屉还是覆盖层设计时不存在（因为覆盖层不改变终端容器尺寸，`fit()` 测哪个时间点结果都一样），是本次侧栏重构的直接副作用，只有真实点开抽屉再执行长命令才会暴露，静态测试和 P1 提交前的验证截图都没跑到这条路径。修复：移除 `openDrawer()`/`closeDrawer()` 里同步的 `_terminal.fit()` 调用，改为在 `#lab-drawer` 上监听 `transitionend` 事件（过滤 `propertyName === 'width'`），等宽度过渡真正结束后再 `fit()`。新增 1 个前端回归测试（`test_labgen_session_layout.mjs`，断言 `openDrawer`/`closeDrawer` 函数体内不再包含 `_terminal.fit()`，且存在按 `transitionend`+`width` 过滤的监听器），先 fail 后 fix 验证过。纯前端改动，无需重启服务即生效。排查过程中同时确认"检查当前步骤"按钮点击无反应是另一件事——是我本人为验证 P1/P2 反复用共享的 `smoke-admin` 账号登录，触发后端"每用户仅保留一个活跃 session"的驱逐逻辑，顶掉了 owner 当时的登录状态，导致该请求返回 401，不是代码缺陷，未改动任何代码，仅记录为操作教训（后续验证改用独立账号，避免与正在使用的用户抢占同一账号 session）
 
 ### Added

@@ -275,6 +275,48 @@ test('session view: step.status=passed marks step as passed (not completed_step_
     assert.ok(html.includes('data-step-status="current"'), 'Current step not marked');
 });
 
+test('session view: a passed step\'s setup commands remain visible (regression)', () => {
+    // Production bug found via owner dogfooding of the Service-no-Endpoints lab:
+    // step 1 (create the Deployment + Service) has no automated verify criteria,
+    // so clicking "检查当前步骤" marks it passed immediately without ever running
+    // its commands. Once passed, stepDo/stepCmds/stepHint were only rendered for
+    // isCurrent steps — step 1's setup commands vanished from the panel entirely,
+    // with no way to see or re-run them. The learner was stuck on step 2
+    // (kubectl get endpoints web-svc) failing with NotFound forever, because the
+    // only commands visible anywhere in the UI were step 2's — step 1's
+    // `kubectl create deployment`/`kubectl create service` were never shown again.
+    const snapshot = {
+        ...ACTIVE_SNAPSHOT,
+        steps: [
+            {
+                step_id: 'step-1',
+                title: 'Create a deployment and service',
+                learner_goal: '',
+                status: 'passed',
+                is_current: false,
+                check_summary: null,
+                step_do: 'Create the backing Deployment and a Service without --selector.',
+                step_commands: [
+                    'kubectl create deployment web-backend -n lab-x --image=nginx',
+                    'kubectl create service clusterip web-svc -n lab-x --tcp=80:80',
+                ],
+                step_troubleshoot: null,
+            },
+            makeStep('step-2', 'Check endpoints', { status: 'available', isCurrent: true }),
+        ],
+        current_step_id: 'step-2',
+    };
+    const html = renderSessionView(snapshot);
+    assert.ok(
+        html.includes('kubectl create deployment web-backend'),
+        'passed step\'s setup command must still be visible so the learner can find and re-run it'
+    );
+    assert.ok(
+        html.includes('kubectl create service clusterip web-svc'),
+        'passed step\'s second setup command must still be visible'
+    );
+});
+
 test('session view: step.is_current marks current step', () => {
     const snapshot = {
         ...ACTIVE_SNAPSHOT,

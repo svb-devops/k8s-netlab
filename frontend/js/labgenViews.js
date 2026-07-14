@@ -349,19 +349,38 @@ export function renderSessionView(snapshot) {
             const icon       = isPassed ? '✓' : isCurrent ? '→' : String(idx + 1);
             const statusText = isPassed ? 'passed' : isCurrent ? 'current' : 'pending';
 
-            // Show step instructions and commands only for the active step
-            const stepDo = isCurrent && s?.step_do
+            // Show step instructions/commands for the active step (expanded) and
+            // for already-passed steps (collapsed — still reachable, since some
+            // steps like a manual "create the Deployment/Service" setup step have
+            // no automated verify criteria and pass immediately on click; the
+            // learner must still be able to find and re-run those commands later
+            // if a subsequent step depends on them). Locked/pending steps stay
+            // fully hidden since their commands aren't actionable yet.
+            const showBody = isCurrent || isPassed;
+            const stepDo = showBody && s?.step_do
                 ? `<p class="text-sm text-gray-600 mt-2">${_safe(s.step_do)}</p>`
                 : '';
-            const stepCmds = isCurrent && Array.isArray(s?.step_commands) && s.step_commands.length > 0
+            const stepCmds = showBody && Array.isArray(s?.step_commands) && s.step_commands.length > 0
                 ? `<div class="mt-2 space-y-1">${
                       s.step_commands.map(cmd => `<code class="block text-xs bg-gray-900 text-green-300 rounded px-3 py-1.5 font-mono">${_safe(cmd)}</code>`).join('')
                   }</div>`
                 : '';
-            const stepHint = isCurrent && s?.step_troubleshoot
+            const stepHint = showBody && s?.step_troubleshoot
                 ? `<details class="mt-2">
                        <summary class="text-xs text-gray-400 cursor-pointer select-none hover:text-gray-600">操作提示</summary>
                        <p class="text-xs text-gray-500 mt-1 pl-2 border-l-2 border-gray-200">${_safe(s.step_troubleshoot)}</p>
+                   </details>`
+                : '';
+            const stepBody = `${stepDo}${stepCmds}${stepHint}${isCurrent ? _renderCheckSummary(s?.check_summary) : ''}`;
+            // Default-open (not collapsed): the bug this fixes was learners getting
+            // stuck with no visible way to find a passed step's commands at all —
+            // a collapsed-by-default <details> risks the same discoverability
+            // failure with extra steps. Kept as <details> (not a plain <div>) so
+            // it's still collapsible once a learner has already seen it.
+            const passedBody = isPassed && stepBody
+                ? `<details class="mt-1" open>
+                       <summary class="text-xs text-gray-400 cursor-pointer select-none hover:text-gray-600">本步骤命令</summary>
+                       ${stepBody}
                    </details>`
                 : '';
 
@@ -370,10 +389,7 @@ export function renderSessionView(snapshot) {
                 <span class="text-sm font-bold w-6 text-center flex-shrink-0 ${isPassed ? 'text-green-600' : isCurrent ? 'text-blue-600' : 'text-gray-400'}">${_safe(icon)}</span>
                 <div class="flex-1 min-w-0">
                     <p class="text-sm font-medium text-gray-800">${_safe(s?.title ?? s?.step_id ?? '')}</p>
-                    ${stepDo}
-                    ${stepCmds}
-                    ${stepHint}
-                    ${isCurrent ? _renderCheckSummary(s?.check_summary) : ''}
+                    ${isCurrent ? stepBody : passedBody}
                 </div>
             </div>`;
           }).join('')
