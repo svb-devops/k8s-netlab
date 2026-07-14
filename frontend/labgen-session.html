@@ -26,11 +26,21 @@
             height: 100%;
             overflow: hidden;
         }
+        #session-body-row {
+            /* flex-1 fills remaining height below header; drawer + terminal
+               sit side by side so opening the drawer resizes the terminal
+               instead of covering it (desktop only — see media query below) */
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            min-height: 0;
+        }
         #session-terminal-wrap {
-            /* flex-1 fills remaining height below header */
+            flex: 1;
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            min-width: 0;
         }
         #kubectl-terminal-container {
             flex: 1;
@@ -43,6 +53,48 @@
         }
         #kubectl-terminal-container .xterm-viewport {
             border-radius: 0 0 4px 4px;
+        }
+
+        /* ── Lab Steps Drawer: desktop = resizable sidebar (pushes the terminal,
+           no backdrop needed since it no longer covers anything); mobile = the
+           shared .doc-drawer fixed-overlay behavior from app.css (not enough
+           width for two columns). ID selectors here intentionally out-specificity
+           the shared .doc-drawer class from app.css, scoped to this page only. ── */
+        #lab-drawer {
+            position: static;
+            flex-shrink: 0;
+            width: 0;
+            max-width: 92vw;
+            height: auto;
+            box-shadow: none;
+            border-right: 1px solid #e5e7eb;
+            transform: none;
+            transition: width 0.25s ease-in-out;
+        }
+        #lab-drawer.drawer-open {
+            width: 440px;
+        }
+        #lab-drawer-backdrop {
+            display: none;
+        }
+        @media (max-width: 768px) {
+            #lab-drawer {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100vh;
+                width: 100vw;
+                max-width: 100vw;
+                box-shadow: 4px 0 32px rgba(0, 0, 0, 0.18);
+                transform: translateX(-100%);
+            }
+            #lab-drawer.drawer-open {
+                width: 100vw;
+                transform: translateX(0);
+            }
+            #lab-drawer-backdrop {
+                display: block;
+            }
         }
     </style>
 </head>
@@ -86,113 +138,127 @@
     </div>
 </header>
 
-<!-- ── Main: full-height terminal area ── -->
-<main id="session-terminal-wrap" class="flex-1">
+<!-- ── Body row: Lab Steps Drawer (left sidebar) + terminal (fills rest) ── -->
+<div id="session-body-row">
 
-    <!-- Loading / non-active-state message (shown when terminal not connected) -->
-    <div id="session-message-area"
-         class="flex-1 flex flex-col items-center justify-center text-gray-400 h-full">
-        <div class="loading mb-4" style="border-color:#374151;border-top-color:#326CE5;"></div>
-        <p id="session-message-text" class="text-sm">正在加载实验环境…</p>
-    </div>
+    <!-- ══════════════════════════════════════════════════════════════════
+         Lab Steps Drawer — desktop: resizable sidebar next to the terminal;
+         mobile: falls back to fixed overlay (see <style> media query above).
+         Reuses doc-drawer / drawer-backdrop / step-pill CSS from app.css.
+         ══════════════════════════════════════════════════════════════════ -->
+    <div id="lab-drawer" class="doc-drawer" role="dialog" aria-label="实验步骤">
 
-    <!-- kubectl terminal panel (shown when LAB_ACTIVE) -->
-    <div id="kubectl-terminal-panel" class="hidden flex-col h-full">
-        <!-- macOS-style title bar -->
-        <div class="flex-shrink-0 flex items-center px-3 py-2 bg-gray-800 border-b border-gray-700">
-            <div class="flex space-x-1.5 mr-3">
-                <div class="w-2.5 h-2.5 rounded-full bg-red-500"></div>
-                <div class="w-2.5 h-2.5 rounded-full bg-yellow-500"></div>
-                <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+        <!-- Row 1: 实验步骤 / 实验背景 tabs + close -->
+        <div class="flex-shrink-0 flex items-stretch border-b border-gray-200 bg-gray-50">
+            <button id="drawer-tab-steps"
+                    class="tab-btn text-xs px-4 py-2.5 font-medium border-b-2 border-k8s-blue text-k8s-blue bg-white">
+                实验步骤
+            </button>
+            <button id="drawer-tab-background"
+                    class="tab-btn text-xs px-4 py-2.5 font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition">
+                实验背景
+            </button>
+            <button id="btn-close-drawer"
+                    class="ml-auto px-3 text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
+                    title="关闭面板">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Row 2: Progress bar + step pills -->
+        <div class="flex-shrink-0 px-3 pt-2 pb-1 border-b border-gray-100">
+            <div class="flex items-center justify-between mb-1">
+                <span class="text-xs font-medium text-gray-500">实验进度</span>
+                <span id="drawer-progress-text" class="text-xs text-gray-500">0/0 完成</span>
             </div>
-            <span class="text-xs font-mono font-semibold text-green-400">$ kubectl</span>
-            <span class="text-xs text-gray-400 ml-1.5">Lab Terminal</span>
-            <span id="kubectl-terminal-ns-badge"
-                  class="hidden ml-3 text-xs font-mono text-cyan-300"></span>
+            <div class="w-full bg-gray-200 rounded-full h-1">
+                <div id="drawer-progress-bar"
+                     class="bg-k8s-blue h-1 rounded-full transition-all duration-300"
+                     style="width:0%"></div>
+            </div>
+            <!-- Step pills -->
+            <div id="drawer-step-pills"
+                 class="flex flex-wrap gap-1 pt-2 pb-1 max-h-16 overflow-y-auto"></div>
         </div>
 
-        <!-- xterm.js mount point (flex-1 fills remaining height) -->
-        <div id="kubectl-terminal-container" class="bg-gray-900"></div>
-    </div>
-</main>
-
-
-<!-- ══════════════════════════════════════════════════════════════════════════
-     Lab Steps Drawer — fixed overlay, slides in from left
-     Reuses doc-drawer / drawer-backdrop / step-pill CSS from app.css
-     ══════════════════════════════════════════════════════════════════════════ -->
-<div id="lab-drawer" class="doc-drawer" role="dialog" aria-label="实验步骤">
-
-    <!-- Row 1: 实验步骤 / 实验背景 tabs + close -->
-    <div class="flex-shrink-0 flex items-stretch border-b border-gray-200 bg-gray-50">
-        <button id="drawer-tab-steps"
-                class="tab-btn text-xs px-4 py-2.5 font-medium border-b-2 border-k8s-blue text-k8s-blue bg-white">
-            实验步骤
-        </button>
-        <button id="drawer-tab-background"
-                class="tab-btn text-xs px-4 py-2.5 font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition">
-            实验背景
-        </button>
-        <button id="btn-close-drawer"
-                class="ml-auto px-3 text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
-                title="关闭面板">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-        </button>
-    </div>
-
-    <!-- Row 2: Progress bar + step pills -->
-    <div class="flex-shrink-0 px-3 pt-2 pb-1 border-b border-gray-100">
-        <div class="flex items-center justify-between mb-1">
-            <span class="text-xs font-medium text-gray-500">实验进度</span>
-            <span id="drawer-progress-text" class="text-xs text-gray-500">0/0 完成</span>
+        <!-- View: 实验步骤 (default) -->
+        <div id="drawer-steps-content"
+             class="flex-1 overflow-y-auto p-4 text-sm">
+            <!-- Populated by labgen-session-init.js via renderSessionView() -->
         </div>
-        <div class="w-full bg-gray-200 rounded-full h-1">
-            <div id="drawer-progress-bar"
-                 class="bg-k8s-blue h-1 rounded-full transition-all duration-300"
-                 style="width:0%"></div>
+
+        <!-- View: 实验背景 (hidden by default) -->
+        <div id="drawer-background-content"
+             class="hidden flex-1 overflow-y-auto p-4 text-sm text-gray-700">
+            <!-- Populated by labgen-session-init.js -->
         </div>
-        <!-- Step pills -->
-        <div id="drawer-step-pills"
-             class="flex flex-wrap gap-1 pt-2 pb-1 max-h-16 overflow-y-auto"></div>
-    </div>
 
-    <!-- View: 实验步骤 (default) -->
-    <div id="drawer-steps-content"
-         class="flex-1 overflow-y-auto p-4 text-sm">
-        <!-- Populated by labgen-session-init.js via renderSessionView() -->
-    </div>
-
-    <!-- View: 实验背景 (hidden by default) -->
-    <div id="drawer-background-content"
-         class="hidden flex-1 overflow-y-auto p-4 text-sm text-gray-700">
-        <!-- Populated by labgen-session-init.js -->
-    </div>
-
-    <!-- Fixed action footer -->
-    <div class="flex-shrink-0 border-t border-gray-200 bg-white p-3 space-y-2">
-        <button id="btn-check-step" data-action="check-step" disabled
-                class="w-full px-4 py-2 rounded text-sm font-medium bg-gray-200 text-gray-400 cursor-not-allowed transition">
-            检查当前步骤
-        </button>
-        <div class="flex gap-2">
-            <button id="btn-complete" data-action="complete" data-ready="false" disabled
-                    class="flex-1 px-4 py-2 rounded text-sm font-medium bg-gray-200 text-gray-400 cursor-not-allowed transition">
-                完成实验
+        <!-- Fixed action footer -->
+        <div class="flex-shrink-0 border-t border-gray-200 bg-white p-3 space-y-2">
+            <button id="btn-check-step" data-action="check-step" disabled
+                    class="w-full px-4 py-2 rounded text-sm font-medium bg-gray-200 text-gray-400 cursor-not-allowed transition">
+                检查当前步骤
             </button>
-            <button id="btn-abort" data-action="abort" disabled
-                    class="flex-1 px-4 py-2 rounded text-sm font-medium bg-gray-200 text-gray-400 cursor-not-allowed transition">
-                中止实验
-            </button>
+            <div class="flex gap-2">
+                <button id="btn-complete" data-action="complete" data-ready="false" disabled
+                        class="flex-1 px-4 py-2 rounded text-sm font-medium bg-gray-200 text-gray-400 cursor-not-allowed transition">
+                    完成实验
+                </button>
+                <button id="btn-abort" data-action="abort" disabled
+                        class="flex-1 px-4 py-2 rounded text-sm font-medium bg-gray-200 text-gray-400 cursor-not-allowed transition">
+                    中止实验
+                </button>
+            </div>
+            <p id="action-error" class="hidden text-red-600 text-xs text-center"></p>
         </div>
-        <p id="action-error" class="hidden text-red-600 text-xs text-center"></p>
-    </div>
 
-</div><!-- end lab-drawer -->
+    </div><!-- end lab-drawer -->
 
-<!-- Drawer backdrop -->
-<div id="lab-drawer-backdrop" class="drawer-backdrop"></div>
+    <!-- Drawer backdrop — only rendered on mobile (see media query above) -->
+    <div id="lab-drawer-backdrop" class="drawer-backdrop"></div>
+
+    <!-- ── Terminal area (fills remaining width) ── -->
+    <main id="session-terminal-wrap">
+
+        <!-- Loading / non-active-state message (shown when terminal not connected) -->
+        <div id="session-message-area"
+             class="flex-1 flex flex-col items-center justify-center text-gray-400 h-full">
+            <div class="loading mb-4" style="border-color:#374151;border-top-color:#326CE5;"></div>
+            <p id="session-message-text" class="text-sm">正在加载实验环境…</p>
+        </div>
+
+        <!-- kubectl terminal panel (shown when LAB_ACTIVE) -->
+        <div id="kubectl-terminal-panel" class="hidden flex-col h-full">
+            <!-- macOS-style title bar -->
+            <div class="flex-shrink-0 flex items-center px-3 py-2 bg-gray-800 border-b border-gray-700">
+                <div class="flex space-x-1.5 mr-3">
+                    <div class="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+                    <div class="w-2.5 h-2.5 rounded-full bg-yellow-500"></div>
+                    <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
+                </div>
+                <span class="text-xs font-mono font-semibold text-green-400">$ kubectl</span>
+                <span class="text-xs text-gray-400 ml-1.5">Lab Terminal</span>
+                <span id="kubectl-terminal-ns-badge"
+                      class="hidden ml-3 text-xs font-mono text-cyan-300"></span>
+            </div>
+
+            <!-- Security notice — real banner (not printed into the terminal buffer,
+                 which caused ragged/unaligned text wrapping at arbitrary widths) -->
+            <div class="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 bg-amber-50 border-b border-amber-200">
+                <svg class="w-3.5 h-3.5 flex-shrink-0 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l6.518 11.598c.75 1.334-.213 2.98-1.742 2.98H3.48c-1.53 0-2.492-1.646-1.743-2.98L8.257 3.1zM11 14a1 1 0 11-2 0 1 1 0 012 0zm-.25-6.5a.75.75 0 00-1.5 0v3.5a.75.75 0 001.5 0v-3.5z" clip-rule="evenodd"/>
+                </svg>
+                <span class="text-xs text-amber-800">请仅在本实验范围内使用该终端，不要输入真实密码、Token、API Key 或私钥。</span>
+            </div>
+
+            <!-- xterm.js mount point (flex-1 fills remaining height) -->
+            <div id="kubectl-terminal-container" class="bg-gray-900"></div>
+        </div>
+    </main>
+
+</div><!-- end session-body-row -->
 
 
 <script type="module" src="/js/labgen-session-init.js?v=20260628"></script>

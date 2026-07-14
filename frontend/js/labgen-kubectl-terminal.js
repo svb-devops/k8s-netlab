@@ -4,9 +4,10 @@
  * Manages the WebSocket connection and xterm.js instance for the
  * constrained kubectl terminal in a lab session page.
  *
- * Security notice displayed in terminal:
- *   "Use this terminal for the current lab only.
- *    Do not enter real passwords, tokens, API keys, or private keys."
+ * The "use this terminal for the current lab only" security notice is a
+ * static HTML banner in labgen-session.html, not printed into the terminal
+ * buffer — terminal text wraps at the viewport's current column width, which
+ * made a fixed two-line notice look ragged/misaligned at most sizes.
  *
  * Protocol (client → server):
  *   {"type": "command", "cmd": "<kubectl command>"}
@@ -148,7 +149,6 @@ export class LabKubectlTerminal {
                 this._write('\x1b[32m');
                 this._write(msg.msg || 'Terminal ready.\r\n');
                 this._write('\x1b[0m');
-                this._showSecurityNotice();
                 this._showPrompt();
                 break;
 
@@ -226,10 +226,5 @@ export class LabKubectlTerminal {
     _showPrompt() {
         const ns = this._namespace ? `\x1b[36m[${this._namespace}]\x1b[0m ` : '';
         this._write(`${ns}\x1b[1m$\x1b[0m `);
-    }
-
-    _showSecurityNotice() {
-        this._writeLine('\x1b[2m⚠  Use this terminal for the current lab only.');
-        this._writeLine('   Do not enter real passwords, tokens, API keys, or private keys.\x1b[0m');
     }
 }

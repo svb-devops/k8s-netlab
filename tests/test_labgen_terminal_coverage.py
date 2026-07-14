@@ -526,6 +526,15 @@ class TestLabKubectlWsCommandLoop:
         assert msg["type"] == "ready"
         assert "namespace" in msg
         assert f"lab-{session_id}" in msg["namespace"]
+        # Regression: the security notice ("use this terminal for the current lab
+        # only...") used to be embedded in this server-sent msg AND separately
+        # printed by the client's _showSecurityNotice() — both wrote it into the
+        # xterm.js scrollback buffer, which wraps at the terminal's current column
+        # width and reads as ragged/misaligned. It's now a static HTML banner in
+        # labgen-session.html instead; this operational ready message should only
+        # contain operational text.
+        assert "secret" not in msg["msg"].lower()
+        assert "use this terminal" not in msg["msg"].lower()
 
     def test_credential_creation_failure_sends_error(self, client, user_token):
         import backend.labgen.lab_kubectl_ws as ws_mod

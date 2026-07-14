@@ -312,6 +312,23 @@ class TestLinuxWsRouting:
         assert ready_msgs, "No 'ready' message sent"
         assert ready_msgs[0].get("namespace") is None
 
+    async def test_linux_session_ready_message_has_no_security_notice(self, adapter_and_session):
+        """Regression: the security notice used to be embedded in this server-sent
+        msg (and separately duplicated by the client's now-removed
+        _showSecurityNotice()) — both wrote it into the xterm.js scrollback buffer,
+        which wraps at the terminal's current column width and reads as ragged.
+        It's now a static HTML banner in labgen-session.html; this operational
+        ready message should only contain operational text."""
+        adapter, sid = adapter_and_session
+        session = _make_linux_session(session_id=sid, username="lnx-tester")
+        ws = await self._call_handler(sid, "lnx-tester", adapter, session)
+
+        ready_msgs = [m for m in ws.sent if m.get("type") == "ready"]
+        assert ready_msgs, "No 'ready' message sent"
+        msg_text = (ready_msgs[0].get("msg") or "").lower()
+        assert "secret" not in msg_text
+        assert "do not enter" not in msg_text
+
     async def test_linux_session_no_adapter_returns_not_configured(self):
         """If linux_adapter=None, Linux sessions get 'not_configured' error."""
         from backend.labgen.lab_kubectl_ws import lab_kubectl_websocket

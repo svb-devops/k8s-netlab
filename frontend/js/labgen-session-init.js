@@ -61,6 +61,12 @@ let _wasActive = false;
 let _snapshot  = null;   // last loaded snapshot
 let _drawerOpen = false;
 let _currentTab = 'steps';   // 'steps' | 'background'
+let _hasAutoOpenedDrawer = false;
+
+// Matches the #lab-drawer mobile breakpoint in labgen-session.html — below this
+// width the drawer is a full-screen overlay, so auto-opening it would hide the
+// terminal the learner just connected to.
+const DESKTOP_DRAWER_BREAKPOINT_PX = 768;
 
 // ── Drawer ────────────────────────────────────────────────────────────────────
 
@@ -255,6 +261,16 @@ function _syncTerminal(snapshot) {
             _terminal = new LabKubectlTerminal(_sessionId, 'kubectl-terminal-container');
             _terminal.connect();
             _wasActive = true;
+        }
+
+        // First time the terminal becomes active: surface the step instructions
+        // by default on desktop, since the toggle button alone is easy to miss
+        // and the drawer no longer covers the terminal (it resizes it instead).
+        if (!_hasAutoOpenedDrawer) {
+            _hasAutoOpenedDrawer = true;
+            if (!_drawerOpen && window.innerWidth >= DESKTOP_DRAWER_BREAKPOINT_PX) {
+                openDrawer();
+            }
         }
 
         if (snapshot?.namespace && nsBadge) {

@@ -266,13 +266,16 @@ async def lab_kubectl_websocket(
     )
 
     # ── Send ready message ─────────────────────────────────────────────────
+    # The security notice ("use this terminal for the current lab only, do not
+    # enter real secrets") is a static HTML banner in labgen-session.html, not
+    # part of this operational message — printing it into the terminal buffer
+    # wrapped at the client's current column width and read as ragged/misaligned.
     await _send(websocket, {
         "type": "ready",
         "namespace": namespace,
         "msg": (
             f"Lab terminal ready. Namespace: {namespace}\n"
             "Use kubectl commands to complete your lab steps.\n"
-            "⚠  Use this terminal for the current lab only. Do not enter real secrets.\n"
         ),
     })
 
@@ -447,13 +450,14 @@ async def _handle_linux_terminal(
         session_id, username, workspace_path,
     )
 
+    # See the equivalent kubectl 'ready' message above — same reasoning for
+    # dropping the security notice line here.
     await _send(websocket, {
         "type": "ready",
         "namespace": None,
         "msg": (
             "Linux sandbox terminal ready.\n"
             "Use shell commands to complete your lab steps.\n"
-            "⚠  Do not enter real secrets or passwords in this terminal.\n"
         ),
     })
 
