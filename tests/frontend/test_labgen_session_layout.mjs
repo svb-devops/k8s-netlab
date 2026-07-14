@@ -158,3 +158,38 @@ test('drawer auto-opens once on desktop when the terminal first becomes active',
         'the moment the terminal connects would hide the very thing the learner just waited for'
     );
 });
+
+test('terminal fit() re-scrolls to bottom after resizing (regression: input line appeared to vanish)', () => {
+    // Production bug found via owner dogfooding: after pressing Enter, the
+    // command line the learner had just typed would appear to disappear.
+    // Root cause: fitAddon.fit() reflows the xterm.js buffer to the new column
+    // count but never re-scrolls the viewport to follow the cursor. Once the
+    // drawer auto-opens on first terminal activation (see the other test in
+    // this file), a resize fires shortly after page load — exactly the window
+    // where a learner is likely to already be typing their first command. If
+    // reflow needs more rows at the new (narrower) width, the current line can
+    // end up above the visible viewport, reading as vanished even though it's
+    // still in the buffer. scrollToBottom() after fit() is the standard fix
+    // for this well-known xterm.js + fit-addon interaction.
+    const fitStart = terminalJs.indexOf('fit() {');
+    const fitBody = terminalJs.slice(fitStart, terminalJs.indexOf('\n    }', fitStart));
+    assert.match(
+        fitBody,
+        /_fitAddon\.fit\(\)/,
+        'fit() must still call fitAddon.fit()'
+    );
+    assert.match(
+        fitBody,
+        /_terminal\.scrollToBottom\(\)/,
+        'fit() must call scrollToBottom() after fitAddon.fit() so the current line stays visible'
+    );
+    // Both call sites that used to call `this._fitAddon.fit()` directly (initial
+    // connect() fit, and the window resize handler) must route through this.fit()
+    // instead, so scrollToBottom() applies everywhere a resize can happen — not
+    // just the one call site that happened to get the fix.
+    assert.doesNotMatch(
+        terminalJs,
+        /window\.addEventListener\('resize'.*_fitAddon\.fit\(\)/,
+        'the resize handler must call this.fit(), not this._fitAddon.fit() directly'
+    );
+});

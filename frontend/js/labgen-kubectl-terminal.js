@@ -67,11 +67,9 @@ export class LabKubectlTerminal {
 
         container.innerHTML = '';
         this._terminal.open(container);
-        this._fitAddon.fit();
+        this.fit();
 
-        this._resizeHandler = () => {
-            if (this._fitAddon) this._fitAddon.fit();
-        };
+        this._resizeHandler = () => this.fit();
         window.addEventListener('resize', this._resizeHandler);
 
         // Connect WebSocket
@@ -122,7 +120,16 @@ export class LabKubectlTerminal {
 
     /** Fit terminal to container. */
     fit() {
-        if (this._fitAddon) this._fitAddon.fit();
+        if (!this._fitAddon) return;
+        this._fitAddon.fit();
+        // fitAddon.fit() reflows the buffer to the new column count but does not
+        // re-scroll the viewport to follow the cursor. If the reflow increases the
+        // number of buffer rows needed (e.g. a long in-progress command line wraps
+        // onto more lines at a narrower width), the current line can end up above
+        // the visible viewport — reads as the line having disappeared, even though
+        // it's still in the buffer. This is a known xterm.js + fit-addon gotcha;
+        // scrollToBottom() after fit() is the standard fix.
+        if (this._terminal) this._terminal.scrollToBottom();
     }
 
     // ── Private ──────────────────────────────────────────────────────────
