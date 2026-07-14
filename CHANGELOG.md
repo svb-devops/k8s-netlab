@@ -6,7 +6,11 @@
 
 ## [Unreleased]
 
+### Added
+- feat(labgen): 接线 LabGen 学员会话超时自动清理 — 后端已有 `POST /api/labgen/runtime/expire-sessions`（admin-only）能按 TTL 识别并清理超时未关闭的会话（namespace + Deployment/Pod/Service），但此前从未被任何调度器调用，学员若做完实验不手动执行清理步骤就直接关闭浏览器，namespace 会永久残留集群里。owner 亲测 CrashLoopBackOff lab 时发现该 gap。新增 `scripts/labgen_expire_sessions_cron.sh`（登录 admin 账号 + 调用该端点，凭证从 `/root/.k8s-netlab-admin-credentials` 读取），接入 crontab 每 10 分钟运行一次。运行首次调用即清理出 2 个此前遗留的僵尸会话，证实泄漏是真实存在的（非假设风险）。因为该接口现在会被定期强制调用，`LABGEN_LAB_SESSION_TTL_MINUTES` 从默认 30 分钟上调至 90 分钟（`.env` 新增），避免学员正在专注做实验时会话被强制判定超时清理
+
 ### Fixed
+- fix(labgen): 修复 `VMExpiryService._SKIP_STATUSES` 遗漏 `LAB_FORCE_CLOSED` 的问题 — 补回归测试防止重现。接线上面的自动清理 cron 时发现：`LAB_FORCE_CLOSED` 是 admin 专用的终态覆盖（`lab_session_service.py::_ALREADY_ENDED_STATES` 已将其视为终态），但 `vm_expiry.py::_SKIP_STATUSES` 从未包含它，导致 `find_expired_sessions()` 会一直重复选中已经 force-closed 的旧会话，每次 cron 运行都对其调用一次空操作的 `timeout_session()`（因 `_ALREADY_ENDED_STATES` 保护未造成实际破坏，但会造成无意义的重复处理和日志噪音，且会一直"误报"为本次清理成功）。实测在生产环境首次运行 cron 时命中 2 个这样的历史会话。修复：`_SKIP_STATUSES` 补上 `LabSessionStatus.LAB_FORCE_CLOSED`
 - fix(labgen): 修复 P0 RC 一致性问题 HIGH-01 — CrashLoopBackOff lab 的 LabDraft CTA 字段与 Directus 文章真实状态不一致，导致对外表现为"文章已发布可读"但实际文章处于 `draft`（`GET /api/articles/{slug}` 返回 404 语义）— 采用保守对齐修复，不擅自变更发布决策。根因确认：Directus `activity`/`revisions` 记录显示 2026-07-01T20:25:36Z 同一 admin 账号对 article id=4 执行了一次显式 `update`（delta `{"status": "draft"}`），即该文章在 2026-06-28 `PUBLISHED_VERIFIED` 锁定之后被人工/脚本改回 draft，但 LabDraft（`bb4fe651-...`）的 `cta_enabled=true`/`article_url` 未同步降级，状态漂移持续到 2026-07-13 RC 检查才被发现（HIGH-01，`PHASE1_FIRST_WAVE_RISK_REGISTER_v0.1.md`）。修复：`PATCH /api/labgen/drafts/bb4fe651-...` 将 `cta_enabled` 降回 `false`，`article_url`/`article_title`/`article_channel`/`article_published_at` 全部清空，与 Service No Endpoints/ImagePullBackOff 两个 lab 完全一致（纯数据修复，`data/*.json` 不入库，无代码改动）。未触碰 Directus 文章状态（是否/何时重新发布仍需 owner 决策）、未修改 `LABGEN_ENABLED_LAB_IDS`、未新增用户、未开放任何公开访问。targeted tests（cta/lab_draft/article_bind 相关）124 passed，生产 health 全绿。同步更新 `PHASE1_FIRST_WAVE_RELEASE_CANDIDATE_v0.1.md`/`PHASE1_FIRST_WAVE_RISK_REGISTER_v0.1.md` 反映修复结果
 
 ### Changed

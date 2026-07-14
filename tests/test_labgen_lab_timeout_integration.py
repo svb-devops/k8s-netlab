@@ -420,6 +420,67 @@ class TestExpireSessionsEndpoint:
         assert "Traceback" not in issue.message
         assert "Exception" not in issue.message
 
+    def test_expire_sessions_does_not_block_event_loop(self, test_client: TestClient):
+        """VMExpiryService.expire_sessions() runs LabSessionService._do_cleanup(), which
+        does a synchronous time.sleep() per namespace deletion retry. Regression: the
+        route handler must offload that call via asyncio.to_thread() instead of calling
+        it directly on the request coroutine — otherwise, once cron starts calling this
+        endpoint periodically in production, a single call touching several sessions
+        blocks the entire event loop (all concurrent learner WebSocket terminals) for the
+        cumulative sleep duration. Cron wiring is what turns this from a theoretical
+        concern into a real one — this endpoint had never been called on a schedule
+        before. TestClient's own request/response cycle already runs off the interpreter's
+        main thread (anyio portal), so asserting "not MainThread" on the call site proves
+        nothing; instead assert that asyncio.to_thread() is the mechanism actually used."""
+        import asyncio
+
+        import backend.labgen.routes as routes_module
+        from backend.auth import auth_manager
+        from backend.auth_deps import get_current_user
+        from backend.main import app
+        from backend.labgen.vm_expiry import VMExpiryResult
+
+        mock_svc = MagicMock()
+        mock_svc.expire_sessions.return_value = VMExpiryResult(
+            expired_session_ids=[],
+            cleaned_session_ids=[],
+            failed_session_ids=[],
+            tainted_vm_ids=[],
+            issues=[],
+            checked_at=_NOW,
+        )
+
+        to_thread_calls: list[object] = []
+        real_to_thread = asyncio.to_thread
+
+        async def spy_to_thread(func, /, *args, **kwargs):
+            to_thread_calls.append(func)
+            return await real_to_thread(func, *args, **kwargs)
+
+        async def _fake_current_user() -> str:
+            return "smoke-admin"
+
+        app.dependency_overrides[get_current_user] = _fake_current_user
+        app.dependency_overrides[routes_module.get_expiry_service] = lambda: mock_svc
+        try:
+            with patch.object(auth_manager, "is_admin", return_value=True):
+                with patch("asyncio.to_thread", side_effect=spy_to_thread):
+                    resp = test_client.post(
+                        "/api/labgen/runtime/expire-sessions",
+                        json={"dry_run": False},
+                    )
+        finally:
+            del app.dependency_overrides[get_current_user]
+            del app.dependency_overrides[routes_module.get_expiry_service]
+
+        assert resp.status_code == 200
+        assert to_thread_calls == [mock_svc.expire_sessions], (
+            "expire_sessions() must be dispatched via asyncio.to_thread() — calling it "
+            "directly on the request coroutine blocks the event loop for every "
+            "concurrent request while the synchronous time.sleep() retry loop runs"
+        )
+        mock_svc.expire_sessions.assert_called_once_with(dry_run=False, limit=None)
+
 
 # ---------------------------------------------------------------------------
 # E. Learner snapshot — timeout visibility

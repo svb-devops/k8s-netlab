@@ -41,6 +41,7 @@ _SKIP_STATUSES: frozenset[LabSessionStatus] = frozenset({
     LabSessionStatus.LAB_TIMEOUT,    # already in timeout / cleanup path
     LabSessionStatus.LAB_COMPLETED,
     LabSessionStatus.LAB_ABORTED,
+    LabSessionStatus.LAB_FORCE_CLOSED,  # admin-only terminal override — already ended
 })
 
 

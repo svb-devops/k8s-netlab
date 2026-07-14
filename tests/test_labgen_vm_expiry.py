@@ -167,6 +167,16 @@ class TestExpiryDetection:
         svc, _, _ = _svc([session])
         assert svc.find_expired_sessions(now=_NOW) == []
 
+    def test_force_closed_session_not_expired(self):
+        """LAB_FORCE_CLOSED is terminal (admin-only force close) and must be skipped —
+        otherwise a cron-driven expire_sessions call re-selects it on every run forever
+        (regression: _SKIP_STATUSES omitted LAB_FORCE_CLOSED while lab_session_service's
+        own _ALREADY_ENDED_STATES already treated it as terminal)."""
+        started = _NOW - timedelta(minutes=60)
+        session = _make_session(started_at=started, status=LabSessionStatus.LAB_FORCE_CLOSED)
+        svc, _, _ = _svc([session])
+        assert svc.find_expired_sessions(now=_NOW) == []
+
     def test_session_without_started_at_not_expired(self):
         session = _make_session(started_at=None)
         svc, _, _ = _svc([session])

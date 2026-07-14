@@ -8,6 +8,7 @@ validation and HTTP status mapping.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -880,8 +881,14 @@ async def expire_sessions(
 
     Admin-only. Never returns kubeconfig, namespace, credential material, raw exceptions,
     or stack traces. Use dry_run=true to inspect without mutating state.
+
+    Dispatched via asyncio.to_thread(): expire_sessions() -> timeout_session() ->
+    _do_cleanup() runs a synchronous time.sleep() per namespace-deletion retry (K3s
+    namespace deletion is async). Calling it directly on the request coroutine would
+    block the event loop — and therefore every concurrent learner WebSocket terminal —
+    for the cumulative sleep duration whenever this processes more than one session.
     """
-    result = svc.expire_sessions(dry_run=body.dry_run, limit=body.limit)
+    result = await asyncio.to_thread(svc.expire_sessions, dry_run=body.dry_run, limit=body.limit)
     return ExpireSessionsResponse(
         expired_session_ids=result.expired_session_ids,
         cleaned_session_ids=result.cleaned_session_ids,
