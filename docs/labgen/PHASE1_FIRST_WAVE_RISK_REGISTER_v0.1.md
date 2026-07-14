@@ -2,19 +2,19 @@
 
 ## 状态
 
-`documentation_only`。只记录当前真实存在的风险，不扩展新任务、不预先设计修复方案（除非风险本身要求立即止损，本次没有这类情况）。
+`documentation_only`（首次冻结时）；2026-07-14 追加一次 HIGH-01 保守对齐修复（见下方 RESOLVED，纯数据修复，不涉及代码/发布策略变更）。
 
 ---
 
-## HIGH
+## RESOLVED
 
-### HIGH-01：CrashLoopBackOff 文章 Directus 状态与 LabDraft CTA 字段不同步
+### HIGH-01（已修复 2026-07-14）：CrashLoopBackOff 文章 Directus 状态与 LabDraft CTA 字段不同步
 
-- **现状**：`OWNER_SOFT_LAUNCH_ARTICLE1_PUBLISHED_VERIFIED_v0.1.md`（2026-06-28）记录该文章已 `PUBLISHED_VERIFIED`、`cta_enabled=true`。本次 RC 检查（2026-07-13）发现 Directus 实际记录（article id=4，slug=`crashloopbackoff-describe-logs`）当前 `status=draft`，公开 API（`GET /api/articles`、`GET /api/articles/{slug}`）均确认匿名访客当前无法读取该文章。但 LabDraft 层（`bb4fe651-...`）的 `cta_enabled=true`、`article_url` 仍然指向这个现在实际不可访问的文章
-- **影响**：如果任何流程（人工或未来自动化）依赖 `cta_enabled=true` 作为"这篇文章可以安全对外引用"的信号，会产生误导——CTA 技术上是开的，但目标内容实际拿不到。当前没有真实公开流量访问这个链接（lab 本身仍被 `LABGEN_ENABLED_LAB_IDS` 挡住，article.html 页面也没有被任何入口链接进去），所以**当前没有真实用户会撞见这个问题**，但状态本身是错误的，且随时可能因为"看到 cta_enabled=true 就以为可以安全推广"而被误用
-- **根因**：未知，超出本次只读 RC 快照的调查范围——不清楚是谁、在什么操作下把 Directus 文章从 published 改回 draft，也不清楚 LabDraft 的 `cta_enabled`/`article_url` 字段为何没有同步降级
-- **不在本次处理**：本次任务边界明确禁止"发布公开文章"和修改 draft/published 状态，因此不主动把 Directus 文章改回 published，也不主动把 LabDraft 的 CTA 字段降级对齐——两个方向都是"改变当前状态"，都超出 RC 快照的只读边界
-- **建议下一步**：owner 决定两个方向之一——(a) 重新审查这篇文章内容后正式发布（对齐 Directus status=published），或 (b) 把 LabDraft 的 `cta_enabled` 降回 `false`、`article_url` 清空，与另外两个 lab 保持一致的"完全内部"状态，直到三篇一起做统一发布决策
+- **原状态**：`OWNER_SOFT_LAUNCH_ARTICLE1_PUBLISHED_VERIFIED_v0.1.md`（2026-06-28）记录该文章已 `PUBLISHED_VERIFIED`、`cta_enabled=true`。2026-07-13 RC 检查发现 Directus 实际记录（article id=4，slug=`crashloopbackoff-describe-logs`）当前 `status=draft`，公开 API（`GET /api/articles`、`GET /api/articles/{slug}`）均确认匿名访客无法读取该文章。但 LabDraft 层（`bb4fe651-...`）的 `cta_enabled=true`、`article_url` 仍然指向这个不可访问的文章
+- **根因确认（2026-07-14）**：查询 Directus `activity`/`revisions`：2026-07-01T20:25:36Z，同一 admin 账号对 article id=4 执行了一次显式 `update`，delta 为 `{"status": "draft"}`（`published_at` 保留 06-28 原值未清）。确认为一次明确的字段更新，而非数据损坏或自动化误删；具体操作者的意图/入口未追查（超出范围）。LabDraft 的 CTA 字段此后未同步降级，导致状态漂移持续到 07-13 才被发现
+- **修复**：采用保守对齐方向 (b)——通过 `PATCH /api/labgen/drafts/bb4fe651-7687-4457-9056-885172d9017b` 将 `cta_enabled` 降回 `false`，`article_url`/`article_title`/`article_channel`/`article_published_at` 全部清空，与 Service No Endpoints / ImagePullBackOff 两个 lab 完全一致。未触碰 Directus 文章状态（是否/何时重新发布仍是方向 (a)，留给 owner 单独决策），未修改 `LABGEN_ENABLED_LAB_IDS`，未新增用户，未开放公开访问
+- **验证**：targeted tests（`cta`/`lab_draft`/`article_bind` 相关，124 passed）、生产 health 全绿、`git status` clean（`data/*.json` 不入库，此次为纯数据修复，无代码改动）
+- **遗留（不阻塞，转普通决策事项）**：三篇 first wave 文章正式发布顺序/时机，仍需 owner 决策
 
 ## MEDIUM
 

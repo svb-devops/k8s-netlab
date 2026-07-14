@@ -27,8 +27,8 @@ runtime_scope: 单命名空间、single K3s runtime（不涉及多 VM / 多节�
 | rehearsal | 完成，`rehearsal_completed=true` |
 | smoke | 完成（owner-as-learner） |
 | cleanup_verified | `true`（历史记录，`OWNER_SOFT_LAUNCH_ARTICLE1_PUBLISHED_VERIFIED_v0.1.md`） |
-| article draft status | **Directus `status=draft`**（article_id=4，slug=`crashloopbackoff-describe-logs`）——见下方"三篇文章一致性检查"关键发现 |
-| CTA status | LabDraft 层 `cta_enabled=true`，`article_url` 已设置且指向上述 Directus 文章；但该 Directus 记录当前是 `draft` 状态，`GET /api/articles/{slug}` 返回"文章不存在"（404 语义），匿名访客访问该链接会看到空白/报错页面 |
+| article draft status | Directus `status=draft`（article_id=4，slug=`crashloopbackoff-describe-logs`）——见下方"三篇文章一致性检查"关键发现 |
+| CTA status | **已于 2026-07-14 保守对齐**：`cta_enabled=false`，`article_url`/`article_title`/`article_channel`/`article_published_at` 全部清空，与另外两个 lab 完全一致（PATCH `/api/labgen/drafts/{lab_id}`，详见 HIGH-01 修复记录） |
 | current access status | 真实学生仍 403（`LABGEN_ENABLED_LAB_IDS` 未包含此 lab_id，与 CTA/article 状态无关，gate 本身未受影响） |
 
 ### 2. Service No Endpoints
@@ -74,7 +74,9 @@ runtime_scope: 单命名空间、single K3s runtime（不涉及多 VM / 多节�
 
 **标题风格不完全统一**：CrashLoopBackOff 用的是"溯查体"命名（更像正式发布稿），Service/ImagePullBackOff 两篇是我在生产 lab 时草拟的"排查实验体"命名（更像内部工作稿）。三篇正式对外发布前建议统一风格——具体采用哪种由 owner 决定，不在本次 RC 范围内擅自改写。
 
-**关键发现（本次 RC 检查中发现，非本次改动引入）**：`OWNER_SOFT_LAUNCH_ARTICLE1_PUBLISHED_VERIFIED_v0.1.md`（2026-06-28 锁定）记录 CrashLoopBackOff 文章已 `PUBLISHED_VERIFIED`、`cta_enabled=true`，但实际查询 Directus（`GET /items/articles/4`）显示当前 `status=draft`，公开只读 API（`GET /api/articles`、`GET /api/articles/{slug}`）均确认该文章当前不可被匿名访客读取。也就是说这篇文章在 2026-06-28 之后的某个时间点从 `published` 被改回了 `draft`（本次未追查具体是谁在何时改的——不在本次只读 RC 快照范围内），但 LabDraft 层的 `cta_enabled`/`article_url` 字段没有同步更新，仍然指向这个现在实际上不可访问的文章。详见下方 Risk Register HIGH-01。
+**关键发现（RC 检查中发现，非本次三个 lab 生产工作引入）**：`OWNER_SOFT_LAUNCH_ARTICLE1_PUBLISHED_VERIFIED_v0.1.md`（2026-06-28 锁定）记录 CrashLoopBackOff 文章已 `PUBLISHED_VERIFIED`、`cta_enabled=true`。Directus `activity`/`revisions` 记录确认：2026-07-01T20:25:36Z，同一 admin 账号（`d2d195f4-...`）对 article id=4 执行了一次 `update`，delta 仅为 `{"status": "draft"}`——即在 06-28 发布锁定之后，该文章被显式改回了 `draft`（`published_at` 时间戳未被清除，仍保留 06-28 的值）。是谁、通过什么入口（Directus 后台手动编辑 or 脚本）做的这次改动，本次未追查，超出只读确认范围。但可以确认：**不是自动化 job 静默改的**（同一账号+显式 update 事件，不是数据损坏或误删），且 LabDraft 层的 `cta_enabled`/`article_url` 在此之后一直未同步降级，导致状态漂移持续到本次 RC 检查（2026-07-13）才被发现。
+
+**已于 2026-07-14 保守对齐（HIGH-01 修复）**：采用 Risk Register 建议的方向 (b)——LabDraft 层 `cta_enabled` 降回 `false`，`article_url`/`article_title`/`article_channel`/`article_published_at` 全部清空，与 Service No Endpoints / ImagePullBackOff 两个 lab 完全一致。未触碰 Directus 文章状态（是否重新发布仍是 owner 决策），未修改 `LABGEN_ENABLED_LAB_IDS`，未新增用户，未开放任何公开访问。详见下方 Risk Register HIGH-01 更新。
 
 ---
 
@@ -134,6 +136,6 @@ lab_runtime_entries_archived (would-be): 0
 
 ## 结论
 
-`PHASE1_FIRST_WAVE_RC_READY_FOR_OWNER_DOGFOOD`
+`FIRST_WAVE_RC_STATUS_CONSISTENT`
 
-三个 lab 的功能性交付（static validation / rehearsal / smoke / cleanup）已全部完成且状态一致、健康。RC 阶段发现的唯一实质性问题是 CrashLoopBackOff 文章的 Directus 状态与 LabDraft CTA 字段不同步（HIGH-01，见 Risk Register），这是历史遗留状态漂移，不是本次三个 lab 生产工作引入的新问题，也不影响三个 lab 本身的功能正确性或访问收紧策略。建议下一步是 Owner Dogfood（见 `OWNER_DOGFOOD_FIRST_WAVE_RUNBOOK_v0.1.md`），HIGH-01 的处理（是否重新发布该文章、还是把 CTA 字段降回与另外两篇一致的关闭状态）留给 owner 单独决策。
+三个 lab 的功能性交付（static validation / rehearsal / smoke / cleanup）已全部完成且状态一致、健康。RC 阶段发现的 HIGH-01（CrashLoopBackOff 文章 Directus 状态与 LabDraft CTA 字段不同步）已于 2026-07-14 用保守对齐方式修复：三个 lab 的 LabDraft 层 `cta_enabled`/`article_url` 现在完全一致（全部 `false`/`null`），不存在任何 lab 对外表现为"文章已发布可读"但实际拿不到内容的状态。**仍需 owner 决策**的是三篇 first wave 文章（均为草稿状态）的正式发布顺序与时机——这是本次任务边界之外的产品决策，不影响当前状态一致性结论。建议下一步是 Owner Dogfood（见 `OWNER_DOGFOOD_FIRST_WAVE_RUNBOOK_v0.1.md`）。
