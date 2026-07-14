@@ -163,7 +163,27 @@ test('lab detail: runtime_checks_deferred shows warning', () => {
     // The RUNTIME_CHECKS_DEFERRED code comes inside the issues array
     const elig = { is_startable: true, issues: [{ code: 'RUNTIME_CHECKS_DEFERRED', message: 'checks deferred', severity: 'warning', source: 'runtime' }], checked_at: '2026-06-14T00:00:00Z' };
     const html = renderLabDetail({ lab, eligibility: elig });
-    assert.ok(html.includes('deferred'), 'Missing deferred warning');
+    assert.ok(html.includes('运行环境检查已延迟'), 'Missing deferred warning');
+});
+
+test('lab detail: steps section reads steps_preview (not steps) — regression', () => {
+    // Bug: LearnerLabDetail (backend/labgen/learner_catalog.py) returns the
+    // field as `steps_preview` (list of {step_id, title, learner_goal,
+    // instructions_summary, expected_outcome_summary, check_count}), but
+    // renderLabDetail read `lab?.steps`, which the real API response never has
+    // — the "Steps" section silently never rendered on production. The existing
+    // tests above all happened to mock `steps: [...]` (the wrong shape), so
+    // this went undetected.
+    const lab = {
+        title: 'Pod Networking',
+        objectives: [],
+        steps_preview: [
+            { step_id: 's1', title: 'Create a deployment', learner_goal: 'goal text', instructions_summary: '', expected_outcome_summary: '', check_count: 1 },
+        ],
+    };
+    const elig = { is_startable: true, issues: [], checked_at: '2026-06-14T00:00:00Z' };
+    const html = renderLabDetail({ lab, eligibility: elig });
+    assert.ok(html.includes('Create a deployment'), 'steps_preview step title must be rendered');
 });
 
 test('lab detail: 404 does not reveal unpublished details', () => {

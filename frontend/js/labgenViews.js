@@ -219,84 +219,129 @@ export function renderLabCatalog(labs) {
  * @param {object} p.lab         - LearnerLabDetail
  * @param {object} p.eligibility - LearnerLabEligibility
  */
+/**
+ * title is always escaped internally (plain text only — never pass markup).
+ * bodyHtml is NOT escaped: it's inserted as-is, so callers must pass either a
+ * static string or HTML already built from _safe()-escaped pieces (matching
+ * this file's file-level invariant that all dynamic values pass through
+ * escapeHtml/sanitizeDisplayText before being embedded).
+ */
+function _alertBox({ icon, bg, border, text, title, bodyHtml }) {
+    return `
+    <div class="flex gap-3 ${bg} border ${border} rounded-lg p-4">
+        <svg class="w-5 h-5 flex-shrink-0 mt-0.5 ${text}" fill="currentColor" viewBox="0 0 20 20">${icon}</svg>
+        <div class="min-w-0">
+            <p class="text-sm font-semibold ${text}">${_safe(title)}</p>
+            <p class="text-sm mt-0.5 ${text}">${bodyHtml}</p>
+        </div>
+    </div>`;
+}
+
+const _ICON_INFO = '<path fill-rule="evenodd" d="M18 10A8 8 0 11 2 10a8 8 0 0116 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9zm1-4a1 1 0 100 2 1 1 0 000-2z" clip-rule="evenodd"/>';
+const _ICON_ERROR = '<path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>';
+const _ICON_CHECK = '<path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd"/>';
+
 export function renderLabDetail({ lab, eligibility }) {
     const canStart  = eligibility?.is_startable === true;
     const deferred  = Array.isArray(eligibility?.issues) &&
         eligibility.issues.some(i => i?.code === 'RUNTIME_CHECKS_DEFERRED');
 
+    const steps = Array.isArray(lab?.steps_preview) ? lab.steps_preview : [];
+
     const objectives = Array.isArray(lab?.objectives)
-        ? lab.objectives.map(o => `<li class="text-sm text-gray-700">${_safe(o)}</li>`).join('')
+        ? lab.objectives.map(o => `
+            <li class="flex items-start gap-2">
+                <svg class="w-4 h-4 flex-shrink-0 mt-0.5 text-k8s-blue" fill="currentColor" viewBox="0 0 20 20">${_ICON_CHECK}</svg>
+                <span class="text-sm text-gray-700">${_safe(o)}</span>
+            </li>`).join('')
         : '';
 
-    const steps = Array.isArray(lab?.steps)
-        ? lab.steps.map((s, idx) => `
-            <div class="border border-gray-100 rounded p-3">
-                <p class="text-sm font-medium">${_safe(idx + 1)}. ${_safe(s?.title ?? s?.step_id ?? '')}</p>
+    const stepsHtml = steps.length > 0
+        ? steps.map((s, idx) => `
+            <div class="flex gap-4">
+                <div class="flex flex-col items-center flex-shrink-0">
+                    <div class="w-7 h-7 rounded-full bg-k8s-blue text-white text-xs font-bold flex items-center justify-center">${_safe(idx + 1)}</div>
+                    ${idx < steps.length - 1 ? '<div class="w-px flex-1 bg-gray-200 my-1"></div>' : ''}
+                </div>
+                <div class="min-w-0 pb-5">
+                    <p class="text-sm font-medium text-gray-900">${_safe(s?.title ?? s?.step_id ?? '')}</p>
+                    ${s?.learner_goal ? `<p class="text-sm text-gray-500 mt-1">${_safe(s.learner_goal)}</p>` : ''}
+                    ${s?.check_count > 0 ? `<span class="inline-block mt-2 text-xs text-gray-400">${_safe(s.check_count)} 项自动校验</span>` : ''}
+                </div>
             </div>`
           ).join('')
         : '';
 
     const eligibilityWarning = deferred
-        ? `<div class="bg-yellow-50 border border-yellow-300 rounded p-3 text-yellow-800 text-sm">
-               <strong>Note:</strong> Runtime environment checks are deferred and will run when you start.
-               Your eligibility may change at start time.
-           </div>`
+        ? _alertBox({
+              icon: _ICON_INFO, bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-800',
+              title: '运行环境检查已延迟',
+              bodyHtml: _safe('真实环境检查会在你点击"开始实验"时才执行，届时你的可开始状态可能发生变化。'),
+          })
         : '';
 
     const ineligibleReasons = !canStart && Array.isArray(eligibility?.issues)
-        ? `<ul class="mt-2 list-disc pl-5 text-sm text-red-600">${
-              eligibility.issues.filter(i => i?.severity === 'error')
-                  .map(i => `<li>${_safe(i?.message ?? i)}</li>`).join('')
-          }</ul>`
+        ? eligibility.issues.filter(i => i?.severity === 'error')
+              .map(i => `<li class="text-sm text-red-700">${_safe(i?.message ?? i)}</li>`).join('')
         : '';
+
+    const metaBadges = [
+        steps.length > 0 ? _badge(`${steps.length} 个步骤`, 'bg-gray-100 text-gray-700') : '',
+        lab?.estimated_difficulty ? _badge(lab.estimated_difficulty, 'bg-gray-100 text-gray-700') : '',
+    ].filter(Boolean).join(' ');
 
     return `
     <div class="space-y-6">
-        <h2 class="text-2xl font-semibold text-gray-900">${_safe(lab?.title ?? 'Lab')}</h2>
-
-        ${lab?.summary ? `<p class="text-gray-600">${_safe(lab.summary)}</p>` : ''}
+        <div>
+            <h2 class="text-2xl font-semibold text-gray-900">${_safe(lab?.title ?? 'Lab')}</h2>
+            ${metaBadges ? `<div class="flex items-center gap-2 mt-2">${metaBadges}</div>` : ''}
+            ${lab?.summary ? `<p class="text-gray-600 mt-3 leading-relaxed">${_safe(lab.summary)}</p>` : ''}
+        </div>
 
         ${lab?.experiment_background ? `
-        <div class="bg-blue-50 border border-blue-100 rounded p-4">
-            <h3 class="text-sm font-semibold text-blue-800 mb-1">Background</h3>
-            <p class="text-sm text-blue-900">${_safe(lab.experiment_background)}</p>
+        <div class="bg-blue-50 border border-blue-100 rounded-lg p-4">
+            <h3 class="text-sm font-semibold text-blue-800 mb-1">背景</h3>
+            <p class="text-sm text-blue-900 leading-relaxed">${_safe(lab.experiment_background)}</p>
         </div>` : ''}
 
         ${eligibilityWarning}
 
         ${objectives ? `
         <div>
-            <h3 class="font-medium text-gray-700 mb-2">Objectives</h3>
-            <ul class="list-disc pl-5 space-y-1">${objectives}</ul>
+            <h3 class="font-semibold text-gray-800 mb-3">学习目标</h3>
+            <ul class="space-y-2">${objectives}</ul>
         </div>` : ''}
 
-        ${steps ? `
+        ${stepsHtml ? `
         <div>
-            <h3 class="font-medium text-gray-700 mb-2">Steps (${_safe(lab?.steps?.length ?? 0)})</h3>
-            <div class="space-y-2">${steps}</div>
+            <h3 class="font-semibold text-gray-800 mb-3">实验步骤</h3>
+            <div>${stepsHtml}</div>
         </div>` : ''}
 
-        <div class="border-t pt-4">
-            ${!canStart && ineligibleReasons ? `
-            <div class="bg-red-50 border border-red-200 rounded p-3 mb-3">
-                <p class="text-sm font-medium text-red-700">Not eligible to start:</p>
-                ${ineligibleReasons}
-            </div>` : ''}
-            ${eligibility?.existing_session_id ? `
-            <a href="/labgen-session.html?sessionId=${encodeURIComponent(eligibility.existing_session_id)}"
-               class="inline-block px-5 py-2 rounded font-medium text-sm bg-green-600 text-white hover:bg-green-700">
-                Resume Lab
-            </a>` : `
-            <button
-                data-action="start-lab"
-                data-startable="${canStart}"
-                ${!canStart ? 'disabled' : ''}
-                class="px-5 py-2 rounded font-medium text-sm
-                    ${canStart
-                        ? 'bg-blue-600 text-white hover:bg-blue-700'
-                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'}">
-                Start Lab
-            </button>`}
+        <div class="border-t border-gray-200 pt-5">
+            ${!canStart && ineligibleReasons ? _alertBox({
+                icon: _ICON_ERROR, bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700',
+                title: '暂不满足开始条件',
+                // ineligibleReasons is already built from _safe()-escaped <li> items above.
+                bodyHtml: `<ul class="list-disc pl-4 space-y-0.5 mt-1">${ineligibleReasons}</ul>`,
+            }) : ''}
+            <div class="mt-4">
+                ${eligibility?.existing_session_id ? `
+                <a href="/labgen-session.html?sessionId=${encodeURIComponent(eligibility.existing_session_id)}"
+                   class="inline-block px-5 py-2.5 rounded-lg font-medium text-sm bg-green-600 text-white hover:bg-green-700 transition">
+                    继续实验
+                </a>` : `
+                <button
+                    data-action="start-lab"
+                    data-startable="${canStart}"
+                    ${!canStart ? 'disabled' : ''}
+                    class="px-5 py-2.5 rounded-lg font-medium text-sm transition
+                        ${canStart
+                            ? 'bg-k8s-blue text-white hover:bg-blue-700'
+                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'}">
+                    开始实验
+                </button>`}
+            </div>
         </div>
     </div>`;
 }
