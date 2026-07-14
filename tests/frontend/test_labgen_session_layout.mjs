@@ -7,6 +7,16 @@
  *      only...") used to be printed as raw ANSI text into the xterm.js
  *      buffer, which wraps at the current column width and reads as
  *      unaligned/ragged instead of a real banner.
+ *   3. openDrawer()/closeDrawer() used to call _terminal.fit() synchronously
+ *      right when the drawer's CSS class was toggled — but #lab-drawer's width
+ *      change on desktop is a 250ms CSS transition, not instant. fit() measured
+ *      the container mid-transition (stale width), giving xterm.js a wrong
+ *      column count that corrupted line-wrapping for the rest of the session
+ *      (later output would overwrite characters instead of wrapping cleanly).
+ *      Found via production dogfooding after fix #1 shipped: opening the
+ *      drawer no longer overlays the terminal, but resizing it exposed this
+ *      latent fit()-timing bug that never mattered when the drawer was an
+ *      overlay (resizing nothing).
  *
  * No jsdom is set up in this project (frontend tests only exercise pure
  * functions — see test_views.mjs's docstring), so these assert on the static
@@ -79,6 +89,58 @@ test('security notice is a real HTML banner, not text printed into the terminal'
         /_showSecurityNotice/,
         'the ANSI-escape security notice writer must be removed from the terminal client — ' +
         'it wrapped at the terminal\'s current column width and looked misaligned'
+    );
+});
+
+test('terminal is refit after the drawer transition ends, not synchronously on toggle', () => {
+    const openDrawerStart = sessionInitJs.indexOf('function openDrawer()');
+    const openDrawerBody = sessionInitJs.slice(
+        openDrawerStart,
+        sessionInitJs.indexOf('\n}', openDrawerStart)
+    );
+    const closeDrawerStart = sessionInitJs.indexOf('function closeDrawer()');
+    const closeDrawerBody = sessionInitJs.slice(
+        closeDrawerStart,
+        sessionInitJs.indexOf('\n}', closeDrawerStart)
+    );
+    assert.doesNotMatch(
+        openDrawerBody,
+        /_terminal\.fit\(\)/,
+        'openDrawer() must not call _terminal.fit() synchronously — the drawer\'s ' +
+        'width change is a CSS transition, so fit() would measure a stale mid-transition width'
+    );
+    assert.doesNotMatch(
+        closeDrawerBody,
+        /_terminal\.fit\(\)/,
+        'closeDrawer() must not call _terminal.fit() synchronously — same reasoning as openDrawer()'
+    );
+    assert.match(
+        openDrawerBody,
+        /_refitAfterDrawerTransition\(\)/,
+        'openDrawer() must schedule a deferred refit'
+    );
+    assert.match(
+        closeDrawerBody,
+        /_refitAfterDrawerTransition\(\)/,
+        'closeDrawer() must schedule a deferred refit'
+    );
+    // Regression (caught in safety review): a transitionend listener never fires
+    // for prefers-reduced-motion / any 0-duration CSS transition, which would
+    // leave fit() permanently stale for those users — worse than calling it too
+    // early. setTimeout fires unconditionally regardless of whether the CSS
+    // transition actually ran.
+    assert.doesNotMatch(
+        sessionInitJs,
+        /addEventListener\(\s*['"]transitionend['"]/,
+        'refit must not depend on the transitionend event — it does not fire for ' +
+        '0-duration transitions (prefers-reduced-motion), which would silently break ' +
+        'terminal refitting for those users'
+    );
+    assert.match(
+        sessionInitJs,
+        /setTimeout\(\s*\(\s*\)\s*=>\s*{\s*if\s*\(_terminal\)\s*_terminal\.fit\(\)/,
+        'the deferred refit must use setTimeout so it fires regardless of whether a ' +
+        'CSS transition actually occurred'
     );
 });
 

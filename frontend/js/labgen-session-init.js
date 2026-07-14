@@ -70,19 +70,40 @@ const DESKTOP_DRAWER_BREAKPOINT_PX = 768;
 
 // ── Drawer ────────────────────────────────────────────────────────────────────
 
+// Matches #lab-drawer's `transition: width 0.25s` in labgen-session.html, plus
+// a small safety margin. Refitting the terminal must wait until the drawer's
+// width transition actually finishes — not when it starts (see _refitAfterDrawerTransition).
+const DRAWER_TRANSITION_MS = 250;
+
 function openDrawer() {
     drawer.classList.add('drawer-open');
     backdrop.classList.add('backdrop-visible');
     _drawerOpen = true;
-    // Refit terminal when drawer closes (backdrop covers but terminal is still open)
-    if (_terminal) _terminal.fit();
+    _refitAfterDrawerTransition();
 }
 
 function closeDrawer() {
     drawer.classList.remove('drawer-open');
     backdrop.classList.remove('backdrop-visible');
     _drawerOpen = false;
-    if (_terminal) _terminal.fit();
+    _refitAfterDrawerTransition();
+}
+
+// #lab-drawer resizing the terminal (desktop sidebar) is a CSS transition, not
+// an instant layout change; calling _terminal.fit() synchronously on toggle (the
+// original approach) measured the container mid-transition and gave xterm.js a
+// stale column count, corrupting line-wrapping for the rest of the session
+// (e.g. later output silently overwriting characters instead of wrapping
+// cleanly). A `transitionend` listener fixes the common case, but never fires
+// at all under `prefers-reduced-motion` or any other 0-duration transition (the
+// CSS Transitions spec doesn't dispatch transitionend for zero-length
+// transitions) — for those users fit() would then never run again, which is
+// worse than the original bug. setTimeout matching the transition duration
+// fires unconditionally regardless of whether the CSS transition actually ran.
+function _refitAfterDrawerTransition() {
+    setTimeout(() => {
+        if (_terminal) _terminal.fit();
+    }, DRAWER_TRANSITION_MS + 10);
 }
 
 function switchTab(tab) {
