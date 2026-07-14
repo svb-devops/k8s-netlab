@@ -193,3 +193,27 @@ test('terminal fit() re-scrolls to bottom after resizing (regression: input line
         'the resize handler must call this.fit(), not this._fitAddon.fit() directly'
     );
 });
+
+test('ready message normalizes bare \\n to \\r\\n before writing (regression: staircase indentation)', () => {
+    // Production bug found via owner dogfooding: the two lines of the WS 'ready'
+    // message ("Lab terminal ready. Namespace: ..." / "Use kubectl commands...")
+    // rendered with a large horizontal gap between them, as if the second line
+    // started printing partway across the screen instead of at column 0.
+    // Root cause: xterm.js (convertEol defaults to false) treats a bare "\n" as
+    // line-feed-only — it moves the cursor down a row but does NOT return it to
+    // column 0. The server sends msg.msg with plain Python "\n" line breaks. The
+    // 'output'/'blocked'/'error' cases all normalize with
+    // `.replace(/\r?\n/g, '\r\n')` before writing; the 'ready' case never did,
+    // writing msg.msg raw — every line after the first inherited whatever column
+    // the previous line happened to end at, producing a staircase effect.
+    const readyStart = terminalJs.indexOf("case 'ready':");
+    const readyBody = terminalJs.slice(readyStart, terminalJs.indexOf('break;', readyStart));
+    assert.match(
+        readyBody,
+        /msg\.msg[^;]*\.replace\(\/\\r\?\\n\/g,\s*['"]\\r\\n['"]\)/,
+        "the 'ready' case must normalize msg.msg's bare \\n to \\r\\n before writing, " +
+        'the same way the output/blocked/error cases already do — otherwise each ' +
+        'line after the first starts wherever the previous line\'s cursor column ' +
+        'happened to end up, producing a staircase indentation effect'
+    );
+});

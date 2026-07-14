@@ -151,13 +151,22 @@ export class LabKubectlTerminal {
         }
 
         switch (msg.type) {
-            case 'ready':
+            case 'ready': {
                 this._namespace = msg.namespace || '';
+                // xterm.js (convertEol defaults to false) treats a bare "\n" as
+                // line-feed-only — it moves down a row without returning to column
+                // 0. msg.msg arrives with plain "\n" line breaks (Python string),
+                // so it must be normalized the same way output/blocked/error are
+                // below, or each line after the first starts at whatever column
+                // the previous line's cursor happened to end up at (staircase
+                // indentation).
+                const readyText = (msg.msg || 'Terminal ready.\n').replace(/\r?\n/g, '\r\n');
                 this._write('\x1b[32m');
-                this._write(msg.msg || 'Terminal ready.\r\n');
+                this._write(readyText);
                 this._write('\x1b[0m');
                 this._showPrompt();
                 break;
+            }
 
             case 'output': {
                 // Normalize \n to \r\n for xterm
