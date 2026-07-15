@@ -402,16 +402,27 @@ FRONTEND_DIR = PROJECT_ROOT / "frontend"
 class NoCacheStaticFiles(StaticFiles):
     """StaticFiles that forbids long-lived edge/browser caching.
 
-    Cloudflare honors the origin's Cache-Control header (Origin Cache
-    Control). The default starlette StaticFiles response has no
-    Cache-Control header, which Cloudflare was treating as cacheable for
-    its default TTL (~4h) — so a JS bugfix deployed to disk could stay
-    invisible to real users for hours. Force revalidation on every request.
+    The default starlette StaticFiles response has no Cache-Control header.
+    Confirmed via `curl -I` through the live domain (2026-07-14): even with
+    this class setting "no-cache, must-revalidate", Cloudflare's edge was
+    still rewriting the response to "max-age=14400" (its own default Browser
+    Cache TTL) before it reached the browser — "no-cache" still permits
+    caching (it only requires revalidation), and Cloudflare's default TTL
+    rule was overriding that requirement for browser-side caching. A JS
+    bugfix deployed to disk stayed invisible in already-loaded browsers for
+    up to 4 hours. "no-store" is a stronger directive (forbids caching
+    outright, not just "must revalidate before reuse") that Cloudflare
+    respects instead of overriding — confirmed via the same curl test after
+    this change deployed the response no longer carries a max-age.
+
+    This does NOT eliminate Cloudflare's own edge cache (that layer still
+    protects the origin from repeated requests); it only stops instructing
+    the *browser* to hold a stale copy for hours.
     """
 
     async def get_response(self, path: str, scope):
         response = await super().get_response(path, scope)
-        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        response.headers["Cache-Control"] = "no-store"
         return response
 
 
