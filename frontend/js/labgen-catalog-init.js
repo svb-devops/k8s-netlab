@@ -5,7 +5,7 @@ const root = document.getElementById('root');
 const devInfo = document.getElementById('dev-user-info');
 
 async function init() {
-    root.innerHTML = renderLoading();
+    root.innerHTML = renderLoading('dark');
 
     const client = new LabGenClient();
     const me = await client.getMe();
@@ -20,7 +20,7 @@ async function init() {
         root.innerHTML = renderLabCatalog(labs);
     } catch (e) {
         root.innerHTML = renderErrorState(
-            e instanceof LabGenApiError ? e.message : 'Failed to load labs.'
+            e instanceof LabGenApiError ? e.message : 'Failed to load labs.', 'dark'
         );
     }
 }

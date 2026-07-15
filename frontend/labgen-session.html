@@ -8,6 +8,9 @@
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="/js/tailwind-config.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
     <!-- xterm.js — same versions/SRI as index.html -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css"
@@ -67,7 +70,7 @@
             max-width: 92vw;
             height: auto;
             box-shadow: none;
-            border-right: 1px solid #e5e7eb;
+            border-right: 1px solid #232C3D;
             transform: none;
             transition: width 0.25s ease-in-out;
         }
@@ -99,23 +102,23 @@
     </style>
 </head>
 
-<body class="flex flex-col bg-gray-900" style="height:100vh;overflow:hidden;">
+<body class="theme-dark flex flex-col bg-devops-bg font-plex" style="height:100vh;overflow:hidden;">
 
 <!-- ── Header ── -->
-<header class="flex-shrink-0 bg-white border-b border-gray-200 shadow-sm">
+<header class="flex-shrink-0 bg-devops-surface border-b border-devops-border">
     <div class="flex items-center justify-between px-4 py-3">
         <!-- Left: back link + lab title -->
         <div class="flex items-center gap-3 min-w-0">
             <a href="/labgen-catalog.html"
-               class="flex-shrink-0 text-sm text-gray-500 hover:text-k8s-blue transition flex items-center gap-1">
+               class="flex-shrink-0 text-sm text-devops-muted hover:text-k8s-blue transition flex items-center gap-1">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
                 </svg>
                 实验目录
             </a>
-            <span class="flex-shrink-0 text-gray-300">|</span>
+            <span class="flex-shrink-0 text-devops-border-strong">|</span>
             <h1 id="session-lab-title"
-                class="text-sm font-semibold text-gray-900 truncate">加载中…</h1>
+                class="text-sm font-semibold text-devops-text truncate">加载中…</h1>
         </div>
 
         <!-- Right: status badge + drawer toggle + username -->
@@ -124,7 +127,7 @@
 
             <!-- "实验步骤" drawer toggle — matches index.html's btn-toggle-drawer style -->
             <button id="btn-toggle-drawer"
-                    class="text-xs text-gray-600 hover:text-k8s-blue border border-gray-300 hover:border-k8s-blue
+                    class="text-xs text-devops-muted hover:text-k8s-blue border border-devops-border-strong hover:border-k8s-blue
                            px-3 py-1.5 rounded-lg font-medium transition duration-200 flex items-center gap-1.5">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -133,7 +136,7 @@
                 实验步骤
             </button>
 
-            <span id="session-username" class="text-xs text-gray-400"></span>
+            <span id="session-username" class="text-xs font-plex-mono text-devops-muted"></span>
         </div>
     </div>
 </header>
@@ -149,17 +152,17 @@
     <div id="lab-drawer" class="doc-drawer" role="dialog" aria-label="实验步骤">
 
         <!-- Row 1: 实验步骤 / 实验背景 tabs + close -->
-        <div class="flex-shrink-0 flex items-stretch border-b border-gray-200 bg-gray-50">
+        <div class="flex-shrink-0 flex items-stretch border-b border-devops-border bg-devops-surface">
             <button id="drawer-tab-steps"
-                    class="tab-btn text-xs px-4 py-2.5 font-medium border-b-2 border-k8s-blue text-k8s-blue bg-white">
+                    class="tab-btn text-xs px-4 py-2.5 font-medium border-b-2 border-k8s-blue text-k8s-blue bg-devops-surface-2">
                 实验步骤
             </button>
             <button id="drawer-tab-background"
-                    class="tab-btn text-xs px-4 py-2.5 font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition">
+                    class="tab-btn text-xs px-4 py-2.5 font-medium border-b-2 border-transparent text-devops-muted hover:text-devops-text hover:bg-devops-surface-2 transition">
                 实验背景
             </button>
             <button id="btn-close-drawer"
-                    class="ml-auto px-3 text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition"
+                    class="ml-auto px-3 text-devops-faint hover:text-devops-text hover:bg-devops-surface-2 transition"
                     title="关闭面板">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
@@ -168,12 +171,12 @@
         </div>
 
         <!-- Row 2: Progress bar + step pills -->
-        <div class="flex-shrink-0 px-3 pt-2 pb-1 border-b border-gray-100">
+        <div class="flex-shrink-0 px-3 pt-2 pb-1 border-b border-devops-border">
             <div class="flex items-center justify-between mb-1">
-                <span class="text-xs font-medium text-gray-500">实验进度</span>
-                <span id="drawer-progress-text" class="text-xs text-gray-500">0/0 完成</span>
+                <span class="text-xs font-medium text-devops-muted">实验进度</span>
+                <span id="drawer-progress-text" class="text-xs font-plex-mono text-devops-muted">0/0 完成</span>
             </div>
-            <div class="w-full bg-gray-200 rounded-full h-1">
+            <div class="w-full bg-devops-surface-2 rounded-full h-1">
                 <div id="drawer-progress-bar"
                      class="bg-k8s-blue h-1 rounded-full transition-all duration-300"
                      style="width:0%"></div>
@@ -191,27 +194,27 @@
 
         <!-- View: 实验背景 (hidden by default) -->
         <div id="drawer-background-content"
-             class="hidden flex-1 overflow-y-auto p-4 text-sm text-gray-700">
+             class="hidden flex-1 overflow-y-auto p-4 text-sm text-devops-text/90">
             <!-- Populated by labgen-session-init.js -->
         </div>
 
         <!-- Fixed action footer -->
-        <div class="flex-shrink-0 border-t border-gray-200 bg-white p-3 space-y-2">
+        <div class="flex-shrink-0 border-t border-devops-border bg-devops-surface p-3 space-y-2">
             <button id="btn-check-step" data-action="check-step" disabled
-                    class="w-full px-4 py-2 rounded text-sm font-medium bg-gray-200 text-gray-400 cursor-not-allowed transition">
+                    class="w-full px-4 py-2 rounded text-sm font-medium bg-devops-surface-2 text-devops-faint cursor-not-allowed transition">
                 检查当前步骤
             </button>
             <div class="flex gap-2">
                 <button id="btn-complete" data-action="complete" data-ready="false" disabled
-                        class="flex-1 px-4 py-2 rounded text-sm font-medium bg-gray-200 text-gray-400 cursor-not-allowed transition">
+                        class="flex-1 px-4 py-2 rounded text-sm font-medium bg-devops-surface-2 text-devops-faint cursor-not-allowed transition">
                     完成实验
                 </button>
                 <button id="btn-abort" data-action="abort" disabled
-                        class="flex-1 px-4 py-2 rounded text-sm font-medium bg-gray-200 text-gray-400 cursor-not-allowed transition">
+                        class="flex-1 px-4 py-2 rounded text-sm font-medium bg-devops-surface-2 text-devops-faint cursor-not-allowed transition">
                     中止实验
                 </button>
             </div>
-            <p id="action-error" class="hidden text-red-600 text-xs text-center"></p>
+            <p id="action-error" class="hidden text-red-400 text-xs text-center"></p>
         </div>
 
     </div><!-- end lab-drawer -->
@@ -224,37 +227,37 @@
 
         <!-- Loading / non-active-state message (shown when terminal not connected) -->
         <div id="session-message-area"
-             class="flex-1 flex flex-col items-center justify-center text-gray-400 h-full">
-            <div class="loading mb-4" style="border-color:#374151;border-top-color:#326CE5;"></div>
+             class="flex-1 flex flex-col items-center justify-center text-devops-muted h-full font-plex">
+            <div class="loading mb-4" style="border-color:#232C3D;border-top-color:#326CE5;"></div>
             <p id="session-message-text" class="text-sm">正在加载实验环境…</p>
         </div>
 
         <!-- kubectl terminal panel (shown when LAB_ACTIVE) -->
         <div id="kubectl-terminal-panel" class="hidden flex-col h-full">
             <!-- macOS-style title bar -->
-            <div class="flex-shrink-0 flex items-center px-3 py-2 bg-gray-800 border-b border-gray-700">
+            <div class="flex-shrink-0 flex items-center px-3 py-2 bg-devops-surface border-b border-devops-border">
                 <div class="flex space-x-1.5 mr-3">
                     <div class="w-2.5 h-2.5 rounded-full bg-red-500"></div>
                     <div class="w-2.5 h-2.5 rounded-full bg-yellow-500"></div>
                     <div class="w-2.5 h-2.5 rounded-full bg-green-500"></div>
                 </div>
-                <span class="text-xs font-mono font-semibold text-green-400">$ kubectl</span>
-                <span class="text-xs text-gray-400 ml-1.5">Lab Terminal</span>
+                <span class="text-xs font-plex-mono font-semibold text-green-400">$ kubectl</span>
+                <span class="text-xs text-devops-muted ml-1.5 font-plex">Lab Terminal</span>
                 <span id="kubectl-terminal-ns-badge"
-                      class="hidden ml-3 text-xs font-mono text-cyan-300"></span>
+                      class="hidden ml-3 text-xs font-plex-mono text-cyan-300"></span>
             </div>
 
             <!-- Security notice — real banner (not printed into the terminal buffer,
                  which caused ragged/unaligned text wrapping at arbitrary widths) -->
-            <div class="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 bg-amber-50 border-b border-amber-200">
-                <svg class="w-3.5 h-3.5 flex-shrink-0 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
+            <div class="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 bg-amber-500/10 border-b border-amber-500/25">
+                <svg class="w-3.5 h-3.5 flex-shrink-0 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
                     <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l6.518 11.598c.75 1.334-.213 2.98-1.742 2.98H3.48c-1.53 0-2.492-1.646-1.743-2.98L8.257 3.1zM11 14a1 1 0 11-2 0 1 1 0 012 0zm-.25-6.5a.75.75 0 00-1.5 0v3.5a.75.75 0 001.5 0v-3.5z" clip-rule="evenodd"/>
                 </svg>
-                <span class="text-xs text-amber-800">请仅在本实验范围内使用该终端，不要输入真实密码、Token、API Key 或私钥。</span>
+                <span class="text-xs text-amber-300 font-plex">请仅在本实验范围内使用该终端，不要输入真实密码、Token、API Key 或私钥。</span>
             </div>
 
             <!-- xterm.js mount point (flex-1 fills remaining height) -->
-            <div id="kubectl-terminal-container" class="bg-gray-900"></div>
+            <div id="kubectl-terminal-container" class="bg-devops-bg"></div>
         </div>
     </main>
 

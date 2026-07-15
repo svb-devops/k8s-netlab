@@ -171,3 +171,19 @@
     /* Drawer full-width on mobile */
     .doc-drawer { width: 100vw; max-width: 100vw; }
 }
+
+/* ── Dark DevOps theme overrides ──────────────────────────────────────────
+   Scoped under body.theme-dark (currently only labgen-session.html sets this
+   class) so index.html's light-mode .doc-drawer / .step-pill are untouched. */
+.theme-dark .doc-drawer {
+    background: #121826;
+}
+.theme-dark .step-pill {
+    border-color: #2E3A52;
+    background: #121826;
+    color: #8B96AC;
+}
+.theme-dark .step-pill:hover { border-color: #326CE5; color: #326CE5; }
+.theme-dark .step-pill.sp-active { background: #326CE5; border-color: #326CE5; color: #fff; }
+.theme-dark .step-pill.sp-done { background: rgba(16, 185, 129, 0.12); border-color: #10b981; color: #34d399; }
+.theme-dark .step-pill.sp-done.sp-active { background: #059669; border-color: #047857; color: #fff; }

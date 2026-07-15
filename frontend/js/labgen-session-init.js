@@ -115,15 +115,15 @@ function switchTab(tab) {
 
     tabSteps.classList.toggle('border-k8s-blue', isSteps);
     tabSteps.classList.toggle('text-k8s-blue', isSteps);
-    tabSteps.classList.toggle('bg-white', isSteps);
+    tabSteps.classList.toggle('bg-devops-surface-2', isSteps);
     tabSteps.classList.toggle('border-transparent', !isSteps);
-    tabSteps.classList.toggle('text-gray-500', !isSteps);
+    tabSteps.classList.toggle('text-devops-muted', !isSteps);
 
     tabBackground.classList.toggle('border-k8s-blue', !isSteps);
     tabBackground.classList.toggle('text-k8s-blue', !isSteps);
-    tabBackground.classList.toggle('bg-white', !isSteps);
+    tabBackground.classList.toggle('bg-devops-surface-2', !isSteps);
     tabBackground.classList.toggle('border-transparent', isSteps);
-    tabBackground.classList.toggle('text-gray-500', isSteps);
+    tabBackground.classList.toggle('text-devops-muted', isSteps);
 }
 
 btnToggleDrawer.addEventListener('click', () => _drawerOpen ? closeDrawer() : openDrawer());
@@ -190,8 +190,8 @@ function _updateDrawerContent(snapshot) {
     // Background view
     const bg = snapshot?.experiment_background ?? snapshot?.background ?? '';
     drawerBg.innerHTML = bg
-        ? `<p class="text-sm text-gray-700 leading-relaxed">${escapeHtml(bg)}</p>`
-        : `<p class="text-sm text-gray-400 text-center pt-12">暂无实验背景介绍</p>`;
+        ? `<p class="text-sm text-devops-text/90 leading-relaxed font-plex">${escapeHtml(bg)}</p>`
+        : `<p class="text-sm text-devops-faint text-center pt-12 font-plex">暂无实验背景介绍</p>`;
 
     // Progress bar + step pills
     _updateProgress(snapshot);
@@ -248,15 +248,15 @@ function _applyBtnState(btn, enabled, kind, label) {
 
     if (enabled) {
         if (kind === 'btn-check') {
-            btn.className = 'w-full px-4 py-2 rounded text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition';
+            btn.className = 'w-full px-4 py-2 rounded text-sm font-medium bg-k8s-blue text-white hover:bg-blue-500 transition';
         } else if (kind === 'btn-complete') {
-            btn.className = 'flex-1 px-4 py-2 rounded text-sm font-medium bg-green-600 text-white hover:bg-green-700 transition';
+            btn.className = 'flex-1 px-4 py-2 rounded text-sm font-medium bg-green-600 text-white hover:bg-green-500 transition';
         } else {
             btn.className = 'flex-1 px-4 py-2 rounded text-sm font-medium bg-red-500 text-white hover:bg-red-600 transition';
         }
     } else {
         const full = kind === 'btn-check' ? 'w-full ' : 'flex-1 ';
-        btn.className = `${full}px-4 py-2 rounded text-sm font-medium bg-gray-200 text-gray-400 cursor-not-allowed transition`;
+        btn.className = `${full}px-4 py-2 rounded text-sm font-medium bg-devops-surface-2 text-devops-faint cursor-not-allowed transition`;
     }
 }
 
@@ -309,8 +309,8 @@ function _syncTerminal(snapshot) {
         messageArea.classList.remove('hidden');
         messageTextEl.textContent = _STATE_LABELS[snapshot?.session_state] ?? '正在准备实验环境…';
         messageTextEl.className   = snapshot?.session_state === 'LAB_CLEANUP_FAILED'
-            ? 'text-red-400 text-sm'
-            : 'text-gray-400 text-sm';
+            ? 'text-red-400 text-sm font-plex'
+            : 'text-devops-muted text-sm font-plex';
     }
 }
 
@@ -368,7 +368,7 @@ function showPageMessage(text, type = 'info') {
     terminalPanel.classList.add('hidden');
     terminalPanel.classList.remove('flex');
     messageTextEl.textContent = text;
-    messageTextEl.className   = type === 'error' ? 'text-red-400 text-sm' : 'text-gray-400 text-sm';
+    messageTextEl.className   = type === 'error' ? 'text-red-400 text-sm font-plex' : 'text-devops-muted text-sm font-plex';
 }
 
 function _showActionError(e) {
@@ -383,17 +383,17 @@ function _clearActionError() {
 }
 
 const _STATUS_CLASSES = {
-    LAB_ACTIVE:          'bg-green-100 text-green-800',
-    LAB_COMPLETED:       'bg-blue-100 text-blue-800',
-    LAB_CLOSED:          'bg-gray-100 text-gray-600',
-    LAB_ABORTED:         'bg-red-100 text-red-700',
-    LAB_CLEANUP_FAILED:  'bg-orange-100 text-orange-800',
-    IMAGE_CHECK_RUNNING: 'bg-yellow-100 text-yellow-800',
+    LAB_ACTIVE:          'bg-green-500/15 text-green-400 border border-green-500/30',
+    LAB_COMPLETED:       'bg-k8s-blue/15 text-blue-400 border border-blue-500/30',
+    LAB_CLOSED:          'bg-devops-surface-2 text-devops-muted border border-devops-border-strong',
+    LAB_ABORTED:         'bg-red-500/15 text-red-400 border border-red-500/30',
+    LAB_CLEANUP_FAILED:  'bg-orange-500/15 text-orange-400 border border-orange-500/30',
+    IMAGE_CHECK_RUNNING: 'bg-amber-500/15 text-amber-400 border border-amber-500/30',
 };
 
 function _statusBadgeHtml(status) {
-    const cls = _STATUS_CLASSES[status] ?? 'bg-gray-100 text-gray-600';
-    return `<span class="inline-block px-2 py-0.5 rounded text-xs font-medium ${cls}">${escapeHtml(status ?? 'UNKNOWN')}</span>`;
+    const cls = _STATUS_CLASSES[status] ?? 'bg-devops-surface-2 text-devops-muted border border-devops-border-strong';
+    return `<span class="inline-block px-2 py-0.5 rounded text-xs font-plex-mono font-medium ${cls}">${escapeHtml(status ?? 'UNKNOWN')}</span>`;
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

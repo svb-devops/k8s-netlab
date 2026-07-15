@@ -6,24 +6,27 @@
     <title>Lab Catalog — K8S NetLab</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="/js/tailwind-config.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body class="bg-devops-bg min-h-screen font-plex">
 
 <!-- ── Header ── -->
-<header class="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
+<header class="bg-devops-surface border-b border-devops-border px-6 py-3 flex items-center justify-between">
     <div class="flex items-center gap-3">
-        <a href="/app" class="text-sm text-gray-500 hover:text-gray-700">← Home</a>
-        <span class="text-gray-300">|</span>
-        <h1 class="text-sm font-semibold text-gray-900">Lab Catalog</h1>
+        <a href="/app" class="text-sm text-devops-muted hover:text-devops-text transition">← Home</a>
+        <span class="text-devops-border-strong">|</span>
+        <h1 class="text-sm font-semibold text-devops-text">Lab Catalog</h1>
     </div>
-    <div id="dev-user-info" class="text-xs text-gray-400"></div>
+    <div id="dev-user-info" class="text-xs font-plex-mono text-devops-muted"></div>
 </header>
 
 <!-- ── Main ── -->
 <main class="max-w-5xl mx-auto px-6 py-8">
     <div class="mb-6">
-        <h2 class="text-2xl font-bold text-gray-900">Available Labs</h2>
-        <p class="text-gray-500 text-sm mt-1">Select a lab to view details and start.</p>
+        <h2 class="text-2xl font-bold text-devops-text">Available Labs</h2>
+        <p class="text-devops-muted text-sm mt-1">Select a lab to view details and start.</p>
     </div>
     <div id="root"><!-- populated by JS --></div>
 </main>

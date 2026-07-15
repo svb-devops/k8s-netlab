@@ -22,34 +22,62 @@ function _badge(text, colorClass) {
 }
 
 function _statusBadge(status) {
+    // Dark-theme chip colors: this badge is only ever rendered inside
+    // renderSessionView, which is exclusive to the dark learner-flow pages
+    // (labgen-session.html) — safe to hardcode dark palette here.
     const map = {
-        LAB_ACTIVE:         'bg-green-100 text-green-800',
-        LAB_COMPLETED:      'bg-blue-100 text-blue-800',
-        LAB_CLOSED:         'bg-gray-100 text-gray-600',
-        LAB_ABORTED:        'bg-red-100 text-red-700',
-        LAB_CLEANUP_FAILED: 'bg-orange-100 text-orange-800',
-        IMAGE_CHECK_RUNNING:'bg-yellow-100 text-yellow-800',
+        LAB_ACTIVE:         'bg-green-500/15 text-green-400 border border-green-500/30',
+        LAB_COMPLETED:      'bg-k8s-blue/15 text-blue-400 border border-blue-500/30',
+        LAB_CLOSED:         'bg-devops-surface-2 text-devops-muted border border-devops-border-strong',
+        LAB_ABORTED:        'bg-red-500/15 text-red-400 border border-red-500/30',
+        LAB_CLEANUP_FAILED: 'bg-orange-500/15 text-orange-400 border border-orange-500/30',
+        IMAGE_CHECK_RUNNING:'bg-amber-500/15 text-amber-400 border border-amber-500/30',
     };
-    return _badge(status, map[status] ?? 'bg-gray-100 text-gray-600');
+    return _badge(status, map[status] ?? 'bg-devops-surface-2 text-devops-muted border border-devops-border-strong');
 }
 
 // ─── Error / empty states ─────────────────────────────────────────────────────
+//
+// theme defaults to 'light' so existing admin/dev callers (renderContractPackSummary,
+// renderLLMProviderStatus, renderAdapterStatus, renderDemoSeedResult, renderAdminDraftView)
+// keep their original rendered output unchanged. Only the learner-facing lab flow
+// (catalog/lab/session init.js, and renderSessionView's internal call) passes 'dark'.
 
-export function renderErrorState(message) {
+export function renderErrorState(message, theme = 'light') {
     const safeMsg = _safe(message);
+    if (theme === 'dark') {
+        return `<div class="p-6 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 font-plex">
+            <p class="font-medium">Unable to load</p>
+            <p class="text-sm mt-1 text-devops-muted">${safeMsg}</p>
+        </div>`;
+    }
     return `<div class="p-6 rounded-lg bg-red-50 border border-red-200 text-red-700">
         <p class="font-medium">Unable to load</p>
         <p class="text-sm mt-1">${safeMsg}</p>
     </div>`;
 }
 
-export function renderNotFound(entity = 'Resource') {
+export function renderNotFound(entity = 'Resource', theme = 'light') {
+    if (theme === 'dark') {
+        return `<div class="p-6 rounded-lg bg-devops-surface border border-devops-border text-devops-muted text-center font-plex">
+            <p class="font-medium">${_safe(entity)} not found</p>
+        </div>`;
+    }
     return `<div class="p-6 rounded-lg bg-gray-50 border border-gray-200 text-gray-600 text-center">
         <p class="font-medium">${_safe(entity)} not found</p>
     </div>`;
 }
 
-export function renderLoading() {
+export function renderLoading(theme = 'light') {
+    if (theme === 'dark') {
+        return `<div class="flex items-center gap-2 text-devops-muted p-6 font-plex">
+            <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+            </svg>
+            <span>Loading…</span>
+        </div>`;
+    }
     return `<div class="flex items-center gap-2 text-gray-500 p-6">
         <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -187,29 +215,30 @@ export function renderAdminDraftView({ preview, decision }) {
  */
 export function renderLabCatalog(labs) {
     if (!Array.isArray(labs) || labs.length === 0) {
-        return `<p class="text-gray-500 text-center py-12">No published labs available yet.</p>`;
+        return `<p class="text-devops-muted text-center py-12">No published labs available yet.</p>`;
     }
 
     const cards = labs.map(lab => {
         const startable = lab?.is_startable === true;
         return `
         <a href="/labgen-lab.html?labId=${encodeURIComponent(lab?.lab_id ?? '')}"
-           class="block border border-gray-200 rounded-lg p-5 hover:border-blue-400 hover:shadow-sm transition">
+           class="block bg-devops-surface border border-devops-border rounded-lg p-5
+                  hover:border-k8s-blue hover:bg-devops-surface-2 transition">
             <div class="flex items-start justify-between gap-3">
-                <h3 class="font-semibold text-gray-900">${_safe(lab?.title ?? 'Untitled')}</h3>
+                <h3 class="font-semibold text-devops-text">${_safe(lab?.title ?? 'Untitled')}</h3>
                 ${startable
-                    ? _badge('Startable', 'bg-green-100 text-green-700')
-                    : _badge('Not available', 'bg-gray-100 text-gray-500')}
+                    ? _badge('Startable', 'bg-green-500/15 text-green-400 border border-green-500/30')
+                    : _badge('Not available', 'bg-devops-surface-2 text-devops-faint border border-devops-border-strong')}
             </div>
-            ${lab?.summary ? `<p class="text-sm text-gray-500 mt-2">${_safe(lab.summary)}</p>` : ''}
-            <div class="flex gap-4 mt-3 text-xs text-gray-400">
+            ${lab?.summary ? `<p class="text-sm text-devops-muted mt-2 leading-relaxed">${_safe(lab.summary)}</p>` : ''}
+            <div class="flex gap-4 mt-3 text-xs font-plex-mono text-devops-faint">
                 ${lab?.objective_count != null ? `<span>${_safe(lab.objective_count)} objectives</span>` : ''}
                 ${lab?.step_count != null ? `<span>${_safe(lab.step_count)} steps</span>` : ''}
             </div>
         </a>`;
     }).join('');
 
-    return `<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">${cards}</div>`;
+    return `<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 font-plex">${cards}</div>`;
 }
 
 // ─── Learner: Lab Detail ──────────────────────────────────────────────────────
@@ -228,7 +257,7 @@ export function renderLabCatalog(labs) {
  */
 function _alertBox({ icon, bg, border, text, title, bodyHtml }) {
     return `
-    <div class="flex gap-3 ${bg} border ${border} rounded-lg p-4">
+    <div class="flex gap-3 ${bg} border ${border} rounded-lg p-4 font-plex">
         <svg class="w-5 h-5 flex-shrink-0 mt-0.5 ${text}" fill="currentColor" viewBox="0 0 20 20">${icon}</svg>
         <div class="min-w-0">
             <p class="text-sm font-semibold ${text}">${_safe(title)}</p>
@@ -252,7 +281,7 @@ export function renderLabDetail({ lab, eligibility }) {
         ? lab.objectives.map(o => `
             <li class="flex items-start gap-2">
                 <svg class="w-4 h-4 flex-shrink-0 mt-0.5 text-k8s-blue" fill="currentColor" viewBox="0 0 20 20">${_ICON_CHECK}</svg>
-                <span class="text-sm text-gray-700">${_safe(o)}</span>
+                <span class="text-sm text-devops-text/90">${_safe(o)}</span>
             </li>`).join('')
         : '';
 
@@ -260,13 +289,13 @@ export function renderLabDetail({ lab, eligibility }) {
         ? steps.map((s, idx) => `
             <div class="flex gap-4">
                 <div class="flex flex-col items-center flex-shrink-0">
-                    <div class="w-7 h-7 rounded-full bg-k8s-blue text-white text-xs font-bold flex items-center justify-center">${_safe(idx + 1)}</div>
-                    ${idx < steps.length - 1 ? '<div class="w-px flex-1 bg-gray-200 my-1"></div>' : ''}
+                    <div class="w-7 h-7 rounded-full bg-k8s-blue text-white text-xs font-plex-mono font-bold flex items-center justify-center">${_safe(idx + 1)}</div>
+                    ${idx < steps.length - 1 ? '<div class="w-px flex-1 bg-devops-border-strong my-1"></div>' : ''}
                 </div>
                 <div class="min-w-0 pb-5">
-                    <p class="text-sm font-medium text-gray-900">${_safe(s?.title ?? s?.step_id ?? '')}</p>
-                    ${s?.learner_goal ? `<p class="text-sm text-gray-500 mt-1">${_safe(s.learner_goal)}</p>` : ''}
-                    ${s?.check_count > 0 ? `<span class="inline-block mt-2 text-xs text-gray-400">${_safe(s.check_count)} 项自动校验</span>` : ''}
+                    <p class="text-sm font-medium text-devops-text">${_safe(s?.title ?? s?.step_id ?? '')}</p>
+                    ${s?.learner_goal ? `<p class="text-sm text-devops-muted mt-1 leading-relaxed">${_safe(s.learner_goal)}</p>` : ''}
+                    ${s?.check_count > 0 ? `<span class="inline-block mt-2 text-xs font-plex-mono text-devops-faint">${_safe(s.check_count)} 项自动校验</span>` : ''}
                 </div>
             </div>`
           ).join('')
@@ -274,7 +303,7 @@ export function renderLabDetail({ lab, eligibility }) {
 
     const eligibilityWarning = deferred
         ? _alertBox({
-              icon: _ICON_INFO, bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-800',
+              icon: _ICON_INFO, bg: 'bg-amber-500/10', border: 'border-amber-500/30', text: 'text-amber-400',
               title: '运行环境检查已延迟',
               bodyHtml: _safe('真实环境检查会在你点击"开始实验"时才执行，届时你的可开始状态可能发生变化。'),
           })
@@ -282,45 +311,45 @@ export function renderLabDetail({ lab, eligibility }) {
 
     const ineligibleReasons = !canStart && Array.isArray(eligibility?.issues)
         ? eligibility.issues.filter(i => i?.severity === 'error')
-              .map(i => `<li class="text-sm text-red-700">${_safe(i?.message ?? i)}</li>`).join('')
+              .map(i => `<li class="text-sm text-red-400">${_safe(i?.message ?? i)}</li>`).join('')
         : '';
 
     const metaBadges = [
-        steps.length > 0 ? _badge(`${steps.length} 个步骤`, 'bg-gray-100 text-gray-700') : '',
-        lab?.estimated_difficulty ? _badge(lab.estimated_difficulty, 'bg-gray-100 text-gray-700') : '',
+        steps.length > 0 ? _badge(`${steps.length} 个步骤`, 'bg-devops-surface-2 text-devops-muted border border-devops-border-strong') : '',
+        lab?.estimated_difficulty ? _badge(lab.estimated_difficulty, 'bg-devops-surface-2 text-devops-muted border border-devops-border-strong') : '',
     ].filter(Boolean).join(' ');
 
     return `
-    <div class="space-y-6">
+    <div class="space-y-6 font-plex">
         <div>
-            <h2 class="text-2xl font-semibold text-gray-900">${_safe(lab?.title ?? 'Lab')}</h2>
+            <h2 class="text-2xl font-semibold text-devops-text">${_safe(lab?.title ?? 'Lab')}</h2>
             ${metaBadges ? `<div class="flex items-center gap-2 mt-2">${metaBadges}</div>` : ''}
-            ${lab?.summary ? `<p class="text-gray-600 mt-3 leading-relaxed">${_safe(lab.summary)}</p>` : ''}
+            ${lab?.summary ? `<p class="text-devops-muted mt-3 leading-relaxed">${_safe(lab.summary)}</p>` : ''}
         </div>
 
         ${lab?.experiment_background ? `
-        <div class="bg-blue-50 border border-blue-100 rounded-lg p-4">
-            <h3 class="text-sm font-semibold text-blue-800 mb-1">背景</h3>
-            <p class="text-sm text-blue-900 leading-relaxed">${_safe(lab.experiment_background)}</p>
+        <div class="bg-k8s-blue/10 border border-k8s-blue/25 rounded-lg p-4">
+            <h3 class="text-sm font-semibold text-blue-300 mb-1">背景</h3>
+            <p class="text-sm text-devops-text/90 leading-relaxed">${_safe(lab.experiment_background)}</p>
         </div>` : ''}
 
         ${eligibilityWarning}
 
         ${objectives ? `
         <div>
-            <h3 class="font-semibold text-gray-800 mb-3">学习目标</h3>
+            <h3 class="font-semibold text-devops-text mb-3">学习目标</h3>
             <ul class="space-y-2">${objectives}</ul>
         </div>` : ''}
 
         ${stepsHtml ? `
         <div>
-            <h3 class="font-semibold text-gray-800 mb-3">实验步骤</h3>
+            <h3 class="font-semibold text-devops-text mb-3">实验步骤</h3>
             <div>${stepsHtml}</div>
         </div>` : ''}
 
-        <div class="border-t border-gray-200 pt-5">
+        <div class="border-t border-devops-border pt-5">
             ${!canStart && ineligibleReasons ? _alertBox({
-                icon: _ICON_ERROR, bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700',
+                icon: _ICON_ERROR, bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400',
                 title: '暂不满足开始条件',
                 // ineligibleReasons is already built from _safe()-escaped <li> items above.
                 bodyHtml: `<ul class="list-disc pl-4 space-y-0.5 mt-1">${ineligibleReasons}</ul>`,
@@ -328,7 +357,7 @@ export function renderLabDetail({ lab, eligibility }) {
             <div class="mt-4">
                 ${eligibility?.existing_session_id ? `
                 <a href="/labgen-session.html?sessionId=${encodeURIComponent(eligibility.existing_session_id)}"
-                   class="inline-block px-5 py-2.5 rounded-lg font-medium text-sm bg-green-600 text-white hover:bg-green-700 transition">
+                   class="inline-block px-5 py-2.5 rounded-lg font-medium text-sm bg-green-600 text-white hover:bg-green-500 transition">
                     继续实验
                 </a>` : `
                 <button
@@ -337,8 +366,8 @@ export function renderLabDetail({ lab, eligibility }) {
                     ${!canStart ? 'disabled' : ''}
                     class="px-5 py-2.5 rounded-lg font-medium text-sm transition
                         ${canStart
-                            ? 'bg-k8s-blue text-white hover:bg-blue-700'
-                            : 'bg-gray-200 text-gray-400 cursor-not-allowed'}">
+                            ? 'bg-k8s-blue text-white hover:bg-blue-500'
+                            : 'bg-devops-surface-2 text-devops-faint cursor-not-allowed'}">
                     开始实验
                 </button>`}
             </div>
@@ -382,7 +411,7 @@ export function getSessionActionStates(snapshot) {
  * @returns {string} HTML string
  */
 export function renderSessionView(snapshot) {
-    if (!snapshot) return renderErrorState('Session not found');
+    if (!snapshot) return renderErrorState('Session not found', 'dark');
 
     const runtimeSummary = snapshot?.runtime_summary ?? {};
 
@@ -390,7 +419,7 @@ export function renderSessionView(snapshot) {
         ? snapshot.steps.map((s, idx) => {
             const isCurrent  = s?.is_current === true;
             const isPassed   = s?.status === 'passed';
-            const border     = isCurrent ? 'border-blue-400' : isPassed ? 'border-green-300' : 'border-gray-200';
+            const border     = isCurrent ? 'border-k8s-blue/50' : isPassed ? 'border-green-500/30' : 'border-devops-border';
             const icon       = isPassed ? '✓' : isCurrent ? '→' : String(idx + 1);
             const statusText = isPassed ? 'passed' : isCurrent ? 'current' : 'pending';
 
@@ -403,17 +432,17 @@ export function renderSessionView(snapshot) {
             // fully hidden since their commands aren't actionable yet.
             const showBody = isCurrent || isPassed;
             const stepDo = showBody && s?.step_do
-                ? `<p class="text-sm text-gray-600 mt-2">${_safe(s.step_do)}</p>`
+                ? `<p class="text-sm text-devops-muted mt-2 leading-relaxed">${_safe(s.step_do)}</p>`
                 : '';
             const stepCmds = showBody && Array.isArray(s?.step_commands) && s.step_commands.length > 0
                 ? `<div class="mt-2 space-y-1">${
-                      s.step_commands.map(cmd => `<code class="block text-xs bg-gray-900 text-green-300 rounded px-3 py-1.5 font-mono">${_safe(cmd)}</code>`).join('')
+                      s.step_commands.map(cmd => `<code class="block text-xs bg-devops-bg text-green-400 rounded px-3 py-1.5 font-plex-mono border border-devops-border">${_safe(cmd)}</code>`).join('')
                   }</div>`
                 : '';
             const stepHint = showBody && s?.step_troubleshoot
                 ? `<details class="mt-2">
-                       <summary class="text-xs text-gray-400 cursor-pointer select-none hover:text-gray-600">操作提示</summary>
-                       <p class="text-xs text-gray-500 mt-1 pl-2 border-l-2 border-gray-200">${_safe(s.step_troubleshoot)}</p>
+                       <summary class="text-xs text-devops-faint cursor-pointer select-none hover:text-devops-muted">操作提示</summary>
+                       <p class="text-xs text-devops-muted mt-1 pl-2 border-l-2 border-devops-border-strong leading-relaxed">${_safe(s.step_troubleshoot)}</p>
                    </details>`
                 : '';
             const stepBody = `${stepDo}${stepCmds}${stepHint}${isCurrent ? _renderCheckSummary(s?.check_summary) : ''}`;
@@ -424,16 +453,16 @@ export function renderSessionView(snapshot) {
             // it's still collapsible once a learner has already seen it.
             const passedBody = isPassed && stepBody
                 ? `<details class="mt-1" open>
-                       <summary class="text-xs text-gray-400 cursor-pointer select-none hover:text-gray-600">本步骤命令</summary>
+                       <summary class="text-xs text-devops-faint cursor-pointer select-none hover:text-devops-muted">本步骤命令</summary>
                        ${stepBody}
                    </details>`
                 : '';
 
             return `
-            <div class="flex items-start gap-3 border ${border} rounded p-3" data-step-status="${_safe(statusText)}">
-                <span class="text-sm font-bold w-6 text-center flex-shrink-0 ${isPassed ? 'text-green-600' : isCurrent ? 'text-blue-600' : 'text-gray-400'}">${_safe(icon)}</span>
+            <div class="flex items-start gap-3 border ${border} rounded p-3 bg-devops-surface" data-step-status="${_safe(statusText)}">
+                <span class="text-sm font-bold font-plex-mono w-6 text-center flex-shrink-0 ${isPassed ? 'text-green-400' : isCurrent ? 'text-blue-400' : 'text-devops-faint'}">${_safe(icon)}</span>
                 <div class="flex-1 min-w-0">
-                    <p class="text-sm font-medium text-gray-800">${_safe(s?.title ?? s?.step_id ?? '')}</p>
+                    <p class="text-sm font-medium text-devops-text">${_safe(s?.title ?? s?.step_id ?? '')}</p>
                     ${isCurrent ? stepBody : passedBody}
                 </div>
             </div>`;
@@ -442,19 +471,19 @@ export function renderSessionView(snapshot) {
 
     const failureReasonValue = runtimeSummary?.failure_reason;
     const failureReason = failureReasonValue
-        ? `<div class="bg-orange-50 border border-orange-200 rounded p-3 text-orange-800 text-sm">
+        ? `<div class="bg-orange-500/10 border border-orange-500/30 rounded p-3 text-orange-400 text-sm">
                <strong>异常原因：</strong>${_safe(failureReasonValue)}
            </div>`
         : '';
 
     return `
-    <div class="space-y-3">
+    <div class="space-y-3 font-plex">
         <div class="flex items-center justify-between">
-            <h2 class="text-sm font-semibold text-gray-700">实验步骤</h2>
+            <h2 class="text-sm font-semibold text-devops-text">实验步骤</h2>
             ${_statusBadge(snapshot?.session_state ?? 'UNKNOWN')}
         </div>
 
-        ${snapshot?.title ? `<p class="text-base font-medium text-gray-900">${_safe(snapshot.title)}</p>` : ''}
+        ${snapshot?.title ? `<p class="text-base font-medium text-devops-text">${_safe(snapshot.title)}</p>` : ''}
 
         ${failureReason}
 
@@ -468,16 +497,16 @@ function _renderCheckSummary(summary) {
     if (!result || result === 'not_checked') return '';
     const passed  = result === 'passed';
     const failed  = result === 'failed';
-    const color   = passed ? 'text-green-600' : failed ? 'text-red-500' : 'text-gray-400';
+    const color   = passed ? 'text-green-400' : failed ? 'text-red-400' : 'text-devops-faint';
     const icon    = passed ? '✓' : failed ? '✗' : '?';
     const label   = passed ? 'passed' : failed ? 'failed' : _safe(result);
     const reason  = !passed && summary?.failure_reason
-        ? `<span class="text-gray-400 ml-1">— ${_safe(summary.failure_reason)}</span>`
+        ? `<span class="text-devops-faint ml-1">— ${_safe(summary.failure_reason)}</span>`
         : '';
     const msg     = summary?.safe_message
-        ? `<span class="text-gray-400 ml-1">${_safe(summary.safe_message)}</span>`
+        ? `<span class="text-devops-faint ml-1">${_safe(summary.safe_message)}</span>`
         : '';
-    return `<div class="flex items-center gap-2 text-xs mt-1 ${color}">
+    return `<div class="flex items-center gap-2 text-xs font-plex-mono mt-1 ${color}">
         <span>${icon}</span>
         <span>${label}</span>
         ${reason}${msg}

@@ -48,7 +48,7 @@ class TestNoVmAssignedErrorHandling:
     def test_no_vm_branch_is_separate_from_generic_error(self):
         js = _read("labgen-lab-init.js")
         no_vm_idx = js.find("no_vm_assigned")
-        generic_idx = js.find("text-red-600")
+        generic_idx = js.find("text-red-400")
         assert no_vm_idx != -1, "no_vm_assigned code check missing"
         assert generic_idx != -1, "Generic red error text path must still exist for non-no_vm errors"
         no_vm_region = js[max(0, no_vm_idx - 50): no_vm_idx + 200]
