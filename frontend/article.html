@@ -8,30 +8,35 @@
     <script src="/js/tailwind-config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
-        .prose h1,.prose h2,.prose h3{font-weight:700;margin-top:1.5em;margin-bottom:.5em}
+        .prose h1,.prose h2,.prose h3{font-weight:700;margin-top:1.5em;margin-bottom:.5em;color:#fff}
         .prose h1{font-size:1.75rem}.prose h2{font-size:1.35rem}.prose h3{font-size:1.1rem}
-        .prose p{margin-bottom:1em;line-height:1.8}
-        .prose ul,.prose ol{margin-left:1.5em;margin-bottom:1em}
+        .prose p{margin-bottom:1em;line-height:1.8;color:#c3cbdc}
+        .prose ul,.prose ol{margin-left:1.5em;margin-bottom:1em;color:#c3cbdc}
         .prose li{margin-bottom:.4em}
-        .prose code{background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:.875em;font-family:monospace}
-        .prose pre{background:#1e293b;color:#e2e8f0;padding:1.25em;border-radius:.5rem;overflow-x:auto;margin-bottom:1em}
-        .prose pre code{background:none;padding:0;color:inherit;font-size:.875em}
+        .prose code{background:#1a2233;border:1px solid #2e3a52;padding:2px 6px;border-radius:4px;font-size:.875em;font-family:'JetBrains Mono',monospace;color:#a8c7ff}
+        .prose pre{background:#0d1220;border:1px solid #232c3d;color:#d6e4ff;padding:1.25em;border-radius:.5rem;overflow-x:auto;margin-bottom:1em}
+        .prose pre code{background:none;border:none;padding:0;color:inherit;font-size:.875em}
         .prose table{border-collapse:collapse;width:100%;margin-bottom:1em}
-        .prose th,.prose td{border:1px solid #e2e8f0;padding:.5em .75em;text-align:left}
-        .prose th{background:#f8fafc;font-weight:600}
-        .prose blockquote{border-left:4px solid #3b82f6;padding-left:1em;color:#64748b;margin:1em 0;font-style:italic}
-        .prose a{color:#3b82f6;text-decoration:underline}
-        .prose hr{border:none;border-top:1px solid #e2e8f0;margin:2em 0}
+        .prose th,.prose td{border:1px solid #232c3d;padding:.5em .75em;text-align:left}
+        .prose th{background:#121826;font-weight:600;color:#e6eaf2}
+        .prose td{color:#c3cbdc}
+        .prose blockquote{border-left:4px solid #326CE5;padding-left:1em;color:#8b96ac;margin:1em 0;font-style:italic}
+        .prose a{color:#4c82f0;text-decoration:underline}
+        .prose hr{border:none;border-top:1px solid #232c3d;margin:2em 0}
+        .prose strong{color:#e6eaf2}
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen">
+<body class="bg-devops-bg min-h-screen font-plex">
 
 <!-- Nav -->
-<nav class="bg-white border-b border-gray-200 sticky top-0 z-10">
+<nav class="bg-devops-surface border-b border-devops-border sticky top-0 z-10">
     <div class="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
-        <a href="/" class="flex items-center gap-2 font-bold text-gray-900">
-            <svg class="w-6 h-6 text-blue-600" fill="currentColor" viewBox="0 0 24 24">
+        <a href="/" class="flex items-center gap-2 font-bold text-devops-text">
+            <svg class="w-6 h-6 text-k8s-blue" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
             </svg>
             K8S NetLab
@@ -42,10 +47,10 @@
 
 <!-- Article -->
 <main class="max-w-3xl mx-auto px-4 py-10">
-    <a href="/" class="text-sm text-blue-600 hover:underline mb-6 block">← 返回文章列表</a>
+    <a href="/" class="text-sm text-k8s-blue hover:underline mb-6 block">← 返回文章列表</a>
 
     <div id="article-container">
-        <div class="text-gray-400 text-sm">加载中...</div>
+        <div class="text-devops-muted text-sm">加载中...</div>
     </div>
 
     <!-- Lab CTA block (rendered by article.js when linked lab exists) -->
@@ -53,7 +58,7 @@
 
     <!-- Comments -->
     <section id="comments-section" class="mt-12 hidden">
-        <h2 class="text-xl font-bold text-gray-900 mb-6">评论</h2>
+        <h2 class="text-xl font-bold text-devops-text mb-6">评论</h2>
 
         <!-- Comment form -->
         <div id="comment-form-area" class="mb-8">
@@ -65,7 +70,7 @@
     </section>
 </main>
 
-<footer class="text-center text-gray-400 text-sm py-8 border-t border-gray-200 mt-8">
+<footer class="text-center text-devops-faint text-sm py-8 border-t border-devops-border mt-8 font-plex-mono">
     © 2026 K8S NetLab
 </footer>
 
