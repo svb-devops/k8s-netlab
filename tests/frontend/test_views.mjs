@@ -128,6 +128,34 @@ test('catalog: XSS in title is escaped', () => {
     assert.ok(html.includes('&lt;script&gt;'), 'XSS not properly escaped');
 });
 
+// Regression: owner feedback that a flat mixed grid of Linux + K8s labs
+// "毫无美感" (no aesthetic sense) — labs now render as two separate
+// sections keyed by target_domain, each with its own heading.
+test('catalog: labs are grouped into separate Kubernetes/Linux sections', () => {
+    const labs = [
+        { lab_id: 'k1', title: 'CrashLoopBackOff', target_domain: 'k8s' },
+        { lab_id: 'l1', title: 'Linux Files', target_domain: 'linux' },
+    ];
+    const html = renderLabCatalog(labs);
+    const k8sIdx = html.indexOf('Kubernetes');
+    const linuxIdx = html.indexOf('Linux');
+    assert.ok(k8sIdx !== -1 && linuxIdx !== -1, 'both section headings must be present');
+    assert.ok(html.indexOf('CrashLoopBackOff') > k8sIdx, 'k8s lab must render under the Kubernetes heading');
+    assert.ok(html.indexOf('Linux Files') > linuxIdx, 'linux lab must render under the Linux heading');
+});
+
+test('catalog: a domain with zero labs renders no section heading for it', () => {
+    const html = renderLabCatalog([{ lab_id: 'k1', title: 'Only K8s', target_domain: 'k8s' }]);
+    assert.ok(html.includes('Kubernetes'));
+    assert.ok(!html.includes('>Linux<'), 'Linux section heading must not render when there are no linux labs');
+});
+
+test('catalog: missing target_domain defaults to the Kubernetes section (backward compat)', () => {
+    const html = renderLabCatalog([{ lab_id: 'x', title: 'Legacy Lab' }]);
+    assert.ok(html.includes('Kubernetes'));
+    assert.ok(html.indexOf('Legacy Lab') > html.indexOf('Kubernetes'));
+});
+
 // ── renderLabDetail ───────────────────────────────────────────────────────────
 
 test('lab detail: eligible shows start button enabled', () => {

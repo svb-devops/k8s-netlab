@@ -35,6 +35,7 @@ from backend.labgen.models import (
     ExplainField,
     ImageResolutionResult,
     ImageStatus,
+    LabDomainType,
     LabDraft,
     LabSessionState,
     LabSessionStatus,
@@ -271,6 +272,23 @@ class TestCatalogList:
         assert "objective_count" in item
         assert "step_count" in item
         assert "is_startable" in item
+
+    def test_catalog_item_exposes_target_domain(self) -> None:
+        """Frontend groups the catalog into Linux vs K8s sections — it needs
+        target_domain on every item to know which section a lab belongs to."""
+        mem = _MemDraftRepo()
+        k8s_draft = _make_published_draft(title="K8s Lab")
+        linux_draft = _make_published_draft(
+            title="Linux Lab", target_domain=LabDomainType.LINUX
+        )
+        mem.create(k8s_draft)
+        mem.create(linux_draft)
+
+        with _catalog_ctx(mem) as client:
+            r = client.get("/api/labs")
+        items = {item["title"]: item["target_domain"] for item in r.json()}
+        assert items["K8s Lab"] == "k8s"
+        assert items["Linux Lab"] == "linux"
 
     def test_catalog_item_title_and_summary_sanitized(self) -> None:
         mem = _MemDraftRepo()

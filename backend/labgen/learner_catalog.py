@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from backend.labgen.models import (
     BlockingLevel,
     ImageStatus,
+    LabDomainType,
     LabSessionStatus,
     PublishStatus,
     ValidatorStatus,
@@ -104,6 +105,7 @@ class LearnerLabCatalogItem(BaseModel):
     template_id: Optional[str] = None
     published_at: Optional[str] = None
     is_startable: bool
+    target_domain: str  # "k8s" | "linux" — frontend groups the catalog by this
 
 
 class LearnerLabDetail(BaseModel):
@@ -248,6 +250,9 @@ class LearnerCatalogService:
                 template_id=None,
                 published_at=None,
                 is_startable=self._compute_is_startable(draft, actor_user),
+                target_domain=(
+                    "linux" if draft.target_domain == LabDomainType.LINUX else "k8s"
+                ),
             ))
         return items
 

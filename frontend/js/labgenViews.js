@@ -209,6 +209,72 @@ export function renderAdminDraftView({ preview, decision }) {
 }
 
 // ─── Learner: Lab Catalog ─────────────────────────────────────────────────────
+//
+// Labs are grouped into two domains (target_domain: "k8s" | "linux") and
+// rendered as separate sections rather than one mixed flat grid — owner
+// feedback was that lumping unrelated domains into a single grid with no
+// hierarchy "毫无美感" (no aesthetic sense) and that Linux/K8s should read
+// as distinct tracks if the product already treats them as such internally.
+// Missing/unrecognized target_domain defaults to the "k8s" section so older
+// catalog payloads (and existing tests that omit the field) keep rendering.
+
+const _DOMAIN_META = {
+    k8s: {
+        label: 'Kubernetes',
+        blurb: '容器编排故障排查与运维实战',
+        accent: 'border-k8s-blue',
+        chipBg: 'bg-k8s-blue/15 text-blue-400 border border-k8s-blue/30',
+        icon: '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>',
+    },
+    linux: {
+        label: 'Linux',
+        blurb: '文件系统与命令行基础操作',
+        accent: 'border-amber-500',
+        chipBg: 'bg-amber-500/15 text-amber-400 border border-amber-500/30',
+        icon: '<path d="M4 4h16v16H4V4zm2.5 3.5l3 3-3 3M12 15h5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
+    },
+};
+
+function _labCard(lab, domainKey) {
+    const meta = _DOMAIN_META[domainKey];
+    const startable = lab?.is_startable === true;
+    return `
+    <a href="/labgen-lab.html?labId=${encodeURIComponent(lab?.lab_id ?? '')}"
+       class="group block bg-devops-surface border border-devops-border border-t-2 ${meta.accent}
+              rounded-lg p-5 hover:bg-devops-surface-2 hover:-translate-y-0.5
+              transition-all duration-150 shadow-sm hover:shadow-lg hover:shadow-black/20">
+        <div class="flex items-start justify-between gap-3">
+            <h3 class="font-semibold text-devops-text leading-snug line-clamp-2">${_safe(lab?.title ?? 'Untitled')}</h3>
+            ${startable
+                ? _badge('Startable', 'bg-green-500/15 text-green-400 border border-green-500/30 shrink-0')
+                : _badge('Not available', 'bg-devops-surface-2 text-devops-faint border border-devops-border-strong shrink-0')}
+        </div>
+        ${lab?.summary ? `<p class="text-sm text-devops-muted mt-2 leading-relaxed line-clamp-3">${_safe(lab.summary)}</p>` : ''}
+        <div class="flex items-center justify-between mt-4 pt-3 border-t border-devops-border">
+            <div class="flex gap-3 text-xs font-plex-mono text-devops-faint">
+                ${lab?.objective_count != null ? `<span>${_safe(lab.objective_count)} objectives</span>` : ''}
+                ${lab?.step_count != null ? `<span>${_safe(lab.step_count)} steps</span>` : ''}
+            </div>
+            <span class="text-xs font-plex-mono text-devops-faint group-hover:text-devops-text transition-colors">开始 →</span>
+        </div>
+    </a>`;
+}
+
+function _domainSection(domainKey, labs) {
+    const meta = _DOMAIN_META[domainKey];
+    return `
+    <section>
+        <div class="flex items-center gap-2.5 mb-1">
+            <svg class="w-5 h-5 ${domainKey === 'linux' ? 'text-amber-500' : 'text-k8s-blue'}" fill="currentColor" viewBox="0 0 24 24">${meta.icon}</svg>
+            <h2 class="text-lg font-bold text-devops-text">${meta.label}</h2>
+            <span class="text-xs font-plex-mono text-devops-faint">${labs.length}</span>
+        </div>
+        <p class="text-sm text-devops-faint mb-4">${meta.blurb}</p>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            ${labs.map(lab => _labCard(lab, domainKey)).join('')}
+        </div>
+    </section>`;
+}
 
 /**
  * @param {object[]} labs - LearnerLabCatalogItem[]
@@ -218,27 +284,18 @@ export function renderLabCatalog(labs) {
         return `<p class="text-devops-muted text-center py-12">No published labs available yet.</p>`;
     }
 
-    const cards = labs.map(lab => {
-        const startable = lab?.is_startable === true;
-        return `
-        <a href="/labgen-lab.html?labId=${encodeURIComponent(lab?.lab_id ?? '')}"
-           class="block bg-devops-surface border border-devops-border rounded-lg p-5
-                  hover:border-k8s-blue hover:bg-devops-surface-2 transition">
-            <div class="flex items-start justify-between gap-3">
-                <h3 class="font-semibold text-devops-text">${_safe(lab?.title ?? 'Untitled')}</h3>
-                ${startable
-                    ? _badge('Startable', 'bg-green-500/15 text-green-400 border border-green-500/30')
-                    : _badge('Not available', 'bg-devops-surface-2 text-devops-faint border border-devops-border-strong')}
-            </div>
-            ${lab?.summary ? `<p class="text-sm text-devops-muted mt-2 leading-relaxed">${_safe(lab.summary)}</p>` : ''}
-            <div class="flex gap-4 mt-3 text-xs font-plex-mono text-devops-faint">
-                ${lab?.objective_count != null ? `<span>${_safe(lab.objective_count)} objectives</span>` : ''}
-                ${lab?.step_count != null ? `<span>${_safe(lab.step_count)} steps</span>` : ''}
-            </div>
-        </a>`;
-    }).join('');
+    const byDomain = { k8s: [], linux: [] };
+    for (const lab of labs) {
+        const key = lab?.target_domain === 'linux' ? 'linux' : 'k8s';
+        byDomain[key].push(lab);
+    }
 
-    return `<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 font-plex">${cards}</div>`;
+    const sections = ['k8s', 'linux']
+        .filter(key => byDomain[key].length > 0)
+        .map(key => _domainSection(key, byDomain[key]))
+        .join('<div class="h-px bg-devops-border my-8"></div>');
+
+    return `<div class="flex flex-col gap-8 font-plex">${sections}</div>`;
 }
 
 // ─── Learner: Lab Detail ──────────────────────────────────────────────────────
