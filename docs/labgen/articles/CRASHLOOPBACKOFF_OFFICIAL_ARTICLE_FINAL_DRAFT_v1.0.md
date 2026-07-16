@@ -8,7 +8,7 @@ Pod 一直重启？从 CrashLoopBackOff 学会用 describe 和 logs 定位根因
 
 ### 症状
 
-你刚把一个新版本的 Deployment 推上测试环境，`kubectl apply` 干净利落地返回了成功，你满心以为可以去做下一件事了。几分钟后回来看，服务还是没起来——`kubectl get pods` 里 `STATUS` 写着 `CrashLoopBackOff`，`RESTARTS` 那一列的数字比你离开前还要大。容器好像"活过"又"死了"，一直循环。
+你刚把一个新版本的 Deployment 推上测试环境，`kubectl apply` 很快返回了成功——但这只说明这个对象被 Kubernetes 接收了，不代表容器已经稳定运行。几分钟后回来看，服务还是没起来：`kubectl get pods` 里 `STATUS` 写着 `CrashLoopBackOff`，`RESTARTS` 那一列的数字比你离开前还要大。容器好像"活过"又"死了"，一直循环。
 
 这是 Kubernetes 里最常见的故障状态之一，根因几乎总是同一件事：容器启动后立刻退出。Kubernetes 的默认行为是不断尝试重启它，每次重启之间的等待时间会指数增长（这个退避机制正是"Back-off"名字的由来），但只要根因不解决，重启多少次都不会自愈。
 
@@ -63,14 +63,15 @@ starting
 
 ### 修复思路：非交互式，而且要修在源头
 
+用一条 `kubectl patch` 命令，把容器的启动命令换成一条不会崩溃的命令：
+
 ```
-kubectl patch deployment crash-demo --type=json \
-  -p='[{"op":"replace","path":"/spec/template/spec/containers/0/command","value":["/bin/sh","-c","echo fixed; sleep 3600"]}]'
+kubectl patch deployment crash-demo --type=json -p='[ ... 替换 command 字段 ... ]'
 ```
 
-很多人第一反应是 `kubectl edit`，但那会打开一个交互式编辑器，不适合脚本化、不可审计、也不方便在 CI 里复用。`kubectl patch` 用 JSON Patch 格式非交互式地替换容器的启动命令，修复动作本身就是一条可复制、可审计、可回放的命令。
+完整的 JSON Patch 写法会比较长（这是 JSON Patch 格式本身的特点），配套实验里能直接复制完整版本。这条命令做的事情很直接：把容器原来那条会立刻崩溃的启动命令，替换成一条能正常运行的命令。很多人第一反应是 `kubectl edit`，但那会打开一个交互式编辑器，不适合脚本化、不可审计、也不方便在 CI 里复用；`kubectl patch` 非交互式地完成同一件事，修复动作本身就是一条可复制、可审计、可回放的命令。
 
-> 配套实验里用 `kubectl patch` 直接改集群，是为了在一个隔离环境里快速、非交互式地演示修复动作。生产环境不建议直接 `patch` 线上 Deployment——正确做法是回到 Deployment 的 YAML 清单、Helm values 或者 GitOps 仓库里修正启动命令这个源头，再走正常的部署流程应用变更，让集群状态始终和声明式配置保持一致，而不是留下一次手工 `patch` 的历史漂移。
+> 配套实验里直接 `patch` 集群，是为了在一个隔离环境里快速演示修复动作。生产环境不建议直接 `patch` 线上 Deployment——正确做法是回到 Deployment 的 YAML 清单、Helm values 或者 GitOps 仓库里修正启动命令这个源头，再走正常的部署流程应用变更，让集群状态始终和声明式配置保持一致，而不是留下一次手工 `patch` 的历史漂移。
 
 ### 用 rollout status 确认真正修复
 
@@ -83,12 +84,8 @@ kubectl get pods
 
 ### 排查心智模型（与 ImagePullBackOff 互补）
 
-```
-Pod 不 Ready
-  → RESTARTS 是否在增加？
-      是 → CrashLoopBackOff，查 kubectl describe 的 Last State/Exit Code，再查 kubectl logs --previous
-      否（大多数情况下长时间为 0） → ImagePullBackOff/ErrImagePull，查 kubectl describe 的 Events，不要查日志（容器从未正式启动过，没有日志）
-```
+- **RESTARTS 持续增加** → CrashLoopBackOff，查 `describe` 的 Last State/Exit Code，再查 `logs --previous`
+- **RESTARTS 大多数情况下长时间为 0** → 大概率是 ImagePullBackOff/ErrImagePull，查 `describe` 的 Events，不要查日志（容器从未正式启动过，没有日志）
 
 ---
 
@@ -96,13 +93,12 @@ Pod 不 Ready
 
 本文章配套一个可动手操作的实验，实验环境会预置一个真实会持续崩溃的 Deployment，你可以亲手用上面的步骤诊断和修复它，而不只是看文字。
 
-以下保留两个版本的引导文案，供发布时按当时的实际开放状态二选一使用，**当前只有 internal_draft_note 版本生效**，public_publish_version 是提前写好的占位草稿，尚未启用：
+以下保留两个版本的引导文案，供发布时按当时的实际开放状态二选一使用，**当前只有 internal_preview_version 版本生效**，public_publish_version 是提前写好的占位草稿，尚未启用：
 
-**internal_draft_note（当前生效）**
+**internal_preview_version（当前生效）**
 
 > **当前状态**：该实验目前处于内部验证阶段，尚未对外开放注册用户访问。
 
 **public_publish_version（发布后启用，当前未生效，仅作占位草稿保留）**
 
 > 想亲手试一次吗？点击「进入实验」，几秒钟内就能拿到一个预置了这个故障的 Kubernetes 环境，用上面讲的每一条命令亲自诊断、亲自修复。
-

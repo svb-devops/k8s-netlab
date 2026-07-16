@@ -17,7 +17,7 @@
 | article status | `ready_to_publish_draft`（未创建 Directus 记录） |
 | CTA target | 占位，无实际跳转目标；`cta_enabled=false` |
 | 文章现象是否和 lab 一致 | 一致。文章"症状"段描述的 `STATUS=CrashLoopBackOff` + `RESTARTS` 持续增加，与 lab step-2 的 `observe` 字段（"STATUS 列显示 CrashLoopBackOff，RESTARTS 列显示大于 0 的次数，且数字会随时间持续增加"）完全对应 |
-| 文章命令是否和 lab 一致 | **基本一致，有 1 处刻意改写**：文章第一步用 `<registry>/library/busybox:latest` 占位符替代了 lab step-1 中实际的内网 registry 地址 `172.16.100.1:5000/library/busybox:latest`——这是有意为之（公开文章不暴露内网基础设施细节），核心命令结构、`kubectl patch` 的 JSON Patch 内容、`kubectl describe`/`kubectl logs --previous`/`kubectl rollout status` 均与 lab step-2~6 逐字一致 |
+| 文章命令是否和 lab 一致 | **基本一致，有 2 处刻意改写，均为可读性/安全性考虑，未改变实际命令内容**：① 文章第一步用 `<registry>/library/busybox:latest` 占位符替代了 lab step-1 中实际的内网 registry 地址 `172.16.100.1:5000/library/busybox:latest`（公开文章不暴露内网基础设施细节）；② 本轮 Publish Polish 后，文章正文的 `kubectl patch` 展示为简化形式（`-p='[ ... 替换 command 字段 ... ]'`）+ 文字说明其作用，避免长 JSON Patch 单行在文章里横向滚动，完整命令与 lab step-5 逐字一致，未展示在正文不等于内容不一致——`kubectl describe`/`kubectl logs --previous`/`kubectl rollout status` 均与 lab step-2~6 逐字一致 |
 | 修复路径是否和 lab 一致 | 一致。`kubectl patch deployment --type=json` 替换 `command` 字段为 `sleep 3600`，与 lab step-5 完全一致；验证用 `kubectl rollout status` + `kubectl get pods`，与 lab step-6 完全一致 |
 | 是否有实验措辞夸大风险 | 无。文章明确写"该实验目前处于内部验证阶段，尚未对外开放注册用户访问" |
 | 是否有夸大能力风险 | 无。文章未对 LabGen/AI 生成能力做任何宣传性表述，纯粹是排查方法论内容 |
@@ -61,7 +61,7 @@
 | article status | `ready_to_publish_draft`（未创建 Directus 记录） |
 | CTA target | 占位，无实际跳转目标；`cta_enabled=false` |
 | 文章现象是否和 lab 一致 | 一致。文章内容与 v0.1 相同，v0.1 已经过两轮真实 K3s rehearsal 校验 |
-| 文章命令是否和 lab 一致 | 一致 |
+| 文章命令是否和 lab 一致 | 一致。本轮 Publish Polish 将原本很长的单行 Events 输出（`Warning Failed kubelet Failed to pull image ...: rpc error: code = NotFound desc = ...`）改为摘要展示（`Failed to pull image "...": ...resolve reference "...": ... not found`），避免文章正文横向滚动，摘要保留了 `... not found` 这一核心判断依据，完整真实输出记录在 `IMAGE_PULL_BACKOFF_INTERNAL_PUBLISH_CHECKLIST_v1.0.md` |
 | 修复路径是否和 lab 一致 | 一致，含"容器名默认取镜像名而非 Deployment 名"这一已被真实 rehearsal 验证过的细节 |
 | 是否有实验措辞夸大风险 | 无 |
 | 是否有夸大能力风险 | 无 |
@@ -82,3 +82,21 @@
 | 是否有任何一篇隐含"现在就能免费试用"的误导性表述 | 无，三篇文章"配套实验"段落文案完全一致（"该实验目前处于内部验证阶段，尚未对外开放注册用户访问"） |
 
 **结论**：三篇文章整体 PASS，无 blocking 项。真正发布时需人工补充三篇之间的互链 URL（当前为占位阶段，不构成本次交付的 blocker）。
+
+---
+
+## 5. Publish Polish 检查结果（2026-07-15 新增，First Wave Article Publish Polish）
+
+本轮对三篇文章做了统一的发布前润色：正文标题从"第一步/第二步"式实验手册体裁改为"是什么/为什么/怎么查/怎么修"式文章体裁标题、开头场景化改写强化真实痛点、心智模型从代码块 ASCII 图改为纯文字决策树、长命令/长输出行做摘要化处理避免横向滚动、CTA 统一拆分为 `internal_preview_version`/`public_publish_version` 两个版本、所有内部元数据（元信息块/blockers/历史记录/source_article_id 等）移至各自的 `*_INTERNAL_PUBLISH_CHECKLIST_v1.0.md` 文件（详细逐条检查见各文件末尾的"Publish Polish 检查结果"表）。
+
+| 检查项 | CrashLoopBackOff | Service 无 Endpoints | ImagePullBackOff |
+|--------|-------------------|------------------------|---------------------|
+| title_style | PASS | PASS | PASS |
+| pain_point_opening | PASS（本轮修正"apply 返回成功"表述） | PASS（本轮强化场景描述） | PASS（本轮同步修正"apply 返回成功"表述） |
+| code_block_readability | PASS（patch 长命令改为简化展示） | PASS（原本命令长度均合理，无需改动） | PASS（Events 长输出行改为摘要展示） |
+| cta_dual_version | PASS | PASS | PASS |
+| no_internal_metadata | PASS（内容已移至 `CRASHLOOPBACKOFF_INTERNAL_PUBLISH_CHECKLIST_v1.0.md`） | PASS（内容已移至 `SERVICE_NO_ENDPOINTS_INTERNAL_PUBLISH_CHECKLIST_v1.0.md`，新建） | PASS（内容已移至 `IMAGE_PULL_BACKOFF_INTERNAL_PUBLISH_CHECKLIST_v1.0.md`，新建） |
+| lab_alignment | PASS | PASS | PASS |
+| publish_ready_for_owner_review | PASS | PASS | PASS |
+
+**结论**：三篇文章本轮 Publish Polish 全部 PASS，已具备 Owner 最终审阅稿件条件（`FIRST_WAVE_ARTICLES_READY_FOR_OWNER_FINAL_REVIEW`）。仍待 Owner/CEO/CTO 独立拍板的事项（不构成本次 polish 的 blocker，详见各内部 checklist 的"发布前 blockers"）：Directus 记录创建方式、`LABGEN_ENABLED_LAB_IDS` 开放时机、三篇文章互链 URL 补充、CTA 从 internal_preview_version 切换到 public_publish_version 的具体触发时间点。

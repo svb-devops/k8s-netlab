@@ -6,7 +6,14 @@
 
 ## 简短 Changelog
 
-**2026-07-15（本轮：Polish for Public Draft）**
+**2026-07-15（本轮：First Wave Article Publish Polish）**
+- 开头"kubectl apply 返回成功"表述修正为"只说明对象被 Kubernetes 接收，不代表容器已经稳定运行"，避免暗示 apply 成功等于容器健康
+- `kubectl patch` 长 JSON Patch 命令行在正文中改为简化展示（`-p='[ ... 替换 command 字段 ... ]'`），完整命令保留在配套实验中，正文改用文字解释这条命令做的事情，避免核心命令在文章里横向滚动
+- "排查心智模型"从 ASCII 流程图（代码块）改为纯文字决策树（两条要点列表），更符合文章体裁的速读需求，而非实验手册体裁
+- CTA 版本命名从 `internal_draft_note` 统一改为 `internal_preview_version`（与 Service 无 Endpoints / ImagePullBackOff 两篇保持一致的命名）
+- 未修改 lab、Directus、CTA 生产字段，未发布文章
+
+**2026-07-15（Polish for Public Draft）**
 - 开头症状段改写为具体场景（"刚 apply 完新版本、以为没事了"），提升读者代入感，技术主线（describe/logs/logs --previous/patch/rollout status）未变
 - "ImagePullBackOff RESTARTS 恒为 0"改为更严谨的表述——大多数情况下长时间为 0，因为镜像未拉取成功、容器根本未曾正式启动（正文与"排查心智模型" ASCII 图两处同步修正）
 - "配套实验"段落拆分为 `internal_draft_note`（当前生效）与 `public_publish_version`（发布后启用的 CTA 文案占位草稿，当前未生效）两个版本，方便未来切换时直接替换，不用临时现写
@@ -78,7 +85,7 @@ lab publish_status（当前生产实际值，2026-07-15 核对）: published
 | 症状 + 判定依据（RESTARTS 持续增加） | step-1（创建）+ step-2（观察 STATUS/RESTARTS） | 一致 |
 | describe 看 Last State/Exit Code | step-3（describe，Exit Code 127） | 一致 |
 | logs / logs --previous | step-4 | 一致 |
-| 修复思路（patch + 生产环境应回归 YAML/Helm/GitOps 的补充说明） | step-5（patch） | 一致；新增的生产环境指导是对外文章的补充说明，不是对 lab 内容的修改，lab 本身仍然按原样使用 `kubectl patch` 做非交互式修复演示 |
+| 修复思路（patch + 生产环境应回归 YAML/Helm/GitOps 的补充说明） | step-5（patch） | 一致；正文改为简化命令展示 + 文字说明这条命令的作用（完整命令未变，仍与 lab step-5 的 JSON Patch 完全一致，只是不在文章正文里展开全文），新增的生产环境指导是对外文章的补充说明，不是对 lab 内容的修改，lab 本身仍然按原样使用 `kubectl patch` 做非交互式修复演示 |
 | rollout status | step-6 | 一致 |
 | （不写入对外文章正文） | step-7（cleanup，命名空间随「完成实验」自动回收） | cleanup 属于 lab session 生命周期管理，按拆分任务要求不需要写进对外文章正文，且未与 lab 实际行为冲突 |
 
@@ -102,4 +109,18 @@ lab publish_status（当前生产实际值，2026-07-15 核对）: published
 | lab publish_status 是否变更 | 否（仍为 `published`） |
 | `LABGEN_ENABLED_LAB_IDS` 是否变更 | 否 |
 | 是否新增 public exposure | 否 |
-| 代码是否变更 | 否（本次仅涉及 docs 目录下两个 `.md` 文件） |
+| 代码是否变更 | 否（本次仅涉及 docs 目录下的 `.md` 文件） |
+
+---
+
+## Publish Polish 检查结果（2026-07-15）
+
+| 检查项 | 结果 |
+|--------|------|
+| title_style | PASS — "Pod 一直重启？从 CrashLoopBackOff 学会用 describe 和 logs 定位根因"，与另外两篇一致的"疑问句+排查线索"结构 |
+| pain_point_opening | PASS — "kubectl apply 返回成功"表述本轮已修正为"只说明对象被接收，不代表容器稳定运行" |
+| code_block_readability | PASS — `kubectl patch` 长 JSON Patch 命令本轮已改为简化展示 + 文字解释，完整命令保留在配套实验中 |
+| cta_dual_version | PASS — `internal_preview_version` / `public_publish_version` 两个版本，命名已与另外两篇统一 |
+| no_internal_metadata | PASS — 元信息块、blockers、HIGH-01、source_article_id 等已全部移至本文档 |
+| lab_alignment | PASS（见上表） |
+| publish_ready_for_owner_review | PASS |
