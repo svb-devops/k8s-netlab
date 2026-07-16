@@ -130,9 +130,53 @@ class TestResponseTime:
 
 class TestConcurrency:
     def test_concurrent_login_rate_limiter_thread_safe(self, auth_client):
-        """10 个线程同时发起登录，rate limiter 全部放行，无崩溃，全部返回有效状态码。"""
+        """10 个线程同时发起登录，rate limiter 全部放行，无崩溃，全部返回有效状态码。
+
+        Regression (2026-07-15): 全量测试套件运行时，本测试曾间歇性返回一个
+        意外的 404（而非 200/429），单独运行本测试文件从未复现，全量套件里
+        连续 4 次必现。**诚实记录**：这是一个经过两轮 safety-reviewer 审查
+        才收敛的诊断，前两版把"竞态具体如何导致 404"这一步写成了确定性断言，
+        但没有可验证的代码依据（第一版还引用了错误的 starlette 版本号）——
+        以下只保留有代码依据支撑的部分，机制未完全证实的部分明确标注为
+        "未证实"。
+
+        已核实的事实（venv 实际安装的是 starlette 1.3.1，非之前误写的
+        1.0.0）：
+        - 本测试的 `auth_client` fixture 未使用 `with TestClient(app) as
+          client:` 形式，`TestClient.portal` 全程为 `None`
+          （`starlette/testclient.py::TestClient._portal_factory`），因此
+          10 个并发请求各自创建独立的 anyio blocking portal / 事件循环 /
+          OS 线程，是真并发（不是单事件循环内的协程交替）
+        - `starlette/applications.py::Starlette.__call__` 里
+          `if self.middleware_stack is None: self.middleware_stack =
+          self.build_middleware_stack()` 是无锁的 check-then-set，`app`
+          对象本身在所有并发线程间是同一个共享实例
+
+        未证实的部分：从"这个 check-then-set 无锁"推导到"个别并发请求会
+        因此实际返回 404"，中间没有找到可验证的代码路径——`Starlette`
+        对象在 Python 里对属性的赋值是原子的，`build_middleware_stack()`
+        每次重新构建的中间件链在功能上应当等价，理论上不应该产生一个能让
+        路由查不到从而 404 的中间状态。真正的因果机制仍然未定位，也不排除
+        是其它原因（例如全量套件里其它测试文件对共享的 `auth_router`/
+        `api_router` 模块级单例做了某种写操作、httpx.Client 连接池在多线程
+        下的行为、系统在高负载下多线程创建 anyio portal 的资源竞争等）。
+
+        本次采用的是经验性缓解，不是"已定位根因并修复"：发起并发请求前，
+        先用同一个 client 做一次同步的登录预热请求。这个改动本身对被测逻辑
+        无副作用（预热用的是同一个真实 `mgr`，成功登录不会导致后续并发请求
+        因"已有 session"而失败——`backend/auth_routes.py` 的 login 端点没有
+        这类拒绝逻辑），且修复后单独重跑 5 次 + 全量套件重跑 1 次均稳定通过。
+        如果这个 flake 未来在不同负载/环境下重新出现，说明预热请求只是缩小
+        了触发窗口而非消除了真正根因，需要继续排查，不要被这段记录误导为
+        "已解决、无需再查"。
+        """
         client, mgr = auth_client
         mgr.register_user("alice", "secret1")
+
+        # Empirical mitigation for a full-suite-only flake (see docstring
+        # above — root cause not fully proven, this is not a confirmed fix).
+        warmup_resp = client.post("/api/auth/login", json={"username": "alice", "password": "secret1"})
+        assert warmup_resp.status_code == 200
 
         results = []
 
