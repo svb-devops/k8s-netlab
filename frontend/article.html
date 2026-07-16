@@ -18,8 +18,17 @@
         .prose ul,.prose ol{margin-left:1.5em;margin-bottom:1em;color:#c3cbdc}
         .prose li{margin-bottom:.4em}
         .prose code{background:#1a2233;border:1px solid #2e3a52;padding:2px 6px;border-radius:4px;font-size:.875em;font-family:'JetBrains Mono',monospace;color:#a8c7ff}
-        .prose pre{background:#0d1220;border:1px solid #232c3d;color:#d6e4ff;padding:1.25em;border-radius:.5rem;overflow-x:auto;margin-bottom:1em}
-        .prose pre code{background:none;border:none;padding:0;color:inherit;font-size:.875em}
+        .prose pre{background:#0d1220;color:#d6e4ff;padding:1.25em;overflow-x:auto;margin:0;border-radius:0 0 .55rem .55rem}
+        .prose pre code{background:none;border:none;padding:0;color:inherit;font-size:.875em;font-family:'JetBrains Mono',monospace}
+        /* Terminal-window chrome wrapping each rendered code block — see
+           article.js::_enhanceCodeBlocks(). Purely decorative post-processing
+           of already-sanitized DOM nodes. */
+        .term{border:1px solid #232c3d;border-radius:.6rem;overflow:hidden;margin-bottom:1.25em;box-shadow:0 8px 24px -14px rgba(0,0,0,.6)}
+        .term-bar{display:flex;align-items:center;gap:.4rem;padding:.5rem .7rem;background:#121826;border-bottom:1px solid #232c3d}
+        .term-dot{width:9px;height:9px;border-radius:50%}
+        .term-dot-r{background:#ef4444}.term-dot-y{background:#f59e0b}.term-dot-g{background:#22c55e}
+        .term-label{margin-left:.4rem;font-family:'JetBrains Mono',monospace;font-size:.68rem;letter-spacing:.03em;color:#5b6478}
+        .hl-bad{color:#f87171}
         .prose table{border-collapse:collapse;width:100%;margin-bottom:1em}
         .prose th,.prose td{border:1px solid #232c3d;padding:.5em .75em;text-align:left}
         .prose th{background:#121826;font-weight:600;color:#e6eaf2}

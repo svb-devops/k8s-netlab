@@ -11,6 +11,60 @@ function renderMd(md) {
     return DOMPurify.sanitize(marked.parse(md || ''));
 }
 
+// ---------------------------------------------------------------------------
+// Terminal-styled code blocks — cosmetic post-processing only, runs after
+// renderMd()'s DOMPurify.sanitize() output is already in the DOM. Only reads
+// `.textContent` (never raw HTML) from existing sanitized nodes and only
+// re-inserts content that has itself been passed through escapeHtml() before
+// any regex-based keyword wrapping, so this cannot reintroduce unescaped
+// reader/CMS-controlled markup.
+// ---------------------------------------------------------------------------
+
+const _DIAGNOSTIC_KEYWORD_RE = /\b(CrashLoopBackOff|ImagePullBackOff|ErrImagePull|not found|Failed|Error)\b/g;
+const _EXIT_CODE_RE = /(Exit Code:\s*)(\d+)/g;
+
+function _highlightDiagnosticText(rawText) {
+    // escapeHtml() runs first — every substitution below operates on the
+    // already-escaped string, and the keyword/markup inserted is a fixed,
+    // hardcoded set of plain ASCII words with no special HTML characters,
+    // so this cannot smuggle in unescaped content from rawText.
+    let escaped = escapeHtml(rawText);
+    escaped = escaped.replace(_EXIT_CODE_RE, '$1<span class="hl-bad">$2</span>');
+    escaped = escaped.replace(_DIAGNOSTIC_KEYWORD_RE, '<span class="hl-bad">$1</span>');
+    return escaped;
+}
+
+function _enhanceCodeBlocks(container) {
+    container.querySelectorAll('pre').forEach(pre => {
+        const code = pre.querySelector('code');
+        if (!code) return;
+
+        const isCommand = code.className.includes('language-bash') || code.className.includes('language-sh');
+        if (!isCommand) {
+            code.innerHTML = _highlightDiagnosticText(code.textContent);
+        }
+
+        const term = document.createElement('div');
+        term.className = 'term';
+
+        const bar = document.createElement('div');
+        bar.className = 'term-bar';
+        ['r', 'y', 'g'].forEach(c => {
+            const dot = document.createElement('span');
+            dot.className = 'term-dot term-dot-' + c;
+            bar.appendChild(dot);
+        });
+        const label = document.createElement('span');
+        label.className = 'term-label';
+        label.textContent = isCommand ? '$ kubectl' : 'output';
+        bar.appendChild(label);
+
+        pre.parentNode.insertBefore(term, pre);
+        term.appendChild(bar);
+        term.appendChild(pre);
+    });
+}
+
 let currentUser = null;
 
 async function initAuth() {
@@ -147,6 +201,7 @@ async function loadArticle() {
             <p class="text-devops-faint text-sm mb-8 font-plex-mono">${formatDate(data.published_at)}</p>
             <div class="prose max-w-none">${renderMd(data.content)}</div>
         `;
+        _enhanceCodeBlocks(container);
 
         const section = document.getElementById('comments-section');
         section.classList.remove('hidden');
