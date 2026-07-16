@@ -8,7 +8,7 @@ Pod 一直重启？从 CrashLoopBackOff 学会用 describe 和 logs 定位根因
 
 ### 症状
 
-部署了一个 Deployment，`kubectl get pods` 显示 Pod 存在，但 `STATUS` 是 `CrashLoopBackOff`，而且 `RESTARTS` 列的数字还在不断增加。容器好像"活过"又"死了"，一直循环。
+你刚把一个新版本的 Deployment 推上测试环境，`kubectl apply` 干净利落地返回了成功，你满心以为可以去做下一件事了。几分钟后回来看，服务还是没起来——`kubectl get pods` 里 `STATUS` 写着 `CrashLoopBackOff`，`RESTARTS` 那一列的数字比你离开前还要大。容器好像"活过"又"死了"，一直循环。
 
 这是 Kubernetes 里最常见的故障状态之一，根因几乎总是同一件事：容器启动后立刻退出。Kubernetes 的默认行为是不断尝试重启它，每次重启之间的等待时间会指数增长（这个退避机制正是"Back-off"名字的由来），但只要根因不解决，重启多少次都不会自愈。
 
@@ -18,7 +18,7 @@ Pod 一直重启？从 CrashLoopBackOff 学会用 describe 和 logs 定位根因
 
 ### 判定依据：CrashLoopBackOff 与 ImagePullBackOff 的最快区分方式
 
-`kubectl get pods` 里 `RESTARTS` 列持续增加，通常说明容器已经启动过并进入了重启循环——这时候应该继续查 `Last State`/`Exit Code`/`logs --previous`（下文会讲），而不是去查镜像拉取问题。这一点和 `ImagePullBackOff`（`RESTARTS` 恒为 `0`，容器从未启动过）正好相反，是两者最快的区分方法：容器有没有真正启动过，决定了下一步该查日志还是查镜像拉取事件。
+`kubectl get pods` 里 `RESTARTS` 列持续增加，通常说明容器已经启动过并进入了重启循环——这时候应该继续查 `Last State`/`Exit Code`/`logs --previous`（下文会讲），而不是去查镜像拉取问题。这一点和 `ImagePullBackOff` 正好相反：`ImagePullBackOff` 大多数情况下 `RESTARTS` 会长时间保持为 `0`，因为镜像根本没有拉取成功，容器根本未曾正式启动过，也就谈不上"重启"。容器有没有真正启动过，决定了下一步该查日志还是查镜像拉取事件——这是两者最快的区分方法。
 
 ```
 kubectl get pods
@@ -87,7 +87,7 @@ kubectl get pods
 Pod 不 Ready
   → RESTARTS 是否在增加？
       是 → CrashLoopBackOff，查 kubectl describe 的 Last State/Exit Code，再查 kubectl logs --previous
-      否（恒为 0） → ImagePullBackOff/ErrImagePull，查 kubectl describe 的 Events，不要查日志（容器从未运行过，没有日志）
+      否（大多数情况下长时间为 0） → ImagePullBackOff/ErrImagePull，查 kubectl describe 的 Events，不要查日志（容器从未正式启动过，没有日志）
 ```
 
 ---
@@ -96,4 +96,13 @@ Pod 不 Ready
 
 本文章配套一个可动手操作的实验，实验环境会预置一个真实会持续崩溃的 Deployment，你可以亲手用上面的步骤诊断和修复它，而不只是看文字。
 
+以下保留两个版本的引导文案，供发布时按当时的实际开放状态二选一使用，**当前只有 internal_draft_note 版本生效**，public_publish_version 是提前写好的占位草稿，尚未启用：
+
+**internal_draft_note（当前生效）**
+
 > **当前状态**：该实验目前处于内部验证阶段，尚未对外开放注册用户访问。
+
+**public_publish_version（发布后启用，当前未生效，仅作占位草稿保留）**
+
+> 想亲手试一次吗？点击「进入实验」，几秒钟内就能拿到一个预置了这个故障的 Kubernetes 环境，用上面讲的每一条命令亲自诊断、亲自修复。
+

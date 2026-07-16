@@ -4,6 +4,20 @@
 
 ---
 
+## 简短 Changelog
+
+**2026-07-15（本轮：Polish for Public Draft）**
+- 开头症状段改写为具体场景（"刚 apply 完新版本、以为没事了"），提升读者代入感，技术主线（describe/logs/logs --previous/patch/rollout status）未变
+- "ImagePullBackOff RESTARTS 恒为 0"改为更严谨的表述——大多数情况下长时间为 0，因为镜像未拉取成功、容器根本未曾正式启动（正文与"排查心智模型" ASCII 图两处同步修正）
+- "配套实验"段落拆分为 `internal_draft_note`（当前生效）与 `public_publish_version`（发布后启用的 CTA 文案占位草稿，当前未生效）两个版本，方便未来切换时直接替换，不用临时现写
+- 未修改 lab、Directus、CTA，未发布文章
+
+**2026-07-15（上一轮：Cleanup 拆分）**
+- 从原 v1.0 混合稿中拆出本内部笔记文件，对外文章正文只保留读者向内容
+- 同步完成两处技术表述修正（"RESTARTS 涨=CrashLoopBackOff"软化、patch 段落补充生产环境指导）
+
+---
+
 ## 元数据
 
 ```
