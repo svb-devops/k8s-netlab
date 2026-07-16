@@ -37,13 +37,18 @@
         .prose a{color:#4c82f0;text-decoration:underline}
         .prose hr{border:none;border-top:1px solid #232c3d;margin:2em 0}
         .prose strong{color:#e6eaf2}
+        html{scroll-behavior:smooth}
+        #toc-list a{display:block;padding:.3rem 0 .3rem .7rem;border-left:2px solid #232c3d;color:#8b96ac;transition:color .15s,border-color .15s}
+        #toc-list a:hover{color:#e6eaf2;border-left-color:#4c82f0}
+        .related-card{display:block;padding:.75rem;border-radius:.5rem;border:1px solid #232c3d;background:#121826;transition:border-color .15s,background .15s}
+        .related-card:hover{border-color:#326CE5}
     </style>
 </head>
 <body class="bg-devops-bg min-h-screen font-plex">
 
 <!-- Nav -->
 <nav class="bg-devops-surface border-b border-devops-border sticky top-0 z-10">
-    <div class="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
+    <div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
         <a href="/" class="flex items-center gap-2 font-bold text-devops-text">
             <svg class="w-6 h-6 text-k8s-blue" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
@@ -54,30 +59,49 @@
     </div>
 </nav>
 
-<!-- Article -->
-<main class="max-w-3xl mx-auto px-4 py-10">
-    <a href="/" class="text-sm text-k8s-blue hover:underline mb-6 block">← 返回文章列表</a>
+<!-- Page body: left TOC / center article / right related-articles — collapses
+     to a single readable column below the lg breakpoint. -->
+<div class="max-w-6xl mx-auto px-4 py-10 lg:grid lg:grid-cols-[200px_1fr_260px] lg:gap-10 items-start">
 
-    <div id="article-container">
-        <div class="text-devops-muted text-sm">加载中...</div>
-    </div>
+    <!-- Left: in-page table of contents, built from .prose h2 headings by
+         article.js::_buildToc() after the article renders. Empty until then. -->
+    <aside class="hidden lg:block sticky top-20 self-start">
+        <p class="text-xs font-plex-mono uppercase tracking-wide text-devops-faint mb-3">本文目录</p>
+        <nav id="toc-list" class="text-sm"></nav>
+    </aside>
 
-    <!-- Lab CTA block (rendered by article.js when linked lab exists) -->
-    <div id="lab-cta-container"></div>
+    <!-- Center: article -->
+    <main class="min-w-0">
+        <a href="/" class="text-sm text-k8s-blue hover:underline mb-6 block">← 返回文章列表</a>
 
-    <!-- Comments -->
-    <section id="comments-section" class="mt-12 hidden">
-        <h2 class="text-xl font-bold text-devops-text mb-6">评论</h2>
-
-        <!-- Comment form -->
-        <div id="comment-form-area" class="mb-8">
-            <!-- filled by JS based on auth state -->
+        <div id="article-container">
+            <div class="text-devops-muted text-sm">加载中...</div>
         </div>
 
-        <!-- Comments list -->
-        <div id="comments-list"></div>
-    </section>
-</main>
+        <!-- Lab CTA block (rendered by article.js when linked lab exists) -->
+        <div id="lab-cta-container"></div>
+
+        <!-- Comments -->
+        <section id="comments-section" class="mt-12 hidden">
+            <h2 class="text-xl font-bold text-devops-text mb-6">评论</h2>
+
+            <!-- Comment form -->
+            <div id="comment-form-area" class="mb-8">
+                <!-- filled by JS based on auth state -->
+            </div>
+
+            <!-- Comments list -->
+            <div id="comments-list"></div>
+        </section>
+    </main>
+
+    <!-- Right: other published articles, filled by article.js::loadRelatedArticles() -->
+    <aside class="hidden lg:block sticky top-20 self-start">
+        <p class="text-xs font-plex-mono uppercase tracking-wide text-devops-faint mb-3">更多文章</p>
+        <div id="related-articles-list" class="space-y-3"></div>
+    </aside>
+
+</div>
 
 <footer class="text-center text-devops-faint text-sm py-8 border-t border-devops-border mt-8 font-plex-mono">
     © 2026 K8S NetLab

@@ -202,6 +202,7 @@ async function loadArticle() {
             <div class="prose max-w-none">${renderMd(data.content)}</div>
         `;
         _enhanceCodeBlocks(container);
+        _buildToc(container);
 
         const section = document.getElementById('comments-section');
         section.classList.remove('hidden');
@@ -210,6 +211,74 @@ async function loadArticle() {
 
     } catch (e) {
         container.innerHTML = '<p class="text-red-400 text-sm">加载失败，请刷新重试</p>';
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Left sidebar: in-page table of contents, built from the article's own
+// `.prose h2` headings after they're already in the (DOMPurify-sanitized)
+// DOM. Only ever reads `.textContent` and assigns ids via the safe `.id`
+// IDL property / `document.createElement` — never innerHTML of raw text.
+// ---------------------------------------------------------------------------
+
+function _slugify(text, index) {
+    const base = String(text || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, '-')
+        .replace(/^-+|-+$/g, '');
+    return (base || 'section') + '-' + index;
+}
+
+function _buildToc(container) {
+    const tocNav = document.getElementById('toc-list');
+    const tocAside = tocNav ? tocNav.closest('aside') : null;
+    if (!tocNav) return;
+
+    const headings = Array.from(container.querySelectorAll('.prose h2'));
+    tocNav.innerHTML = '';
+    if (headings.length === 0) {
+        if (tocAside) tocAside.style.display = 'none';
+        return;
+    }
+
+    headings.forEach((h, i) => {
+        h.id = _slugify(h.textContent, i);
+        const link = document.createElement('a');
+        link.href = '#' + h.id;
+        link.textContent = h.textContent;
+        tocNav.appendChild(link);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Right sidebar: other published articles
+// ---------------------------------------------------------------------------
+
+async function loadRelatedArticles() {
+    const list = document.getElementById('related-articles-list');
+    const aside = list ? list.closest('aside') : null;
+    if (!list) return;
+    try {
+        const r = await fetch('/api/articles');
+        if (!r.ok) {
+            if (aside) aside.style.display = 'none';
+            return;
+        }
+        const data = await r.json();
+        const articles = (data.articles || []).filter(a => a.slug !== slug);
+        if (articles.length === 0) {
+            if (aside) aside.style.display = 'none';
+            return;
+        }
+        list.innerHTML = articles.map(a => `
+            <a href="/article.html?slug=${encodeURIComponent(a.slug)}" class="related-card">
+                <p class="text-sm font-medium text-devops-text leading-snug mb-1">${escapeHtml(a.title)}</p>
+                <p class="text-xs text-devops-faint font-plex-mono">${formatDate(a.published_at)}</p>
+            </a>
+        `).join('');
+    } catch (_) {
+        if (aside) aside.style.display = 'none';
     }
 }
 
@@ -322,4 +391,5 @@ function renderLabCTA(container, data) {
 initAuth().then(() => {
     loadArticle();
     loadLabCTA();
+    loadRelatedArticles();
 });

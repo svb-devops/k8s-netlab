@@ -30,6 +30,7 @@ function _fakeElement() {
         appendChild() {},
         querySelectorAll: () => [],
         querySelector: () => null,
+        closest: () => null,
     };
 }
 
@@ -41,7 +42,7 @@ function loadSandbox() {
             getElementById: () => _fakeElement(),
             querySelector: () => null,
         },
-        // initAuth's fetch is caught internally; loadArticle/loadLabCTA run
+        // initAuth's fetch is caught internally; loadArticle/loadLabCTA/loadRelatedArticles run
         // asynchronously afterward against the fake elements above and are
         // irrelevant to the synchronous function-level assertions below.
         fetch: () => Promise.reject(new Error('no network in test sandbox')),
