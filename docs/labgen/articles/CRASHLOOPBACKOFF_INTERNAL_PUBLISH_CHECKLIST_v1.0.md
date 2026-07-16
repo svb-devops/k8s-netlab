@@ -6,6 +6,10 @@
 
 ## 简短 Changelog
 
+**2026-07-16（编辑反馈：删除 patch 段落的生产环境提醒）**
+- 删除"修复思路"一节末尾提醒"生产环境不建议直接 patch 线上 Deployment，应回到 YAML/Helm/GitOps 源头修正"的 blockquote——owner 反馈这段在教程节奏里显得突兀，读者已经清楚这是配套实验的隔离环境，不需要额外的合规提醒打断阅读。同步更新已发布到 Directus 的正式文章内容（`id=4`），移除同一段落。技术表述本身没有错误，纯粹是编辑/节奏取舍，本条目下方"技术表述修正记录"第 2 条据此作废（保留记录，不删除历史，标注为已撤销）
+- 未修改 lab、CTA 生产字段、`article_url`；仅更新 Directus 文章 `content` 字段与本地 final draft 正文
+
 **2026-07-15（本轮：First Wave Article Publish Polish）**
 - 开头"kubectl apply 返回成功"表述修正为"只说明对象被 Kubernetes 接收，不代表容器已经稳定运行"，避免暗示 apply 成功等于容器健康
 - `kubectl patch` 长 JSON Patch 命令行在正文中改为简化展示（`-p='[ ... 替换 command 字段 ... ]'`），完整命令保留在配套实验中，正文改用文字解释这条命令做的事情，避免核心命令在文章里横向滚动
@@ -85,7 +89,7 @@ lab publish_status（当前生产实际值，2026-07-15 核对）: published
 | 症状 + 判定依据（RESTARTS 持续增加） | step-1（创建）+ step-2（观察 STATUS/RESTARTS） | 一致 |
 | describe 看 Last State/Exit Code | step-3（describe，Exit Code 127） | 一致 |
 | logs / logs --previous | step-4 | 一致 |
-| 修复思路（patch + 生产环境应回归 YAML/Helm/GitOps 的补充说明） | step-5（patch） | 一致；正文改为简化命令展示 + 文字说明这条命令的作用（完整命令未变，仍与 lab step-5 的 JSON Patch 完全一致，只是不在文章正文里展开全文），新增的生产环境指导是对外文章的补充说明，不是对 lab 内容的修改，lab 本身仍然按原样使用 `kubectl patch` 做非交互式修复演示 |
+| 修复思路（patch） | step-5（patch） | 一致；正文改为简化命令展示 + 文字说明这条命令的作用（完整命令未变，仍与 lab step-5 的 JSON Patch 完全一致，只是不在文章正文里展开全文）。曾短暂新增过一段"生产环境应回归 YAML/Helm/GitOps"的补充说明，2026-07-16 已按 owner 编辑反馈撤销（见上方 Changelog），lab 本身自始至终未变，仍按原样使用 `kubectl patch` 做非交互式修复演示 |
 | rollout status | step-6 | 一致 |
 | （不写入对外文章正文） | step-7（cleanup，命名空间随「完成实验」自动回收） | cleanup 属于 lab session 生命周期管理，按拆分任务要求不需要写进对外文章正文，且未与 lab 实际行为冲突 |
 
@@ -94,7 +98,7 @@ lab publish_status（当前生产实际值，2026-07-15 核对）: published
 ## 技术表述修正记录（本次拆分同步完成）
 
 1. **"RESTARTS 涨就是 CrashLoopBackOff" → 软化为条件性表述**：原文"先看 RESTARTS 是不是在涨，涨就是 CrashLoopBackOff"是绝对化表述，改为"RESTARTS 列持续增加，通常说明容器已经启动过并进入了重启循环——这时候应该继续查 Last State/Exit Code/logs --previous"，避免暗示"RESTARTS 增加"是 CrashLoopBackOff 的充分且唯一判定条件。
-2. **patch 段落补充生产环境指导**：新增一段明确说明配套实验里用 `kubectl patch` 是为了在隔离环境里做非交互式演示，生产环境不建议直接 `patch` 线上 Deployment，应回到 Deployment YAML / Helm values / GitOps 源头修正，避免读者把实验里的演示手法直接照搬进生产操作。
+2. ~~**patch 段落补充生产环境指导**：新增一段明确说明配套实验里用 `kubectl patch` 是为了在隔离环境里做非交互式演示，生产环境不建议直接 `patch` 线上 Deployment，应回到 Deployment YAML / Helm values / GitOps 源头修正，避免读者把实验里的演示手法直接照搬进生产操作。~~ **已于 2026-07-16 撤销**：owner 反馈这段在教程正文里显得突兀、打断阅读节奏，读者已通过"配套实验"框架清楚这是隔离练习环境，不需要额外合规提醒。技术表述本身无误，纯编辑取舍，见上方 Changelog。
 
 ---
 

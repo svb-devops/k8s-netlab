@@ -71,8 +71,6 @@ kubectl patch deployment crash-demo --type=json -p='[ ... 替换 command 字段 
 
 完整的 JSON Patch 写法会比较长（这是 JSON Patch 格式本身的特点），配套实验里能直接复制完整版本。这条命令做的事情很直接：把容器原来那条会立刻崩溃的启动命令，替换成一条能正常运行的命令。很多人第一反应是 `kubectl edit`，但那会打开一个交互式编辑器，不适合脚本化、不可审计、也不方便在 CI 里复用；`kubectl patch` 非交互式地完成同一件事，修复动作本身就是一条可复制、可审计、可回放的命令。
 
-> 配套实验里直接 `patch` 集群，是为了在一个隔离环境里快速演示修复动作。生产环境不建议直接 `patch` 线上 Deployment——正确做法是回到 Deployment 的 YAML 清单、Helm values 或者 GitOps 仓库里修正启动命令这个源头，再走正常的部署流程应用变更，让集群状态始终和声明式配置保持一致，而不是留下一次手工 `patch` 的历史漂移。
-
 ### 用 rollout status 确认真正修复
 
 ```
