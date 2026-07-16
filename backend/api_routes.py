@@ -6,6 +6,7 @@ All routes use vm_manager functions and return standardized JSON responses.
 """
 
 import asyncio
+import functools
 import logging
 from typing import Any, Dict, List, Optional, cast
 
@@ -18,7 +19,16 @@ from backend.labgen.lab_session_repository import LabSessionRepository
 from backend.proxmox_api import connect_proxmox
 from backend.rate_limiter import rate_limiter
 from backend.task_registry import register as register_task
-from backend.vm_manager import create_vm, delete_vm, list_vms
+from backend.vm_manager import (
+    NoAvailableVMId,
+    SystemCapacityExceeded,
+    VMQuotaExceeded,
+    VMRateLimited,
+    create_vm,
+    delete_vm,
+    list_vms,
+    provision_vm_for_user,
+)
 from backend.vm_tracker import vm_tracker
 
 
@@ -70,42 +80,6 @@ class VMListResponse(BaseModel):
 
 
 # ============================================================
-# Helper Functions
-# ============================================================
-
-def _find_available_vm_id() -> int:
-    """
-    Find the next available VM ID for auto-assignment.
-
-    Scans VM IDs from config.VM_ID_MIN to config.VM_ID_MAX (inclusive)
-    and returns the first available ID.
-
-    Returns:
-        int: Available VM ID within the configured range
-
-    Raises:
-        HTTPException: If no available IDs found
-    """
-    result = list_vms()
-    if not result['success']:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list VMs: {result['error']}"
-        )
-
-    existing_ids = {vm['vmid'] for vm in result['data']}
-
-    for vm_id in range(config.VM_ID_MIN, config.VM_ID_MAX + 1):
-        if vm_id not in existing_ids:
-            return vm_id
-
-    raise HTTPException(
-        status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
-        detail=f"No available VM IDs in range {config.VM_ID_MIN}-{config.VM_ID_MAX}"
-    )
-
-
-# ============================================================
 # API Routes
 # ============================================================
 
@@ -134,54 +108,10 @@ async def api_create_vm(
         HTTPException: If creation fails or not authenticated
     """
     try:
-        # Reconcile tracker with Proxmox before quota check.
-        # Remove stale tracker entries for VMs that no longer exist in Proxmox,
-        # preventing false "quota exceeded" errors from orphaned entries.
-        loop_reconcile = asyncio.get_running_loop()
-        try:
-            proxmox_check = await loop_reconcile.run_in_executor(None, list_vms)
-            if proxmox_check.get("success"):
-                existing_ids = {vm["vmid"] for vm in proxmox_check["data"]}
-                for stale_id in list(vm_tracker.get_user_vms(current_user)):
-                    if stale_id not in existing_ids:
-                        logger.warning(
-                            f"Quota reconcile: VM {stale_id} in tracker but not in Proxmox "
-                            f"(user='{current_user}'), removing stale entry"
-                        )
-                        vm_tracker.untrack_vm(stale_id)
-        except Exception as reconcile_err:
-            logger.warning(f"Quota reconcile failed, using tracker as-is: {reconcile_err}")
-
-        # Quota check: per-user and system-wide limits
-        user_vm_count = len(vm_tracker.get_user_vms(current_user))
-        if user_vm_count >= config.MAX_VMS_PER_USER:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=(
-                    f"已达到每用户 VM 配额上限（{config.MAX_VMS_PER_USER} 个）。"
-                    f"当前已有 {user_vm_count} 个 VM，请先删除现有 VM 再创建新的。"
-                ),
-            )
-        total_vm_count = len(vm_tracker.get_all_tracked_vms())
-        if total_vm_count >= config.MAX_TOTAL_VMS:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=(
-                    f"实验环境当前已满员（{total_vm_count}/{config.MAX_TOTAL_VMS} 个）。"
-                    "请稍候，当有同学完成实验并释放环境后即可创建。"
-                ),
-            )
-
-        # Rate limit: 3 VM creations per user per hour
-        if not rate_limiter.is_allowed(f"create_vm:{current_user}", max_requests=3, window_seconds=3600):
-            wait = rate_limiter.retry_after(f"create_vm:{current_user}", window_seconds=3600)
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail=f"VM 创建过于频繁，请 {wait // 60} 分钟后重试",
-                headers={"Retry-After": str(wait)},
-            )
-
-        # Validate or auto-assign VM ID
+        # Validate explicit vm_id against the configured range (pure request
+        # validation — stays in the route layer, not part of the shared
+        # provisioning core).
+        vm_id: Optional[int] = None
         if request.vm_id is not None:
             if not (config.VM_ID_MIN <= request.vm_id <= config.VM_ID_MAX):
                 raise HTTPException(
@@ -189,34 +119,67 @@ async def api_create_vm(
                     detail=f"vm_id must be in range {config.VM_ID_MIN}–{config.VM_ID_MAX}",
                 )
             vm_id = request.vm_id
-        else:
-            loop = asyncio.get_running_loop()
-            vm_id = await loop.run_in_executor(None, _find_available_vm_id)
 
-        logger.info(f"API: User '{current_user}' creating VM {vm_id} from template {config.VM_TEMPLATE_ID}")
-
-        # Create VM using vm_manager (run in thread — blocks up to 300s polling Proxmox)
+        # provision_vm_for_user does reconcile -> quota -> rate-limit -> assign ->
+        # create_vm -> track_vm (shared with LabGen's auto-provisioning path).
+        # Pass this module's own vm_tracker/rate_limiter/list_vms/create_vm/config
+        # references through explicitly so `patch("backend.api_routes.X", ...)`
+        # in existing tests keeps intercepting them exactly as before.
         loop = asyncio.get_running_loop()
+        provision_call = functools.partial(
+            provision_vm_for_user,
+            current_user,
+            vm_id,
+            _config=config,
+            _vm_tracker=vm_tracker,
+            _rate_limiter=rate_limiter,
+            _list_vms=list_vms,
+            _create_vm=create_vm,
+        )
         try:
-            result = await asyncio.wait_for(
-                register_task(loop.run_in_executor(None, create_vm, vm_id, config.VM_TEMPLATE_ID)),
+            data = await asyncio.wait_for(
+                register_task(loop.run_in_executor(None, provision_call)),
                 timeout=360,
             )
         except asyncio.TimeoutError:
-            logger.error(f"API: VM {vm_id} creation timed out after 360s")
+            logger.error(f"API: VM creation timed out after 360s (user='{current_user}')")
             raise HTTPException(status_code=504, detail="VM creation timed out")
-
-        if result['success']:
-            logger.info(f"API: VM {vm_id} created successfully by '{current_user}'")
-            # Track VM for auto-cleanup with owner
-            vm_tracker.track_vm(vm_id, owner=current_user)
-            return VMResponse(**result)
-        else:
-            logger.error(f"API: VM creation failed: {result['error']}")
+        except VMQuotaExceeded as e:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=(
+                    f"已达到每用户 VM 配额上限（{e.limit} 个）。"
+                    f"当前已有 {e.current_count} 个 VM，请先删除现有 VM 再创建新的。"
+                ),
+            )
+        except SystemCapacityExceeded as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=(
+                    f"实验环境当前已满员（{e.current_count}/{e.limit} 个）。"
+                    "请稍候，当有同学完成实验并释放环境后即可创建。"
+                ),
+            )
+        except VMRateLimited as e:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"VM 创建过于频繁，请 {e.retry_after // 60} 分钟后重试",
+                headers={"Retry-After": str(e.retry_after)},
+            )
+        except NoAvailableVMId as e:
+            raise HTTPException(
+                status_code=status.HTTP_507_INSUFFICIENT_STORAGE,
+                detail=str(e),
+            )
+        except RuntimeError as e:
+            logger.error(f"API: VM creation failed: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result['error']
+                detail=str(e),
             )
+
+        logger.info(f"API: VM {data.get('vm_id')} created successfully by '{current_user}'")
+        return VMResponse(success=True, data=data, error=None)
 
     except ValueError as e:
         logger.error(f"API: Invalid input: {e}")

@@ -742,6 +742,193 @@ class TestCreateSessionEnabledLabAllowlist:
             r = client.post("/api/lab-sessions", json={"lab_id": lab_id, "vm_id": "vm-500"})
         assert r.status_code == 201
 
+
+class TestAutoVmProvisioning:
+    """P0 Reader Path Repair: no_vm_assigned + lab_id in
+    LABGEN_AUTO_VM_PROVISION_LAB_IDS auto-triggers background provisioning
+    instead of sending the user to /app. Scoped strictly to the allowlist —
+    every other lab (and every user who already has a VM) must be provably
+    unaffected."""
+
+    def test_lab_in_allowlist_triggers_provisioning_returns_vm_provisioning(self, student_client):
+        import unittest.mock as mock
+        client, lab_id = student_client
+        with mock.patch("backend.labgen.routes.VMTracker") as MockTracker, \
+             mock.patch("backend.labgen.routes.config.LABGEN_AUTO_VM_PROVISION_LAB_IDS", frozenset({lab_id})), \
+             mock.patch(
+                 "backend.labgen.routes.get_or_start_provisioning",
+                 return_value={"status": "provisioning", "started_at": 0, "vm_id": None, "error_category": None},
+             ) as mock_provision:
+            MockTracker.return_value.get_user_vms.return_value = []
+            r = client.post("/api/lab-sessions", json={"lab_id": lab_id})
+
+        assert r.status_code == 422
+        detail = r.json()["detail"]
+        codes = [f["code"] for f in detail["precheck_failures"]]
+        assert codes == ["vm_provisioning"]
+        assert codes != ["no_vm_assigned"]
+        mock_provision.assert_called_once_with("student1")
+        # Never leak internal concepts to the reader-facing message
+        msg = detail["precheck_failures"][0]["message"]
+        for forbidden in ("/app", "VMID", "vm_id", "Proxmox", "no_vm_assigned"):
+            assert forbidden not in msg
+
+    def test_lab_in_allowlist_and_provisioning_failed_returns_vm_provisioning_failed(self, student_client):
+        import unittest.mock as mock
+        client, lab_id = student_client
+        with mock.patch("backend.labgen.routes.VMTracker") as MockTracker, \
+             mock.patch("backend.labgen.routes.config.LABGEN_AUTO_VM_PROVISION_LAB_IDS", frozenset({lab_id})), \
+             mock.patch(
+                 "backend.labgen.routes.get_or_start_provisioning",
+                 return_value={"status": "failed", "started_at": 0, "vm_id": None, "error_category": "capacity_exceeded"},
+             ):
+            MockTracker.return_value.get_user_vms.return_value = []
+            r = client.post("/api/lab-sessions", json={"lab_id": lab_id})
+
+        assert r.status_code == 422
+        detail = r.json()["detail"]
+        codes = [f["code"] for f in detail["precheck_failures"]]
+        assert codes == ["vm_provisioning_failed"]
+        msg = detail["precheck_failures"][0]["message"]
+        assert "capacity_exceeded" not in msg  # raw category must not leak
+
+    def test_lab_not_in_allowlist_keeps_old_no_vm_assigned_behavior(self, student_client):
+        """Regression: labs never added to LABGEN_AUTO_VM_PROVISION_LAB_IDS must
+        behave exactly as before — get_or_start_provisioning must never be called."""
+        import unittest.mock as mock
+        client, lab_id = student_client
+        with mock.patch("backend.labgen.routes.VMTracker") as MockTracker, \
+             mock.patch("backend.labgen.routes.config.LABGEN_AUTO_VM_PROVISION_LAB_IDS", frozenset()), \
+             mock.patch("backend.labgen.routes.get_or_start_provisioning") as mock_provision:
+            MockTracker.return_value.get_user_vms.return_value = []
+            r = client.post("/api/lab-sessions", json={"lab_id": lab_id})
+
+        assert r.status_code == 422
+        codes = [f["code"] for f in r.json()["detail"]["precheck_failures"]]
+        assert codes == ["no_vm_assigned"]
+        mock_provision.assert_not_called()
+
+    def test_user_with_existing_vm_never_triggers_provisioning(self, student_client):
+        """Regression: a user who already has a VM (old-platform path) must take
+        a code path that never even consults the auto-provisioning allowlist."""
+        import unittest.mock as mock
+        client, lab_id = student_client
+        with mock.patch("backend.labgen.routes.VMTracker") as MockTracker, \
+             mock.patch("backend.labgen.routes.config.LABGEN_AUTO_VM_PROVISION_LAB_IDS", frozenset({lab_id})), \
+             mock.patch("backend.labgen.routes.get_or_start_provisioning") as mock_provision:
+            MockTracker.return_value.get_user_vms.return_value = [500]
+            r = client.post("/api/lab-sessions", json={"lab_id": lab_id})
+
+        assert r.status_code == 201
+        assert r.json()["vm_id"] == "500"
+        mock_provision.assert_not_called()
+
+    def test_job_ready_between_check_and_provisioning_call_uses_new_vm(self, student_client):
+        """Defensive race path: if the job is already 'ready' by the time this
+        request looks it up, re-read VMTracker and proceed to create the session
+        instead of returning a stale 'still provisioning' response."""
+        import unittest.mock as mock
+        client, lab_id = student_client
+        calls = {"n": 0}
+
+        def _get_user_vms(_username):
+            calls["n"] += 1
+            return [] if calls["n"] == 1 else [777]
+
+        with mock.patch("backend.labgen.routes.VMTracker") as MockTracker, \
+             mock.patch("backend.labgen.routes.config.LABGEN_AUTO_VM_PROVISION_LAB_IDS", frozenset({lab_id})), \
+             mock.patch(
+                 "backend.labgen.routes.get_or_start_provisioning",
+                 return_value={"status": "ready", "started_at": 0, "vm_id": 777, "error_category": None},
+             ):
+            MockTracker.return_value.get_user_vms.side_effect = _get_user_vms
+            r = client.post("/api/lab-sessions", json={"lab_id": lab_id})
+
+        assert r.status_code == 201
+        assert r.json()["vm_id"] == "777"
+
+    def test_ready_job_with_no_tracked_vm_invalidates_and_retriggers(self, student_client):
+        """Regression (Codex P1): a 'ready' job whose VM no longer exists
+        (e.g. the old platform's 30-min auto-expiry deleted it before the user
+        came back) must not keep telling the poller 'ready' forever with
+        nothing to show for it — invalidate the stale record and start a
+        fresh provisioning attempt instead of returning vm_provisioning_failed
+        or infinitely re-reporting a phantom 'ready'."""
+        import unittest.mock as mock
+        client, lab_id = student_client
+        with mock.patch("backend.labgen.routes.VMTracker") as MockTracker, \
+             mock.patch("backend.labgen.routes.config.LABGEN_AUTO_VM_PROVISION_LAB_IDS", frozenset({lab_id})), \
+             mock.patch("backend.labgen.routes.vm_provisioning.invalidate_job") as mock_invalidate, \
+             mock.patch(
+                 "backend.labgen.routes.get_or_start_provisioning",
+                 side_effect=[
+                     {"status": "ready", "started_at": 0, "vm_id": 500, "error_category": None},
+                     {"status": "provisioning", "started_at": 1, "vm_id": None, "error_category": None},
+                 ],
+             ) as mock_provision:
+            MockTracker.return_value.get_user_vms.return_value = []  # VM never comes back
+            r = client.post("/api/lab-sessions", json={"lab_id": lab_id})
+
+        assert r.status_code == 422
+        codes = [f["code"] for f in r.json()["detail"]["precheck_failures"]]
+        assert codes == ["vm_provisioning"]  # not vm_provisioning_failed — fresh attempt underway
+        mock_invalidate.assert_called_once_with("student1")
+        assert mock_provision.call_count == 2
+
+
+class TestVmProvisioningStatusEndpoint:
+    def test_no_job_returns_status_none(self, student_client):
+        import unittest.mock as mock
+        client, _ = student_client
+        with mock.patch("backend.labgen.routes.vm_provisioning.read_job", return_value=None):
+            r = client.get("/api/lab-sessions/vm-provisioning-status")
+        assert r.status_code == 200
+        assert r.json() == {"status": "none"}
+
+    def test_provisioning_job_returns_status_provisioning(self, student_client):
+        import unittest.mock as mock
+        client, _ = student_client
+        job = {"status": "provisioning", "started_at": 0, "vm_id": None, "error_category": None}
+        with mock.patch("backend.labgen.routes.vm_provisioning.read_job", return_value=job):
+            r = client.get("/api/lab-sessions/vm-provisioning-status")
+        assert r.json() == {"status": "provisioning"}
+
+    def test_ready_job_does_not_leak_vm_id(self, student_client):
+        import unittest.mock as mock
+        client, _ = student_client
+        job = {"status": "ready", "started_at": 0, "vm_id": 501, "error_category": None}
+        with mock.patch("backend.labgen.routes.vm_provisioning.read_job", return_value=job):
+            r = client.get("/api/lab-sessions/vm-provisioning-status")
+        assert r.json() == {"status": "ready"}
+        assert "vm_id" not in r.json()
+        assert "501" not in r.text
+
+    def test_failed_job_does_not_leak_error_category(self, student_client):
+        import unittest.mock as mock
+        client, _ = student_client
+        job = {"status": "failed", "started_at": 0, "vm_id": None, "error_category": "capacity_exceeded"}
+        with mock.patch("backend.labgen.routes.vm_provisioning.read_job", return_value=job):
+            r = client.get("/api/lab-sessions/vm-provisioning-status")
+        assert r.json() == {"status": "failed"}
+        assert "error_category" not in r.json()
+        assert "capacity_exceeded" not in r.text
+
+    def test_unauthenticated_returns_401(self):
+        from backend.main import app
+        c = TestClient(app, raise_server_exceptions=False)
+        r = c.get("/api/lab-sessions/vm-provisioning-status")
+        assert r.status_code in (401, 403)
+
+    def test_fixed_path_not_shadowed_by_session_id_route(self, student_client):
+        """Route ordering regression: /vm-provisioning-status must not be
+        swallowed by GET /{session_id} as if it were a session_id lookup."""
+        import unittest.mock as mock
+        client, _ = student_client
+        with mock.patch("backend.labgen.routes.vm_provisioning.read_job", return_value=None):
+            r = client.get("/api/lab-sessions/vm-provisioning-status")
+        assert r.status_code == 200
+        assert r.json() == {"status": "none"}  # not a 404 "session not found"
+
     def test_blocked_response_does_not_leak_precheck_details(self, student_client):
         """Gate must fire before VM/precheck logic — a blocked user shouldn't
         learn anything about the lab's VM/ownership state."""

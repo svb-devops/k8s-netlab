@@ -442,11 +442,11 @@ class TestContractPack:
             r = ctx["client"].get("/api/labgen/contract-pack")
             assert r.status_code == 200
 
-    def test_contains_19_endpoints(self):
+    def test_contains_20_endpoints(self):
         with _rc_ctx() as ctx:
             r = ctx["client"].get("/api/labgen/contract-pack")
             body = r.json()
-            assert len(body["endpoints"]) == 19
+            assert len(body["endpoints"]) == 20
 
     def test_contract_pack_examples_no_real_credentials(self):
         """Examples in contract pack must not contain real credential patterns."""

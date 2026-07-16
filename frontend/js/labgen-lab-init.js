@@ -1,5 +1,6 @@
 import { LabGenClient, LabGenApiError } from '/js/labgenClient.js';
 import { renderLabDetail, renderErrorState, renderNotFound, renderLoading } from '/js/labgenViews.js';
+import { waitForVmProvisioning } from '/js/labgen-vm-wait.js';
 
 const root = document.getElementById('root');
 const devInfo = document.getElementById('dev-user-info');
@@ -40,6 +41,44 @@ async function init() {
     }
 }
 
+function _showGenericRetryMessage(btn) {
+    // Deliberately generic — never surface VMID/Proxmox/internal error detail here.
+    const errDiv = document.createElement('p');
+    errDiv.className = 'text-red-400 text-sm mt-2 font-plex';
+    errDiv.textContent = '实验环境准备遇到问题，请稍后重试';
+    btn.insertAdjacentElement('afterend', errDiv);
+}
+
+async function _startAfterAutoProvisioning(client, labId, btn) {
+    btn.textContent = '正在准备实验环境…';
+    let outcome;
+    try {
+        outcome = await waitForVmProvisioning(client);
+    } catch (pollErr) {
+        // Polling itself failed (network error / 5xx from the status endpoint) —
+        // must still restore the button, otherwise the learner is stuck on a
+        // disabled "正在准备实验环境…" state with no way to retry short of reload.
+        _showGenericRetryMessage(btn);
+        btn.disabled = false;
+        btn.textContent = 'Start Lab';
+        return;
+    }
+    if (outcome !== 'ready') {
+        _showGenericRetryMessage(btn);
+        btn.disabled = false;
+        btn.textContent = 'Start Lab';
+        return;
+    }
+    try {
+        const session = await client.startLab(labId);
+        window.location.href = `/labgen-session.html?sessionId=${encodeURIComponent(session?.session_id ?? session?.id ?? '')}`;
+    } catch (retryErr) {
+        _showGenericRetryMessage(btn);
+        btn.disabled = false;
+        btn.textContent = 'Start Lab';
+    }
+}
+
 function attachStartAction(client, labId) {
     const btn = root.querySelector('[data-action="start-lab"]');
     if (!btn || btn.disabled) return;
@@ -50,6 +89,18 @@ function attachStartAction(client, labId) {
             const session = await client.startLab(labId);
             window.location.href = `/labgen-session.html?sessionId=${encodeURIComponent(session?.session_id ?? session?.id ?? '')}`;
         } catch (e) {
+            if (e instanceof LabGenApiError && (e.code === 'vm_provisioning' || e.code === 'vm_provisioning_failed')) {
+                // P0 Reader Path Repair: auto-provisioning in progress (or just failed) —
+                // never send the user to /app, poll until ready and retry automatically.
+                if (e.code === 'vm_provisioning_failed') {
+                    _showGenericRetryMessage(btn);
+                    btn.disabled = false;
+                    btn.textContent = 'Start Lab';
+                    return;
+                }
+                await _startAfterAutoProvisioning(client, labId, btn);
+                return;
+            }
             btn.disabled = false;
             btn.textContent = 'Start Lab';
             if (e instanceof LabGenApiError && e.code === 'no_vm_assigned') {

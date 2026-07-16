@@ -227,6 +227,16 @@ _ENDPOINTS: list[ApiContractEndpoint] = [
         is_read_only=True,
         tags=["lab-sessions"],
     ),
+    ApiContractEndpoint(
+        path="/api/lab-sessions/vm-provisioning-status",
+        method="GET",
+        summary="Poll status of P0 auto VM provisioning (none|provisioning|ready|failed)",
+        category=ApiContractCategory.RUNTIME_ACTIONS,
+        auth="any_authenticated",
+        response_model="VmProvisioningStatusResponse",
+        is_read_only=True,
+        tags=["lab-sessions"],
+    ),
     # --- provider diagnostics ---
     ApiContractEndpoint(
         path="/api/labgen/llm-provider/status",

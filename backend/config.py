@@ -351,6 +351,15 @@ LABGEN_ENABLED_LAB_IDS: frozenset = _parse_lab_id_set(
     os.getenv("LABGEN_ENABLED_LAB_IDS", "")
 )
 
+# LABGEN_AUTO_VM_PROVISION_LAB_IDS: comma-separated lab IDs for which a user
+# with no assigned VM gets one auto-created in the background (P0 Reader Path
+# Repair) instead of being told to visit /app. Empty = no lab auto-provisions
+# (safe default) — scoped explicitly to launched First-Wave labs only. Labs
+# not in this set keep the original no_vm_assigned + "visit /app" behavior.
+LABGEN_AUTO_VM_PROVISION_LAB_IDS: frozenset = _parse_lab_id_set(
+    os.getenv("LABGEN_AUTO_VM_PROVISION_LAB_IDS", "")
+)
+
 # Sandbox root directory for Linux learner workspaces.
 LABGEN_LINUX_SANDBOX_ROOT: str = os.getenv(
     "LABGEN_LINUX_SANDBOX_ROOT", "/tmp/labgen-linux-sandboxes"

@@ -20,6 +20,8 @@ from backend import config
 from backend.auth import auth_manager
 from backend.auth_deps import get_current_user
 from backend.vm_tracker import VMTracker
+from backend.labgen import vm_provisioning
+from backend.labgen.vm_provisioning import get_or_start_provisioning
 from backend.labgen.lab_session_repository import LabSessionRepository
 from backend.labgen.lab_session_service import (
     LabNotReadyToComplete,
@@ -1148,6 +1150,13 @@ class CreateSessionRequest(BaseModel):
     vm_id: Optional[str] = None  # omit to auto-discover student's assigned VM
 
 
+class VmProvisioningStatusResponse(BaseModel):
+    """P0 Reader Path Repair poll response. Deliberately bare — vm_id and
+    error_category are internal bookkeeping and must never reach the frontend."""
+
+    status: str  # "none" | "provisioning" | "ready" | "failed"
+
+
 # ---------------------------------------------------------------------------
 # Auth helpers
 # ---------------------------------------------------------------------------
@@ -1197,18 +1206,53 @@ async def create_lab_session(
         else:
             owned = VMTracker().get_user_vms(username)
             if not owned:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail={
-                        "precheck_failures": [
-                            {
-                                "code": "no_vm_assigned",
-                                "message": "您需要先在实验平台创建 Kubernetes 实验环境，才能开始此实验。请前往实验平台（/app）创建环境后，再回到本页点击 Start Lab。",
-                            }
-                        ]
-                    },
-                )
-            vm_id = str(owned[0])
+                if body.lab_id in config.LABGEN_AUTO_VM_PROVISION_LAB_IDS:
+                    # P0 Reader Path Repair: instead of sending the user to /app,
+                    # auto-trigger a background VM creation and tell the frontend
+                    # to poll GET /api/lab-sessions/vm-provisioning-status.
+                    job = get_or_start_provisioning(username)
+                    if job["status"] == "ready":
+                        # Defensive: another request's poll may have completed
+                        # provisioning between our VMTracker check and here.
+                        owned = VMTracker().get_user_vms(username)
+                        if not owned:
+                            # The VM this "ready" job created is gone (e.g. the
+                            # old platform's 30-min auto-expiry deleted it before
+                            # the user came back) — a stale "ready" record must
+                            # not keep telling the poller "ready" forever with no
+                            # VM to show for it. Clear it and start over.
+                            vm_provisioning.invalidate_job(username)
+                            job = get_or_start_provisioning(username)
+                    if not owned:
+                        failed = job["status"] == "failed"
+                        raise HTTPException(
+                            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail={
+                                "precheck_failures": [
+                                    {
+                                        "code": "vm_provisioning_failed" if failed else "vm_provisioning",
+                                        "message": vm_provisioning.safe_message_for(job.get("error_category"))
+                                        if failed
+                                        else "正在为你准备实验环境，请稍候…",
+                                    }
+                                ]
+                            },
+                        )
+                    vm_id = str(owned[0])
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail={
+                            "precheck_failures": [
+                                {
+                                    "code": "no_vm_assigned",
+                                    "message": "您需要先在实验平台创建 Kubernetes 实验环境，才能开始此实验。请前往实验平台（/app）创建环境后，再回到本页点击 Start Lab。",
+                                }
+                            ]
+                        },
+                    )
+            else:
+                vm_id = str(owned[0])
     try:
         return svc.create_session(
             lab_id=body.lab_id,
@@ -1220,6 +1264,22 @@ async def create_lab_session(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={"precheck_failures": exc.failures},
         )
+
+
+@lab_session_router.get("/vm-provisioning-status", response_model=VmProvisioningStatusResponse)
+async def get_vm_provisioning_status(
+    username: str = Depends(get_current_user),
+) -> VmProvisioningStatusResponse:
+    """Poll target for the P0 Reader Path Repair auto-provisioning flow.
+
+    Registered before /{session_id} so this fixed path is matched first.
+    Returns only a bare status — never vm_id or error_category, which are
+    internal bookkeeping fields that must not reach the frontend.
+    """
+    job = vm_provisioning.read_job(username)
+    if job is None:
+        return VmProvisioningStatusResponse(status="none")
+    return VmProvisioningStatusResponse(status=job["status"])
 
 
 @lab_session_router.get("/{session_id}", response_model=LabSessionState)

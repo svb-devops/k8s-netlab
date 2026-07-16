@@ -29,6 +29,7 @@ const PATHS = {
     listSessions:    '/api/lab-sessions',
     sessionSnapshot: '/api/lab-sessions/:session_id/snapshot',
     startLab:        '/api/lab-sessions',
+    vmProvisioningStatus: '/api/lab-sessions/vm-provisioning-status',
     checkStep:       '/api/lab-sessions/:session_id/steps/:step_id/check',
     completeSession: '/api/lab-sessions/:session_id/complete',
     abortSession:    '/api/lab-sessions/:session_id/abort',
@@ -185,6 +186,11 @@ export class LabGenClient {
     /** POST /api/lab-sessions  { lab_id } */
     async startLab(labId) {
         return this._request('POST', PATHS.startLab, { lab_id: labId });
+    }
+
+    /** GET /api/lab-sessions/vm-provisioning-status — P0 auto VM provisioning poll target */
+    async getVmProvisioningStatus() {
+        return this._request('GET', PATHS.vmProvisioningStatus);
     }
 
     /** POST /api/lab-sessions/:session_id/steps/:step_id/check */

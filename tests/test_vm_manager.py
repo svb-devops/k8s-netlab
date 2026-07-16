@@ -399,3 +399,160 @@ class TestListVms:
 
             assert result["success"] is False
             assert "timeout" in result["error"]
+
+
+# --- provision_vm_for_user Tests ---
+# Shared core used by both POST /api/vms/create and LabGen's background
+# auto-provisioning (backend/labgen/vm_provisioning.py). These tests pin down
+# the exact quota/rate-limit/creation pipeline so the api_routes.py extraction
+# is provably behavior-preserving.
+
+class TestProvisionVmForUser:
+    """Tests for provision_vm_for_user()"""
+
+    @pytest.fixture(autouse=True)
+    def _reset_state(self, monkeypatch):
+        from backend import config
+        monkeypatch.setattr(config, "MAX_VMS_PER_USER", 1)
+        monkeypatch.setattr(config, "MAX_TOTAL_VMS", 12)
+        monkeypatch.setattr(config, "VM_ID_MIN", 500)
+        monkeypatch.setattr(config, "VM_ID_MAX", 599)
+        monkeypatch.setattr(config, "VM_TEMPLATE_ID", 101)
+
+    def test_success_assigns_id_creates_and_tracks(self, monkeypatch):
+        from backend import vm_manager
+
+        monkeypatch.setattr(vm_manager, "list_vms", lambda: {"success": True, "data": []})
+        monkeypatch.setattr(
+            vm_manager.vm_tracker, "get_user_vms", lambda u: []
+        )
+        monkeypatch.setattr(
+            vm_manager.vm_tracker, "get_all_tracked_vms", lambda: []
+        )
+        monkeypatch.setattr(
+            vm_manager.rate_limiter, "is_allowed", lambda *a, **k: True
+        )
+        tracked = {}
+        monkeypatch.setattr(
+            vm_manager.vm_tracker, "track_vm",
+            lambda vid, owner: tracked.update(vm_id=vid, owner=owner),
+        )
+        monkeypatch.setattr(
+            vm_manager, "create_vm",
+            lambda vid, tid: {"success": True, "data": {"vm_id": vid, "template_id": tid}, "error": None},
+        )
+
+        data = vm_manager.provision_vm_for_user("alice")
+
+        assert data["vm_id"] == 500
+        assert tracked == {"vm_id": 500, "owner": "alice"}
+
+    def test_explicit_vm_id_bypasses_auto_assign(self, monkeypatch):
+        from backend import vm_manager
+
+        monkeypatch.setattr(vm_manager, "list_vms", lambda: {"success": True, "data": []})
+        monkeypatch.setattr(vm_manager.vm_tracker, "get_user_vms", lambda u: [])
+        monkeypatch.setattr(vm_manager.vm_tracker, "get_all_tracked_vms", lambda: [])
+        monkeypatch.setattr(vm_manager.rate_limiter, "is_allowed", lambda *a, **k: True)
+        monkeypatch.setattr(vm_manager.vm_tracker, "track_vm", lambda vid, owner: None)
+        calls = []
+        monkeypatch.setattr(
+            vm_manager, "create_vm",
+            lambda vid, tid: (calls.append(vid), {"success": True, "data": {"vm_id": vid}, "error": None})[1],
+        )
+
+        vm_manager.provision_vm_for_user("alice", vm_id=555)
+
+        assert calls == [555]
+
+    def test_quota_exceeded_raises_with_counts(self, monkeypatch):
+        from backend import vm_manager
+
+        monkeypatch.setattr(vm_manager, "list_vms", lambda: {"success": True, "data": []})
+        monkeypatch.setattr(vm_manager.vm_tracker, "get_user_vms", lambda u: [500])
+
+        with pytest.raises(vm_manager.VMQuotaExceeded) as exc:
+            vm_manager.provision_vm_for_user("alice")
+
+        assert exc.value.current_count == 1
+        assert exc.value.limit == 1
+
+    def test_system_capacity_exceeded_raises_with_counts(self, monkeypatch):
+        from backend import vm_manager
+
+        monkeypatch.setattr(vm_manager, "list_vms", lambda: {"success": True, "data": []})
+        monkeypatch.setattr(vm_manager.vm_tracker, "get_user_vms", lambda u: [])
+        monkeypatch.setattr(
+            vm_manager.vm_tracker, "get_all_tracked_vms", lambda: list(range(12))
+        )
+
+        with pytest.raises(vm_manager.SystemCapacityExceeded) as exc:
+            vm_manager.provision_vm_for_user("alice")
+
+        assert exc.value.current_count == 12
+        assert exc.value.limit == 12
+
+    def test_rate_limited_raises_with_retry_after(self, monkeypatch):
+        from backend import vm_manager
+
+        monkeypatch.setattr(vm_manager, "list_vms", lambda: {"success": True, "data": []})
+        monkeypatch.setattr(vm_manager.vm_tracker, "get_user_vms", lambda u: [])
+        monkeypatch.setattr(vm_manager.vm_tracker, "get_all_tracked_vms", lambda: [])
+        monkeypatch.setattr(vm_manager.rate_limiter, "is_allowed", lambda *a, **k: False)
+        monkeypatch.setattr(vm_manager.rate_limiter, "retry_after", lambda *a, **k: 300)
+
+        with pytest.raises(vm_manager.VMRateLimited) as exc:
+            vm_manager.provision_vm_for_user("alice")
+
+        assert exc.value.retry_after == 300
+
+    def test_create_vm_failure_raises_runtime_error_no_track(self, monkeypatch):
+        from backend import vm_manager
+
+        monkeypatch.setattr(vm_manager, "list_vms", lambda: {"success": True, "data": []})
+        monkeypatch.setattr(vm_manager.vm_tracker, "get_user_vms", lambda u: [])
+        monkeypatch.setattr(vm_manager.vm_tracker, "get_all_tracked_vms", lambda: [])
+        monkeypatch.setattr(vm_manager.rate_limiter, "is_allowed", lambda *a, **k: True)
+        tracked = []
+        monkeypatch.setattr(vm_manager.vm_tracker, "track_vm", lambda vid, owner: tracked.append(vid))
+        monkeypatch.setattr(
+            vm_manager, "create_vm",
+            lambda vid, tid: {"success": False, "data": None, "error": "Proxmox error"},
+        )
+
+        with pytest.raises(RuntimeError, match="Proxmox error"):
+            vm_manager.provision_vm_for_user("alice")
+
+        assert tracked == []  # never tracked on failure — no orphan tracker entry
+
+    def test_reconcile_untracks_stale_vm_before_quota_check(self, monkeypatch):
+        """A VM in the tracker but gone from Proxmox must not count toward quota."""
+        from backend import vm_manager
+
+        monkeypatch.setattr(
+            vm_manager, "list_vms",
+            lambda: {"success": True, "data": [{"vmid": 999}]},  # 500 no longer exists
+        )
+        owned = [500]
+        monkeypatch.setattr(vm_manager.vm_tracker, "get_user_vms", lambda u: list(owned))
+        untracked = []
+
+        def _untrack(vid):
+            untracked.append(vid)
+            owned.remove(vid)
+
+        monkeypatch.setattr(vm_manager.vm_tracker, "untrack_vm", _untrack)
+        monkeypatch.setattr(vm_manager.vm_tracker, "get_all_tracked_vms", lambda: [])
+        monkeypatch.setattr(vm_manager.rate_limiter, "is_allowed", lambda *a, **k: True)
+        monkeypatch.setattr(vm_manager.vm_tracker, "track_vm", lambda vid, owner: None)
+        monkeypatch.setattr(
+            vm_manager, "create_vm",
+            lambda vid, tid: {"success": True, "data": {"vm_id": vid}, "error": None},
+        )
+
+        # Real VMTracker reflects untrack_vm immediately — the reconcile step must
+        # remove the stale entry *before* the quota check reads get_user_vms again,
+        # otherwise a legitimately-empty user would be wrongly quota-blocked.
+        vm_manager.provision_vm_for_user("alice")
+
+        assert untracked == [500]

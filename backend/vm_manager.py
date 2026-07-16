@@ -7,7 +7,7 @@ Each operation uses SmartLogger for structured logging and reporting.
 
 import logging
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
 from proxmoxer.core import ResourceException
 
@@ -19,13 +19,45 @@ from backend.labgen.verifier_credentials import (
     VMCommandExecutorPort,
 )
 from backend.proxmox_api import connect_proxmox
+from backend.rate_limiter import rate_limiter
 from backend.smart_logger import SmartLogger
+from backend.vm_tracker import vm_tracker
 
 logger = logging.getLogger(__name__)
 
 # Valid VM ID range per Proxmox (100-999999)
 VM_ID_MIN = 100
 VM_ID_MAX = 999999
+
+
+class VMQuotaExceeded(Exception):
+    """Raised when the calling user has reached config.MAX_VMS_PER_USER."""
+
+    def __init__(self, current_count: int, limit: int):
+        self.current_count = current_count
+        self.limit = limit
+        super().__init__(f"user VM count {current_count}/{limit}")
+
+
+class SystemCapacityExceeded(Exception):
+    """Raised when the total tracked VM count has reached config.MAX_TOTAL_VMS."""
+
+    def __init__(self, current_count: int, limit: int):
+        self.current_count = current_count
+        self.limit = limit
+        super().__init__(f"system VM count {current_count}/{limit}")
+
+
+class VMRateLimited(Exception):
+    """Raised when the per-user VM-creation rate limit has been hit."""
+
+    def __init__(self, retry_after: int):
+        self.retry_after = retry_after
+        super().__init__(f"rate limited, retry after {retry_after}s")
+
+
+class NoAvailableVMId(Exception):
+    """Raised when no VM ID is available in the configured range."""
 
 
 def _validate_vm_id(vm_id: int) -> None:
@@ -171,6 +203,100 @@ def create_vm(vm_id: int, template_id: int) -> Dict[str, Any]:
         return {"success": False, "data": None, "error": str(e)}
     finally:
         slog.generate_report()
+
+
+def _find_available_vm_id(cfg: Any, do_list_vms: Any) -> int:
+    """Scan cfg.VM_ID_MIN..VM_ID_MAX and return the first ID not in Proxmox."""
+    result = do_list_vms()
+    if not result["success"]:
+        raise RuntimeError(f"Failed to list VMs: {result['error']}")
+
+    existing_ids = {vm["vmid"] for vm in result["data"]}
+    for candidate in range(cfg.VM_ID_MIN, cfg.VM_ID_MAX + 1):
+        if candidate not in existing_ids:
+            return candidate
+
+    raise NoAvailableVMId(f"No available VM IDs in range {cfg.VM_ID_MIN}-{cfg.VM_ID_MAX}")
+
+
+def provision_vm_for_user(
+    username: str,
+    vm_id: Optional[int] = None,
+    *,
+    _config: Any = None,
+    _vm_tracker: Any = None,
+    _rate_limiter: Any = None,
+    _list_vms: Any = None,
+    _create_vm: Any = None,
+) -> Dict[str, Any]:
+    """
+    Shared VM-creation core used by both POST /api/vms/create (backend/api_routes.py)
+    and LabGen's background auto-provisioning path (backend/labgen/vm_provisioning.py).
+
+    Pipeline: reconcile tracker vs Proxmox -> per-user/system quota check ->
+    rate limit -> assign vm_id (if not given) -> create_vm -> track_vm.
+
+    Pure sync function — caller decides whether to run this in a thread pool.
+
+    The `_config`/`_vm_tracker`/`_rate_limiter`/`_list_vms`/`_create_vm` keyword-only
+    params let a caller (namely api_create_vm) pass through *its own* module-level
+    references so existing unit tests that patch `backend.api_routes.vm_tracker`
+    etc. keep working unchanged — this function's own module globals remain the
+    default for every other caller (e.g. LabGen's background provisioning).
+
+    Raises:
+        VMQuotaExceeded, SystemCapacityExceeded, VMRateLimited, NoAvailableVMId,
+        RuntimeError (create_vm itself failed).
+    Returns:
+        create_vm()'s data dict (vm_id, name, template_id, cores, memory_mb, clone_task).
+    """
+    cfg = _config if _config is not None else config
+    tracker = _vm_tracker if _vm_tracker is not None else vm_tracker
+    limiter = _rate_limiter if _rate_limiter is not None else rate_limiter
+    do_list_vms = _list_vms if _list_vms is not None else list_vms
+    do_create_vm = _create_vm if _create_vm is not None else create_vm
+
+    # Reconcile tracker with Proxmox before quota check. Removes stale tracker
+    # entries for VMs that no longer exist in Proxmox, preventing false
+    # "quota exceeded" errors from orphaned entries.
+    try:
+        proxmox_check = do_list_vms()
+        if proxmox_check.get("success"):
+            existing_ids = {vm["vmid"] for vm in proxmox_check["data"]}
+            for stale_id in list(tracker.get_user_vms(username)):
+                if stale_id not in existing_ids:
+                    logger.warning(
+                        f"Quota reconcile: VM {stale_id} in tracker but not in Proxmox "
+                        f"(user='{username}'), removing stale entry"
+                    )
+                    tracker.untrack_vm(stale_id)
+    except Exception as reconcile_err:
+        logger.warning(f"Quota reconcile failed, using tracker as-is: {reconcile_err}")
+
+    user_vm_count = len(tracker.get_user_vms(username))
+    if user_vm_count >= cfg.MAX_VMS_PER_USER:
+        raise VMQuotaExceeded(user_vm_count, cfg.MAX_VMS_PER_USER)
+
+    total_vm_count = len(tracker.get_all_tracked_vms())
+    if total_vm_count >= cfg.MAX_TOTAL_VMS:
+        raise SystemCapacityExceeded(total_vm_count, cfg.MAX_TOTAL_VMS)
+
+    if not limiter.is_allowed(f"create_vm:{username}", max_requests=3, window_seconds=3600):
+        wait = limiter.retry_after(f"create_vm:{username}", window_seconds=3600)
+        raise VMRateLimited(wait)
+
+    resolved_vm_id = vm_id if vm_id is not None else _find_available_vm_id(cfg, do_list_vms)
+
+    logger.info(
+        f"provision_vm_for_user: user '{username}' creating VM {resolved_vm_id} "
+        f"from template {cfg.VM_TEMPLATE_ID}"
+    )
+    result = do_create_vm(resolved_vm_id, cfg.VM_TEMPLATE_ID)
+    if not result["success"]:
+        raise RuntimeError(result["error"])
+
+    tracker.track_vm(resolved_vm_id, owner=username)
+    return cast(Dict[str, Any], result["data"])
 
 
 def delete_vm(vm_id: int, force: bool = False) -> Dict[str, Any]:
