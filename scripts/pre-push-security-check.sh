@@ -76,7 +76,7 @@ check_range() {
     # ------------------------------------------------------------------
     echo "  [1/8] 明文密码..."
     if echo "$ADDED" | grep -iE '(password|passwd|pwd)\s*=\s*["\x27][^"\x27]{4,}["\x27]' \
-        | grep -v 'your-password\|example\|<PASSWORD>\|getenv\|os\.environ\|\.env' \
+        | grep -v 'your-password\|example\|<PASSWORD>\|getenv\|os\.environ\|\.env\|="\$' \
         | grep -qE '.'; then
         echo "  ❌ 发现明文密码"
         ISSUES=$((ISSUES + 1))

@@ -232,6 +232,25 @@ print(f'Archived to: {result.archive_paths}')
 
 ---
 
+## 场景九：Directus PostgreSQL / uploads / extensions 备份与恢复
+
+详见 [docs/ops/DIRECTUS_BACKUP_RESTORE_RUNBOOK.md](docs/ops/DIRECTUS_BACKUP_RESTORE_RUNBOOK.md)。
+
+快速参考：
+```bash
+# 手工执行一次全量备份（data/*.json + Directus postgres + uploads + extensions）
+bash /root/k8s-netlab/scripts/backup-full-state.sh
+
+# 查看最近备份
+ls -la /root/backups/k8s-netlab-full/ | tail -10
+```
+
+每日 03:30 自动执行（crontab），与原有 03:00 的 `backup-data.sh` 错开。当前
+**未配置异地备份**（`OFFSITE_BACKUP_NOT_CONFIGURED`），本地备份与生产数据同处一台
+物理机，不构成灾难恢复能力，需 owner 决策异地备份目标。
+
+---
+
 ## Owner Internal Run Checklist
 
 执行 Owner 内部运行前必须全部通过：

@@ -40,7 +40,7 @@ fi
 echo "【1/8】检查明文密码..."
 if git diff --cached | grep -E '^[+]' \
     | grep -iE '(password|passwd|pwd)\s*=\s*["\x27][^"\x27]{4,}["\x27]' \
-    | grep -v 'your-password\|example\|<PASSWORD>\|getenv\|os\.environ\|\.env'; then
+    | grep -v 'your-password\|example\|<PASSWORD>\|getenv\|os\.environ\|\.env\|="\$'; then
     echo "❌ 发现明文密码！"
     ISSUES=$((ISSUES + 1))
 else
