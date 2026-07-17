@@ -118,6 +118,8 @@ class TestVerifyType:
             "deployment_unavailable", "configmap_exists", "secret_exists",
             "namespace_exists", "namespace_not_exists",
             "node_ready", "pvc_bound", "job_completed",
+            "configmap_value_equals", "deployment_restart_triggered",
+            "deployment_restart_not_triggered",
         }
         actual = {v.value for v in VerifyType}
         assert actual == expected

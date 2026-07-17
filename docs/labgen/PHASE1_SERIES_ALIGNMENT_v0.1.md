@@ -4,6 +4,10 @@
 
 `documentation_only` —— 本文档不改变任何代码行为、不开放任何访问权限。目的是把已经产出的三个 lab（CrashLoopBackOff、Service 无 Endpoints、ImagePullBackOff）放进一个明确的系列结构里，为后续排期提供依据。
 
+## 2026-07-17 更新（Second Wave Sprint #1）
+
+ConfigMap 修改后不生效已完成生产：`publish_status=published`（internal soft launch，未加入 `LABGEN_ENABLED_LAB_IDS`），一轮真实 K3s rehearsal（VM 401）+ 一次 owner-as-learner smoke 全部通过，`cleanup_verified=true`。新增两个最小可复用 verifier（`configmap_value_equals`、`deployment_restart_triggered`/`deployment_restart_not_triggered`）——因 `kubectl exec` 对学员和 verifier 均被禁止，无法直接验证容器内运行进程的实际环境变量值，改用"Deployment 是否发生过 rollout restart"这一 K8s API 可直接观测、且逻辑等价的信号，已在真实集群上实测验证。详见 `CONFIGMAP_NOT_EFFECTIVE_LAB_PRODUCTION_RESULT_v0.1.md`。至此 second_wave 第一个主题完成，第二、三个主题（DNS 服务发现失败、Pod Pending）尚未开始。
+
 ## 2026-07-13 更新（Phase 1 First Wave Sprint #3）
 
 ImagePullBackOff 已完成生产：`publish_status=published`（internal soft launch，未加入 `LABGEN_ENABLED_LAB_IDS`），两轮真实 K3s rehearsal + 一次 owner-as-learner smoke 全部通过，`cleanup_verified=true`。详见 `IMAGE_PULL_BACKOFF_LAB_PRODUCTION_RESULT_v0.1.md`。至此 first_wave 三个 lab 全部完成，second_wave 尚未开始。
@@ -22,7 +26,7 @@ runtime_scope: 单命名空间、single K3s runtime（不涉及多 VM / 多节�
 | 1 | CrashLoopBackOff | 已发布（internal soft launch，未对外） |
 | 2 | Service 没有 Endpoints（selector 与 labels 不匹配） | 已发布（internal soft launch，未对外） |
 | 3 | ImagePullBackOff | 已发布（internal soft launch，未对外） |
-| 4 | ConfigMap 修改后不生效 | 未生产 |
+| 4 | ConfigMap 修改后不生效 | 已发布（internal soft launch，未对外） |
 | 5 | DNS 服务发现失败 | 未生产 |
 | 6 | Pod Pending | 未生产 |
 
@@ -36,7 +40,7 @@ first_wave 全部完成，下一步排期进入 second_wave。
 
 ## second_wave
 
-4. ConfigMap 修改后不生效
+4. ConfigMap 修改后不生效（已完成 —— Second Wave 第一个"配置类"故障，与 First Wave 三个"Pod 状态类"故障互补，验证了"没有报错但行为不符合预期"这类新的判断分支；新增 configmap_value_equals/deployment_restart_triggered/deployment_restart_not_triggered 三个 verifier，为未来同类"配置生效时机"主题打下可复用基础）
 5. DNS 服务发现失败
 6. Pod Pending
 

@@ -948,4 +948,74 @@ class TestVerifyTypeImplemented:
         ])
         results = validator.validate(draft)
         assert "verify.type_implemented" in _passed_ids(results)
+
+
+class TestVerifyConfigmapValueEqualsFields:
+    """ConfigMap-not-effective lab (Second Wave #1): configmap_value_equals reads
+    VerifyTemplate.config_key/expected_value, both Optional on the schema since
+    only this type uses them. A draft missing either would pass schema
+    validation but silently always fail at rehearsal (comparing the ConfigMap's
+    real value against "" instead of the intended expected_value)."""
+
+    def test_pass_when_both_fields_present(self):
+        draft = _draft(steps=[_step(verify=[
+            _vt(type=VerifyType.CONFIGMAP_VALUE_EQUALS, name="app-config",
+                config_key="APP_MODE", expected_value="new"),
+        ])])
+        results = validator.validate(draft)
+        assert "verify.configmap_value_equals_fields" in _passed_ids(results)
+
+    def test_fail_when_config_key_missing(self):
+        draft = _draft(steps=[_step(verify=[
+            _vt(type=VerifyType.CONFIGMAP_VALUE_EQUALS, name="app-config",
+                expected_value="new"),
+        ])])
+        results = validator.validate(draft)
+        assert "verify.configmap_value_equals_fields" in _failed_ids(results)
+        assert _blocking_levels(results, "verify.configmap_value_equals_fields") == [BlockingLevel.PUBLISH_BLOCKING]
+
+    def test_fail_when_expected_value_missing(self):
+        draft = _draft(steps=[_step(verify=[
+            _vt(type=VerifyType.CONFIGMAP_VALUE_EQUALS, name="app-config",
+                config_key="APP_MODE"),
+        ])])
+        results = validator.validate(draft)
+        assert "verify.configmap_value_equals_fields" in _failed_ids(results)
+
+    def test_fail_when_both_missing(self):
+        draft = _draft(steps=[_step(verify=[
+            _vt(type=VerifyType.CONFIGMAP_VALUE_EQUALS, name="app-config"),
+        ])])
+        results = validator.validate(draft)
+        assert "verify.configmap_value_equals_fields" in _failed_ids(results)
+
+    def test_pass_when_expected_value_is_legitimately_empty_string(self):
+        """A ConfigMap key can legitimately be expected to equal "" — that is
+        a real, distinct value from "not set" (None) and must not be treated
+        as a missing field."""
+        draft = _draft(steps=[_step(verify=[
+            _vt(type=VerifyType.CONFIGMAP_VALUE_EQUALS, name="app-config",
+                config_key="APP_MODE", expected_value=""),
+        ])])
+        results = validator.validate(draft)
+        assert "verify.configmap_value_equals_fields" in _passed_ids(results)
+
+    def test_other_types_unaffected(self):
+        """A draft with no configmap_value_equals verify steps should pass
+        this check by default (nothing to check)."""
+        draft = _draft(steps=[_step(verify=[_vt(type=VerifyType.POD_RUNNING)])])
+        results = validator.validate(draft)
+        assert "verify.configmap_value_equals_fields" in _passed_ids(results)
+
+    def test_deployment_restart_types_need_no_extra_fields(self):
+        """Unlike configmap_value_equals, the restart-annotation types only
+        need namespace/name (already required fields) — no config_key/
+        expected_value, so they must validate cleanly with zero extra setup."""
+        draft = _draft(steps=[_step(verify=[
+            _vt(type=VerifyType.DEPLOYMENT_RESTART_NOT_TRIGGERED, name="demo"),
+            _vt(verify_id="v2", type=VerifyType.DEPLOYMENT_RESTART_TRIGGERED, name="demo"),
+        ])])
+        results = validator.validate(draft)
+        assert "verify.type_implemented" in _passed_ids(results)
+        assert "verify.configmap_value_equals_fields" in _passed_ids(results)
         assert "verify.type_implemented" not in _failed_ids(results)

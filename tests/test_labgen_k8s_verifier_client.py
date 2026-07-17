@@ -524,6 +524,188 @@ class TestSecretExists:
 
 
 # ---------------------------------------------------------------------------
+# configmap_value_equals
+# ---------------------------------------------------------------------------
+
+
+def _mock_cm_with_data(data: Optional[dict]) -> MagicMock:
+    cm = MagicMock()
+    cm.data = data
+    cm_list = MagicMock()
+    cm_list.items = [cm]
+    return cm_list
+
+
+class TestConfigmapValueEquals:
+    def test_returns_true_when_key_matches(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_config_map.return_value = _mock_cm_with_data({"APP_MODE": "new"})
+        result = _adapter(core, MagicMock()).configmap_value_equals(
+            "lab-ns", "app-config", "APP_MODE", "new"
+        )
+        assert result is True
+        core.list_namespaced_config_map.assert_called_once_with(
+            "lab-ns", field_selector="metadata.name=app-config"
+        )
+
+    def test_returns_false_when_key_does_not_match(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_config_map.return_value = _mock_cm_with_data({"APP_MODE": "old"})
+        result = _adapter(core, MagicMock()).configmap_value_equals(
+            "lab-ns", "app-config", "APP_MODE", "new"
+        )
+        assert result is False
+
+    def test_returns_false_when_key_missing(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_config_map.return_value = _mock_cm_with_data({"OTHER_KEY": "x"})
+        result = _adapter(core, MagicMock()).configmap_value_equals(
+            "lab-ns", "app-config", "APP_MODE", "new"
+        )
+        assert result is False
+
+    def test_returns_false_when_data_is_none(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_config_map.return_value = _mock_cm_with_data(None)
+        result = _adapter(core, MagicMock()).configmap_value_equals(
+            "lab-ns", "app-config", "APP_MODE", "new"
+        )
+        assert result is False
+
+    def test_returns_false_when_configmap_not_found(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_config_map.return_value = _mock_cm_list(0)
+        result = _adapter(core, MagicMock()).configmap_value_equals(
+            "lab-ns", "missing", "APP_MODE", "new"
+        )
+        assert result is False
+
+    def test_returns_false_on_404(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_config_map.side_effect = _api_404()
+        result = _adapter(core, MagicMock()).configmap_value_equals(
+            "lab-ns", "missing", "APP_MODE", "new"
+        )
+        assert result is False
+
+    def test_propagates_non_404(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_config_map.side_effect = _api_500()
+        with pytest.raises(ApiException):
+            _adapter(core, MagicMock()).configmap_value_equals(
+                "lab-ns", "app-config", "APP_MODE", "new"
+            )
+
+    def test_never_calls_read_namespaced_config_map(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_config_map.return_value = _mock_cm_with_data({"APP_MODE": "new"})
+        _adapter(core, MagicMock()).configmap_value_equals("lab-ns", "app-config", "APP_MODE", "new")
+        core.read_namespaced_config_map.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# deployment_restart_triggered / deployment_restart_not_triggered
+# ---------------------------------------------------------------------------
+
+
+def _mock_deployment_with_annotations(annotations: Optional[dict]) -> MagicMock:
+    dep = MagicMock()
+    dep.spec.template.metadata.annotations = annotations
+    dep_list = MagicMock()
+    dep_list.items = [dep]
+    return dep_list
+
+
+class TestDeploymentRestartTriggered:
+    def test_returns_true_when_restarted_at_annotation_present(self) -> None:
+        apps = MagicMock()
+        apps.list_namespaced_deployment.return_value = _mock_deployment_with_annotations(
+            {"kubectl.kubernetes.io/restartedAt": "2026-07-17T12:00:00-07:00"}
+        )
+        result = _adapter(MagicMock(), apps).deployment_restart_triggered("lab-ns", "demo")
+        assert result is True
+        apps.list_namespaced_deployment.assert_called_once_with(
+            "lab-ns", field_selector="metadata.name=demo"
+        )
+
+    def test_returns_false_when_annotations_empty(self) -> None:
+        apps = MagicMock()
+        apps.list_namespaced_deployment.return_value = _mock_deployment_with_annotations(None)
+        assert _adapter(MagicMock(), apps).deployment_restart_triggered("lab-ns", "demo") is False
+
+    def test_returns_false_when_annotations_present_but_key_missing(self) -> None:
+        apps = MagicMock()
+        apps.list_namespaced_deployment.return_value = _mock_deployment_with_annotations(
+            {"some-other-annotation": "x"}
+        )
+        assert _adapter(MagicMock(), apps).deployment_restart_triggered("lab-ns", "demo") is False
+
+    def test_returns_false_when_deployment_not_found(self) -> None:
+        apps = MagicMock()
+        apps.list_namespaced_deployment.return_value = _mock_list()
+        assert _adapter(MagicMock(), apps).deployment_restart_triggered("lab-ns", "missing") is False
+
+    def test_returns_false_on_404(self) -> None:
+        apps = MagicMock()
+        apps.list_namespaced_deployment.side_effect = _api_404()
+        assert _adapter(MagicMock(), apps).deployment_restart_triggered("lab-ns", "missing") is False
+
+    def test_propagates_non_404(self) -> None:
+        apps = MagicMock()
+        apps.list_namespaced_deployment.side_effect = _api_500()
+        with pytest.raises(ApiException):
+            _adapter(MagicMock(), apps).deployment_restart_triggered("lab-ns", "demo")
+
+
+class TestDeploymentRestartNotTriggered:
+    def test_returns_true_when_no_restart_annotation_and_deployment_exists(self) -> None:
+        apps = MagicMock()
+        apps.list_namespaced_deployment.return_value = _mock_deployment_with_annotations(None)
+        result = _adapter(MagicMock(), apps).deployment_restart_not_triggered("lab-ns", "demo")
+        assert result is True
+
+    def test_calls_list_namespaced_deployment_exactly_once(self) -> None:
+        """Regression: an earlier version called list_namespaced_deployment twice
+        (once to check existence, once via the shared annotation-check helper),
+        opening a narrow TOCTOU window — if the deployment was deleted between
+        the two calls, it would incorrectly report "not yet restarted" (True)
+        for a deployment that no longer exists. Single call closes that window."""
+        apps = MagicMock()
+        apps.list_namespaced_deployment.return_value = _mock_deployment_with_annotations(None)
+        _adapter(MagicMock(), apps).deployment_restart_not_triggered("lab-ns", "demo")
+        assert apps.list_namespaced_deployment.call_count == 1
+
+    def test_returns_false_when_restart_annotation_present(self) -> None:
+        apps = MagicMock()
+        apps.list_namespaced_deployment.return_value = _mock_deployment_with_annotations(
+            {"kubectl.kubernetes.io/restartedAt": "2026-07-17T12:00:00-07:00"}
+        )
+        result = _adapter(MagicMock(), apps).deployment_restart_not_triggered("lab-ns", "demo")
+        assert result is False
+
+    def test_returns_false_when_deployment_does_not_exist(self) -> None:
+        """Unlike the bare annotation-absent check, a nonexistent deployment
+        must NOT read as "not triggered" — this type is only meaningful for a
+        step that runs after the deployment was already created."""
+        apps = MagicMock()
+        apps.list_namespaced_deployment.return_value = _mock_list()
+        result = _adapter(MagicMock(), apps).deployment_restart_not_triggered("lab-ns", "missing")
+        assert result is False
+
+    def test_returns_false_on_404(self) -> None:
+        apps = MagicMock()
+        apps.list_namespaced_deployment.side_effect = _api_404()
+        result = _adapter(MagicMock(), apps).deployment_restart_not_triggered("lab-ns", "missing")
+        assert result is False
+
+    def test_propagates_non_404(self) -> None:
+        apps = MagicMock()
+        apps.list_namespaced_deployment.side_effect = _api_500()
+        with pytest.raises(ApiException):
+            _adapter(MagicMock(), apps).deployment_restart_not_triggered("lab-ns", "demo")
+
+
+# ---------------------------------------------------------------------------
 # KubernetesApiFactory — smoke test (no real K8s connection)
 # ---------------------------------------------------------------------------
 

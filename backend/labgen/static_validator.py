@@ -23,6 +23,7 @@ from backend.labgen.models import (
     PollutionLevel,
     ValidatorResult,
     ValidatorStatus,
+    VerifyType,
 )
 from backend.labgen.topic_consistency import check_article_lab_consistency
 
@@ -244,6 +245,7 @@ class StaticValidator:
         results.extend(self._check_verify_no_shell_commands(draft))
         results.extend(self._check_verify_type_implemented(draft))
         results.extend(self._check_verify_no_secret_value(draft))
+        results.extend(self._check_verify_configmap_value_equals_fields(draft))
         results.extend(self._check_cleanup_declared(draft))
         results.extend(self._check_cluster_scoped_cleanup_declared(draft))
         results.extend(self._check_helm_no_generation(draft))
@@ -559,6 +561,28 @@ class StaticValidator:
                         f"Verify '{vt.verify_id}' uses forbidden type '{vt.type.value}'",
                     ))
         return failures or [_pass("verify.no_secret_value", "steps[*].verify[*].type")]
+
+    def _check_verify_configmap_value_equals_fields(self, draft: LabDraft) -> list[ValidatorResult]:
+        """configmap_value_equals reads VerifyTemplate.config_key/expected_value —
+        both are Optional on the schema (only this type uses them), so a draft
+        missing either would pass schema validation but silently always fail
+        at rehearsal (comparing against "" instead of the intended key/value).
+        Catch that here, the same way verify.type_implemented catches the
+        unimplemented-type gap."""
+        failures = []
+        for i, step in enumerate(draft.steps):
+            for j, vt in enumerate(step.verify):
+                if vt.type != VerifyType.CONFIGMAP_VALUE_EQUALS:
+                    continue
+                if vt.config_key is None or vt.expected_value is None:
+                    failures.append(_fail(
+                        "verify.configmap_value_equals_fields",
+                        BlockingLevel.PUBLISH_BLOCKING,
+                        f"steps[{i}].verify[{j}]",
+                        f"Verify '{vt.verify_id}' is type configmap_value_equals but is missing "
+                        "config_key and/or expected_value — this step would always fail at rehearsal.",
+                    ))
+        return failures or [_pass("verify.configmap_value_equals_fields", "steps[*].verify[*]")]
 
     # ------------------------------------------------------------------
     # Cleanup checks  (§10: cleanup.*, cluster_scoped.*)

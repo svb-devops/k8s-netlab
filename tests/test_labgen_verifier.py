@@ -675,10 +675,15 @@ class TestMakeDetail:
 class TestSupportedTypesSet:
     def test_supported_types_count(self) -> None:
         # 6 original + 2 for CrashLoopBackOff/cleanup + 1 for service_has_endpoints
-        assert len(_SUPPORTED_TYPES) == 9
+        # + 3 for ConfigMap-not-effective (configmap_value_equals,
+        # deployment_restart_triggered, deployment_restart_not_triggered)
+        assert len(_SUPPORTED_TYPES) == 12
         assert VerifyType.DEPLOYMENT_UNAVAILABLE in _SUPPORTED_TYPES
         assert VerifyType.NAMESPACE_NOT_EXISTS in _SUPPORTED_TYPES
         assert VerifyType.SERVICE_HAS_ENDPOINTS in _SUPPORTED_TYPES
+        assert VerifyType.CONFIGMAP_VALUE_EQUALS in _SUPPORTED_TYPES
+        assert VerifyType.DEPLOYMENT_RESTART_TRIGGERED in _SUPPORTED_TYPES
+        assert VerifyType.DEPLOYMENT_RESTART_NOT_TRIGGERED in _SUPPORTED_TYPES
 
     def test_shell_not_supported(self) -> None:
         unsupported = {

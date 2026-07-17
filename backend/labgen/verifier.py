@@ -71,6 +71,17 @@ class K8sVerifierClientPort(ABC):
     @abstractmethod
     def namespace_not_exists(self, namespace: str) -> bool: ...
 
+    @abstractmethod
+    def configmap_value_equals(
+        self, namespace: str, name: str, config_key: str, expected_value: str
+    ) -> bool: ...
+
+    @abstractmethod
+    def deployment_restart_triggered(self, namespace: str, name: str) -> bool: ...
+
+    @abstractmethod
+    def deployment_restart_not_triggered(self, namespace: str, name: str) -> bool: ...
+
 
 # ---------------------------------------------------------------------------
 # Fake client (tests only)
@@ -124,6 +135,17 @@ class FakeK8sVerifierClient(K8sVerifierClientPort):
     def namespace_not_exists(self, namespace: str) -> bool:
         return self._get(("namespace_not_exists", namespace))
 
+    def configmap_value_equals(
+        self, namespace: str, name: str, config_key: str, expected_value: str
+    ) -> bool:
+        return self._get(("configmap_value_equals", namespace, name, config_key, expected_value))
+
+    def deployment_restart_triggered(self, namespace: str, name: str) -> bool:
+        return self._get(("deployment_restart_triggered", namespace, name))
+
+    def deployment_restart_not_triggered(self, namespace: str, name: str) -> bool:
+        return self._get(("deployment_restart_not_triggered", namespace, name))
+
 
 # ---------------------------------------------------------------------------
 # Supported verify types
@@ -139,6 +161,9 @@ _SUPPORTED_TYPES: frozenset[VerifyType] = frozenset({
     VerifyType.SERVICE_HAS_ENDPOINTS,
     VerifyType.CONFIGMAP_EXISTS,
     VerifyType.SECRET_EXISTS,
+    VerifyType.CONFIGMAP_VALUE_EQUALS,
+    VerifyType.DEPLOYMENT_RESTART_TRIGGERED,
+    VerifyType.DEPLOYMENT_RESTART_NOT_TRIGGERED,
 })
 
 _NS_SENTINEL = "{{lab_namespace}}"
@@ -294,6 +319,29 @@ class VerifierService:
                 else "Namespace still exists. Make sure kubectl delete namespace completed successfully "
                 "and wait a moment before checking again."
             )
+        if vtype == VerifyType.CONFIGMAP_VALUE_EQUALS:
+            return (
+                f'ConfigMap "{name}" now has the expected value for this step.'
+                if passed
+                else f'ConfigMap "{name}" does not yet have the expected value. '
+                "Check that you patched the correct key with the correct value."
+            )
+        if vtype == VerifyType.DEPLOYMENT_RESTART_NOT_TRIGGERED:
+            return (
+                f'Deployment "{name}" has not been restarted yet — '
+                "its currently running Pod predates this step, which is expected at this point."
+                if passed
+                else f'Deployment "{name}" already shows a restart annotation. '
+                "If you already ran kubectl rollout restart, continue to the next step instead."
+            )
+        if vtype == VerifyType.DEPLOYMENT_RESTART_TRIGGERED:
+            return (
+                f'Deployment "{name}" has been restarted — Kubernetes created a new Pod '
+                "for this workload after the restart."
+                if passed
+                else f'Deployment "{name}" has not been restarted yet. '
+                f"Run: kubectl rollout restart deployment/{name}"
+            )
         return ""
 
     @staticmethod
@@ -322,4 +370,12 @@ class VerifierService:
             return client.deployment_unavailable(namespace, name)
         if vtype == VerifyType.NAMESPACE_NOT_EXISTS:
             return client.namespace_not_exists(namespace)
+        if vtype == VerifyType.CONFIGMAP_VALUE_EQUALS:
+            return client.configmap_value_equals(
+                namespace, name, template.config_key or "", template.expected_value or ""
+            )
+        if vtype == VerifyType.DEPLOYMENT_RESTART_TRIGGERED:
+            return client.deployment_restart_triggered(namespace, name)
+        if vtype == VerifyType.DEPLOYMENT_RESTART_NOT_TRIGGERED:
+            return client.deployment_restart_not_triggered(namespace, name)
         raise AssertionError(f"_dispatch called for unsupported type {vtype!r}")  # pragma: no cover

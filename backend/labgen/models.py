@@ -53,6 +53,9 @@ class VerifyType(str, Enum):
     NODE_READY = "node_ready"
     PVC_BOUND = "pvc_bound"
     JOB_COMPLETED = "job_completed"
+    CONFIGMAP_VALUE_EQUALS = "configmap_value_equals"
+    DEPLOYMENT_RESTART_TRIGGERED = "deployment_restart_triggered"
+    DEPLOYMENT_RESTART_NOT_TRIGGERED = "deployment_restart_not_triggered"
 
 
 class LinuxVerifyType(str, Enum):
@@ -194,6 +197,11 @@ class VerifyTemplate(SchemaVersionedModel):
     blocking_level_on_fail: BlockingLevel = BlockingLevel.PUBLISH_BLOCKING
     manual_review_required: bool = False
     notes: Optional[str] = None
+    # Only used by CONFIGMAP_VALUE_EQUALS: the ConfigMap .data key to read and
+    # the value it must equal. Both required for that type (checked by
+    # StaticValidator.verify.configmap_value_equals_fields), unused otherwise.
+    config_key: Optional[str] = None
+    expected_value: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

@@ -254,6 +254,90 @@ class K8sVerifierClientAdapter(K8sVerifierClientPort):
         """
         return not self.namespace_exists(namespace)
 
+    def configmap_value_equals(
+        self, namespace: str, name: str, config_key: str, expected_value: str
+    ) -> bool:
+        """Return True if the ConfigMap exists and .data[config_key] == expected_value.
+
+        Uses list_namespaced_config_map with field_selector — does not require 'get' RBAC.
+        Returns False if the ConfigMap, or the key within it, does not exist.
+        ConfigMap data is not sensitive (unlike Secret data), so reading and
+        comparing its value here does not violate the "no secret value reads"
+        constraint that applies to secret_key_exists/secret_value_equals.
+        """
+        try:
+            result = self._core.list_namespaced_config_map(
+                namespace, field_selector=f"metadata.name={name}"
+            )
+            if not result.items:
+                return False
+            data = result.items[0].data or {}
+            return data.get(config_key) == expected_value
+        except ApiException as exc:
+            if exc.status == 404:
+                return False
+            raise
+
+    def _deployment_restart_annotation_present(self, namespace: str, name: str) -> Optional[bool]:
+        """Shared helper: True if spec.template.metadata.annotations has
+        kubectl.kubernetes.io/restartedAt — the annotation `kubectl rollout
+        restart` sets on the Pod template, which is what actually forces a
+        new ReplicaSet/Pod (env values injected via envFrom/valueFrom are
+        resolved once at container creation and are not live-reloaded when
+        only the referenced ConfigMap's data changes — verified empirically
+        against this K3s version: patching a ConfigMap alone does not touch
+        this annotation or create a new Pod; only rollout restart does).
+
+        Returns None (not False) if the deployment does not exist, so callers
+        can distinguish "deployment missing" from "deployment exists, not yet
+        restarted" with a single API call — avoids a second list call (and
+        the TOCTOU window a second call would open) in
+        deployment_restart_not_triggered.
+        """
+        try:
+            result = self._apps.list_namespaced_deployment(
+                namespace, field_selector=f"metadata.name={name}"
+            )
+            if not result.items:
+                return None
+            dep = result.items[0]
+            template_meta = (
+                dep.spec.template.metadata
+                if dep.spec and dep.spec.template
+                else None
+            )
+            annotations = template_meta.annotations if template_meta else None
+            if not annotations:
+                return False
+            return "kubectl.kubernetes.io/restartedAt" in annotations
+        except ApiException as exc:
+            if exc.status == 404:
+                return None
+            raise
+
+    def deployment_restart_triggered(self, namespace: str, name: str) -> bool:
+        """Return True if this Deployment has been restarted (kubectl rollout restart).
+
+        See _deployment_restart_annotation_present for the mechanism. Returns
+        False if the deployment does not exist or has not been restarted yet.
+        """
+        return bool(self._deployment_restart_annotation_present(namespace, name))
+
+    def deployment_restart_not_triggered(self, namespace: str, name: str) -> bool:
+        """Return True if this Deployment exists and has NOT been restarted yet.
+
+        Semantic inverse of deployment_restart_triggered, but also requires
+        the deployment to exist (a nonexistent deployment has "not triggered"
+        a restart in a literal sense, but that is never the intended meaning
+        for a lab step that runs after the deployment was already created).
+        Single list call — see _deployment_restart_annotation_present's
+        None-means-missing contract.
+        """
+        present = self._deployment_restart_annotation_present(namespace, name)
+        if present is None:
+            return False
+        return not present
+
 
 # ---------------------------------------------------------------------------
 # K8sVerifierClientFactory  (module-level factory function for routes.py)
