@@ -132,3 +132,65 @@ docker rm -f k8s-netlab-restore-drill
 - 是否配置异地备份、使用什么目标（对象存储/另一台物理机等）、是否加密，
   需要 owner 决策；一旦决定，需要 owner 提供或授权生成加密密钥（本 runbook
   不会自行生成并托管新密钥）
+
+---
+
+## 凭证轮换（DIRECTUS_DB_PASSWORD / DIRECTUS_SECRET / DIRECTUS_ADMIN_PASSWORD）
+
+**本节不记录任何密钥明文**，只记录方法和已验证过的操作顺序。
+
+### 轮换前
+
+1. 先跑一次 `bash scripts/backup-full-state.sh`，确认 checksum 全部通过——轮换失败需要回滚时，这是最后一道保险
+2. 备份当前 `.env.directus` 到 `/root/backups/k8s-netlab-full/pre-rotation-env-<timestamp>.bak`，权限 600。这个备份文件本身包含轮换前的明文密钥（这是它作为可执行回滚方案的必要属性，不是疏漏），只应保留到确认新凭证稳定运行一段时间后，由 owner 决定何时清理
+
+### 轮换三个值时的关键约束：新密钥绝不能出现在任何进程的 argv 里
+
+`docker exec <container> <cmd> -e SOME_SECRET=xxx` 或 `... --password xxx` 这类写法，
+密钥会作为 `docker exec`（或容器内被 exec 的进程）的命令行参数，本机任何用户
+用 `ps auxww` / `/proc/<pid>/cmdline` 都能读到。正确做法是让密钥只经由 **stdin**
+或**环境变量**传递，绝不作为命令行参数：
+
+- **Postgres 角色密码**：`ALTER ROLE directus WITH PASSWORD '...'` 这条 SQL 连同
+  用于认证的旧密码，一起通过 stdin 管道送进 `docker exec -i <container> sh -c
+  'read -r AUTHPW; PGPASSWORD="$AUTHPW" psql -U directus -d directus -v ON_ERROR_STOP=1'`，
+  psql 以脚本模式从 stdin 读取要执行的 SQL，全程没有任何一个进程的 argv 里出现密码
+- **DIRECTUS_SECRET**：直接生成新值写入 `.env.directus`，重建 `directus` 容器即可
+  （不需要经过网络请求，纯本地文件操作）
+- **DIRECTUS_ADMIN_PASSWORD**：Directus 没有能"就地改别人密码"的安全 CLI 参数形式
+  （`npx directus users passwd --email x --password y` 的 `--password` 同样会出现在
+  该进程 argv 里），改用 REST API：用旧密码 `POST /auth/login` 换取 `access_token`，
+  再用该 token `PATCH /users/me` 设置新密码，请求体通过 Python `urllib`/`json.dumps`
+  构造并直接发送（不落地为文件、不经过会把内容打进 argv 的 curl `-d` 参数）
+
+### 重建范围
+
+只重建 `directus` 容器（`docker compose -f docker-compose.directus.yml --env-file
+.env.directus up -d directus`）。**不重启 `database`（Postgres）容器**——
+`ALTER ROLE` 修改的密码是立即生效的，不需要重启 Postgres；Postgres 官方镜像的
+`POSTGRES_PASSWORD` 环境变量只在数据卷首次初始化时生效，之后改动该变量对已有
+角色的实际密码没有任何作用，重启 Postgres 除了增加一次不必要的短暂不可用窗口
+之外没有意义。
+
+### 验证顺序
+
+1. `curl http://127.0.0.1:8055/server/health` 确认 directus 用新 DB 密码重连成功
+2. 用旧 admin 密码登录应返回 401/403，用新 admin 密码登录应返回 200
+3. 公开只读端点（`/items/articles`、`/items/experiments`）不需要认证，SECRET
+   轮换不影响它们，应始终 200——这是"公开读者路径不受影响"最直接的验证信号
+4. 没有专门的 Directus 非 admin 测试账号密码可用时，退而求其次：对一个真实存在
+   的 learner 邮箱故意传错误密码探测，确认端点返回 401（证明认证管线在新
+   SECRET 下正常处理请求），加上 admin 账号完整走通登录→鉴权的同一套代码路径，
+   两者合起来作为"普通用户登录路径未受影响"的证据链，而不是新建一个账号来测试
+5. 执行一次 `backup-full-state.sh` + 隔离容器 `pg_restore` 演练，确认新密码下
+   备份链路完整可用
+
+### 已知的失败点（本 runbook 编写时踩过/预见的坑）
+
+- `docker exec` 传密码永远走 stdin 或环境变量，不要贪图方便用 `-e`/`--password` 这类参数
+- 轮换 Postgres 角色密码后**不要**顺手重启 `database` 容器——它不需要，而且会制造
+  不必要的连接中断窗口
+- 若轮换中途任一步骤失败，回滚顺序是：先还原 `.env.directus`，再把 Postgres
+  角色密码 `ALTER` 回旧值（此时认证要用刚刚设置的新密码，因为它才是当前生效值），
+  最后重建 `directus` 容器——顺序反了会导致 Directus 用还原后的旧密码去连接
+  一个密码还没改回来的 Postgres，产生一次可避免的连接失败
