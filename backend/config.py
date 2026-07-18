@@ -348,13 +348,45 @@ if LABGEN_LAB_SESSION_TTL_MINUTES < 1:
     )
 
 # Namespace deletion retry config for LabSessionService._do_cleanup().
-# K3s namespace deletion is async: the namespace enters Terminating before being gone.
-# home_lab_mvp requires ≥30s total (15×2s) to handle the async window; stub adapters
-# return True immediately so the larger defaults are harmless for tests.
-LABGEN_NS_DELETE_MAX_RETRIES: int = _get_env_int("LABGEN_NS_DELETE_MAX_RETRIES", 15)
-LABGEN_NS_DELETE_POLL_INTERVAL_S: float = float(
-    os.getenv("LABGEN_NS_DELETE_POLL_INTERVAL_S", "2.0")
+# K3s namespace deletion is async: the namespace enters Terminating before
+# being gone. Polling uses exponential backoff (capped at
+# LABGEN_NS_DELETE_MAX_INTERVAL_S) up to a total wait budget instead of a
+# fixed interval × fixed retry count — 2026-07-19 incident: the previous
+# fixed 15×2s=30s budget produced false LAB_CLEANUP_FAILED + VM taint when
+# the real K3s deletion completed a few seconds after the budget ran out
+# (confirmed via kubectl that the namespace had actually been deleted).
+# Stub adapters used in tests return True immediately, so a larger default
+# budget is harmless for the test suite (never actually slept).
+LABGEN_NS_DELETE_MAX_WAIT_SECONDS: float = float(
+    os.getenv("LABGEN_NS_DELETE_MAX_WAIT_SECONDS", "100.0")
 )
+LABGEN_NS_DELETE_INITIAL_INTERVAL_S: float = float(
+    os.getenv("LABGEN_NS_DELETE_INITIAL_INTERVAL_S", "1.0")
+)
+LABGEN_NS_DELETE_BACKOFF_FACTOR: float = float(
+    os.getenv("LABGEN_NS_DELETE_BACKOFF_FACTOR", "1.6")
+)
+LABGEN_NS_DELETE_MAX_INTERVAL_S: float = float(
+    os.getenv("LABGEN_NS_DELETE_MAX_INTERVAL_S", "10.0")
+)
+# Fail fast at startup rather than let a misconfigured 0/negative interval
+# turn the backoff loop into a busy-poll that never advances elapsed time
+# (LabSessionService._wait_for_namespace_deleted() also has a runtime floor
+# as defense-in-depth, but config should never allow this in the first place).
+if LABGEN_NS_DELETE_INITIAL_INTERVAL_S <= 0:
+    raise RuntimeError(
+        "LABGEN_NS_DELETE_INITIAL_INTERVAL_S must be > 0, got "
+        f"{LABGEN_NS_DELETE_INITIAL_INTERVAL_S}"
+    )
+if LABGEN_NS_DELETE_MAX_WAIT_SECONDS <= 0:
+    raise RuntimeError(
+        f"LABGEN_NS_DELETE_MAX_WAIT_SECONDS must be > 0, got {LABGEN_NS_DELETE_MAX_WAIT_SECONDS}"
+    )
+if LABGEN_NS_DELETE_BACKOFF_FACTOR <= 1.0:
+    raise RuntimeError(
+        f"LABGEN_NS_DELETE_BACKOFF_FACTOR must be > 1.0 for backoff to actually grow, "
+        f"got {LABGEN_NS_DELETE_BACKOFF_FACTOR}"
+    )
 
 # --- LabGen Linux Learner Runtime Configuration ---
 # LABGEN_LINUX_LEARNER_ENABLED_LAB_IDS: comma-separated list of lab IDs (full UUIDs)

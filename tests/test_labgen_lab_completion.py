@@ -164,6 +164,7 @@ class _DelayedDeleteAdapter(NamespaceLifecyclePort):
     def __init__(self, false_count: int = 1) -> None:
         self._false_count = false_count
         self._calls = 0
+        self.deleted: list[str] = []
 
     def create_namespace(self, ns: str) -> bool:
         return True
@@ -172,6 +173,7 @@ class _DelayedDeleteAdapter(NamespaceLifecyclePort):
         return True
 
     def delete_namespace(self, ns: str) -> bool:
+        self.deleted.append(ns)
         return True  # accepted immediately; K3s deletion is async
 
     def is_namespace_deleted(self, ns: str) -> bool:
@@ -185,12 +187,65 @@ class _DelayedDeleteAdapter(NamespaceLifecyclePort):
         return True
 
 
+class _NeverDeletedAdapter(NamespaceLifecyclePort):
+    """delete_namespace() is accepted, but is_namespace_deleted() always returns
+    False — simulates a namespace that genuinely never finishes deleting within
+    any wait budget (stuck finalizer, etc.)."""
+
+    def create_namespace(self, ns: str) -> bool:
+        return True
+
+    def namespace_exists(self, ns: str) -> bool:
+        return True
+
+    def delete_namespace(self, ns: str) -> bool:
+        return True
+
+    def is_namespace_deleted(self, ns: str) -> bool:
+        return False
+
+    def ensure_verifier_rolebinding(self, ns: str) -> bool:
+        return True
+
+    def verifier_rolebinding_exists(self, ns: str) -> bool:
+        return True
+
+
+class _AlreadyDeletedAdapter(NamespaceLifecyclePort):
+    """The namespace is already gone before cleanup even starts. Tracks whether
+    delete_namespace() was called, to confirm the idempotent pre-check skips it."""
+
+    def __init__(self) -> None:
+        self.delete_calls = 0
+
+    def create_namespace(self, ns: str) -> bool:
+        return True
+
+    def namespace_exists(self, ns: str) -> bool:
+        return False
+
+    def delete_namespace(self, ns: str) -> bool:
+        self.delete_calls += 1
+        return True
+
+    def is_namespace_deleted(self, ns: str) -> bool:
+        return True
+
+    def ensure_verifier_rolebinding(self, ns: str) -> bool:
+        return True
+
+    def verifier_rolebinding_exists(self, ns: str) -> bool:
+        return True
+
+
 def _make_svc(
     session_repo: _MemSessionRepo,
     ns_lifecycle: NamespaceLifecyclePort | None = None,
     vm_tracker: VMTrackerPort | None = None,
-    ns_delete_poll_interval: float = 0.0,
-    ns_delete_max_retries: int = 5,
+    ns_delete_max_wait_seconds: float = 0.0,
+    ns_delete_initial_interval_s: float = 0.0,
+    ns_delete_backoff_factor: float = 1.6,
+    ns_delete_max_interval_s: float = 10.0,
 ) -> LabSessionService:
     return LabSessionService(
         session_repo=session_repo,
@@ -198,8 +253,10 @@ def _make_svc(
         vm_tracker=vm_tracker or StubVMTracker(),
         ns_lifecycle=ns_lifecycle or StubNamespaceLifecycleAdapter(),
         image_resolver=_StubImageResolver(),
-        ns_delete_poll_interval=ns_delete_poll_interval,
-        ns_delete_max_retries=ns_delete_max_retries,
+        ns_delete_max_wait_seconds=ns_delete_max_wait_seconds,
+        ns_delete_initial_interval_s=ns_delete_initial_interval_s,
+        ns_delete_backoff_factor=ns_delete_backoff_factor,
+        ns_delete_max_interval_s=ns_delete_max_interval_s,
     )
 
 
@@ -343,12 +400,96 @@ class TestCleanupOnComplete:
         svc = _make_svc(
             repo,
             ns_lifecycle=_DelayedDeleteAdapter(false_count=2),
-            ns_delete_poll_interval=0.0,
-            ns_delete_max_retries=5,
+            ns_delete_max_wait_seconds=5.0,
+            ns_delete_initial_interval_s=0.0,
         )
         result = svc.complete_session(session.session_id)
         assert result.lab_session_status == LabSessionStatus.LAB_CLOSED
         assert result.cleanup_verified is True
+
+    def test_cleanup_succeeds_when_namespace_deletion_is_slow_but_within_budget(self):
+        """Regression (2026-07-19): the old fixed 15x2s=30s budget produced false
+        LAB_CLEANUP_FAILED + VM taint when real K3s deletion finished a few seconds
+        late. A namespace that takes many real polls to confirm deleted — but stays
+        within the configured wait budget — must still succeed, not fail."""
+        repo = _MemSessionRepo()
+        session = _make_session(ready_to_complete=True, namespace="lab-ns-slow-del")
+        repo.create(session)
+        svc = _make_svc(
+            repo,
+            ns_lifecycle=_DelayedDeleteAdapter(false_count=6),
+            ns_delete_max_wait_seconds=0.3,
+            ns_delete_initial_interval_s=0.02,
+            ns_delete_backoff_factor=1.0,  # constant interval keeps this test's timing predictable
+        )
+        result = svc.complete_session(session.session_id)
+        assert result.lab_session_status == LabSessionStatus.LAB_CLOSED
+        assert result.cleanup_verified is True
+
+    def test_cleanup_fails_when_namespace_never_confirmed_deleted_within_budget(self):
+        """A namespace that genuinely never confirms deleted within the wait budget
+        must still fail — the backoff fix must not silently mask real failures."""
+        repo = _MemSessionRepo()
+        tracker = _RecordingVMTracker()
+        session = _make_session(
+            vm_id="vm-timeout", ready_to_complete=True, namespace="lab-ns-never-del",
+        )
+        repo.create(session)
+        svc = _make_svc(
+            repo,
+            ns_lifecycle=_NeverDeletedAdapter(),
+            vm_tracker=tracker,
+            ns_delete_max_wait_seconds=0.05,
+            ns_delete_initial_interval_s=0.01,
+        )
+        result = svc.complete_session(session.session_id)
+        assert result.lab_session_status == LabSessionStatus.LAB_CLEANUP_FAILED
+        assert result.cleanup_verified is False
+        assert "vm-timeout" in tracker.tainted
+
+    def test_cleanup_is_idempotent_when_namespace_already_deleted(self):
+        """If the namespace is already gone (e.g. a prior cleanup attempt's delete
+        request already completed), cleanup must recognize this without re-issuing
+        a delete request — calling delete_namespace() on an already-gone namespace
+        is unnecessary API traffic, not a correctness requirement, but the important
+        invariant is that this path must not treat "nothing left to delete" as a
+        failure."""
+        repo = _MemSessionRepo()
+        session = _make_session(ready_to_complete=True, namespace="lab-ns-already-gone")
+        repo.create(session)
+        adapter = _AlreadyDeletedAdapter()
+        svc = _make_svc(repo, ns_lifecycle=adapter, ns_delete_max_wait_seconds=5.0)
+        result = svc.complete_session(session.session_id)
+        assert result.lab_session_status == LabSessionStatus.LAB_CLOSED
+        assert result.cleanup_verified is True
+        assert adapter.delete_calls == 0, "delete_namespace() must not be called when already deleted"
+
+    def test_do_cleanup_is_safe_to_call_twice_on_an_already_gone_namespace(self):
+        """Direct idempotency check on _do_cleanup itself: calling it a second time
+        (e.g. an admin-triggered retry after the namespace was already cleaned up
+        by the first call) must not error or produce a different outcome.
+
+        false_count=1 means the first is_namespace_deleted() call (the idempotent
+        pre-check, before anything has been deleted yet) correctly reports "not
+        deleted", so the first _do_cleanup() call actually exercises the real
+        delete_namespace() + wait path — not just the pre-check short-circuit.
+        The second _do_cleanup() call then hits the pre-check short-circuit
+        (namespace is confirmed gone by then), which is the idempotency behavior
+        under test."""
+        repo = _MemSessionRepo()
+        session = _make_session(ready_to_complete=True, namespace="lab-ns-retry-safe")
+        repo.create(session)
+        adapter = _DelayedDeleteAdapter(false_count=1)
+        svc = _make_svc(repo, ns_lifecycle=adapter, ns_delete_max_wait_seconds=5.0)
+
+        first = svc._do_cleanup(session)
+        assert first.lab_session_status == LabSessionStatus.LAB_CLOSED
+        assert len(adapter.deleted) == 1, "first call must actually request deletion"
+
+        second = svc._do_cleanup(first)
+        assert second.lab_session_status == LabSessionStatus.LAB_CLOSED
+        assert second.cleanup_verified is True
+        assert len(adapter.deleted) == 1, "second call must not re-request deletion — namespace is already confirmed gone"
 
 
 class TestCleanupOnAbort:
@@ -480,21 +621,31 @@ class TestCompletionAPIEndpoints:
 class TestSessionServiceRetryConfig:
     """Regression: HTTP route must pass config-controlled retry values to LabSessionService.
 
-    Previously get_session_service() used LabSessionService defaults (5×1s = 5s total),
-    which is insufficient for K3s async namespace deletion (may take 10-30s).
-    Fix: routes.py now reads LABGEN_NS_DELETE_MAX_RETRIES/LABGEN_NS_DELETE_POLL_INTERVAL_S
-    from config and passes them explicitly.
+    2026-07-19: replaced the old fixed 15×2s=30s retry budget (which produced
+    false LAB_CLEANUP_FAILED + VM taint when real K3s deletion completed a
+    few seconds late) with a configurable exponential-backoff wait budget.
+    Fix: routes.py reads LABGEN_NS_DELETE_MAX_WAIT_SECONDS/
+    LABGEN_NS_DELETE_INITIAL_INTERVAL_S/LABGEN_NS_DELETE_BACKOFF_FACTOR/
+    LABGEN_NS_DELETE_MAX_INTERVAL_S from config and passes them explicitly.
     """
 
     def test_config_has_k3s_appropriate_defaults(self) -> None:
         from backend import config
-        assert config.LABGEN_NS_DELETE_MAX_RETRIES >= 10, (
-            "LABGEN_NS_DELETE_MAX_RETRIES must be ≥10 to handle K3s async deletion; "
-            f"got {config.LABGEN_NS_DELETE_MAX_RETRIES}"
+        assert config.LABGEN_NS_DELETE_MAX_WAIT_SECONDS >= 90.0, (
+            "LABGEN_NS_DELETE_MAX_WAIT_SECONDS must be ≥90s (CEO-recommended 90-120s) "
+            f"to handle K3s async deletion; got {config.LABGEN_NS_DELETE_MAX_WAIT_SECONDS}"
         )
-        assert config.LABGEN_NS_DELETE_POLL_INTERVAL_S >= 1.0, (
-            "LABGEN_NS_DELETE_POLL_INTERVAL_S must be ≥1.0s for K3s; "
-            f"got {config.LABGEN_NS_DELETE_POLL_INTERVAL_S}"
+        assert config.LABGEN_NS_DELETE_INITIAL_INTERVAL_S >= 0.5, (
+            "LABGEN_NS_DELETE_INITIAL_INTERVAL_S must be ≥0.5s to avoid hammering the API; "
+            f"got {config.LABGEN_NS_DELETE_INITIAL_INTERVAL_S}"
+        )
+        assert config.LABGEN_NS_DELETE_BACKOFF_FACTOR > 1.0, (
+            "LABGEN_NS_DELETE_BACKOFF_FACTOR must be >1.0 for the interval to actually grow; "
+            f"got {config.LABGEN_NS_DELETE_BACKOFF_FACTOR}"
+        )
+        assert config.LABGEN_NS_DELETE_MAX_INTERVAL_S <= 30.0, (
+            "LABGEN_NS_DELETE_MAX_INTERVAL_S should stay well under the total budget so "
+            f"checks remain regular near the end; got {config.LABGEN_NS_DELETE_MAX_INTERVAL_S}"
         )
 
     def test_session_service_uses_config_retry_values(self) -> None:
@@ -502,9 +653,10 @@ class TestSessionServiceRetryConfig:
         import inspect
         from backend.labgen import routes as _routes
         src = inspect.getsource(_routes.get_session_service)
-        assert "LABGEN_NS_DELETE_MAX_RETRIES" in src, (
-            "get_session_service() does not pass LABGEN_NS_DELETE_MAX_RETRIES to LabSessionService"
-        )
-        assert "LABGEN_NS_DELETE_POLL_INTERVAL_S" in src, (
-            "get_session_service() does not pass LABGEN_NS_DELETE_POLL_INTERVAL_S to LabSessionService"
-        )
+        for name in (
+            "LABGEN_NS_DELETE_MAX_WAIT_SECONDS",
+            "LABGEN_NS_DELETE_INITIAL_INTERVAL_S",
+            "LABGEN_NS_DELETE_BACKOFF_FACTOR",
+            "LABGEN_NS_DELETE_MAX_INTERVAL_S",
+        ):
+            assert name in src, f"get_session_service() does not pass {name} to LabSessionService"

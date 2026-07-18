@@ -532,3 +532,65 @@ class TestConfigModuleVerifierVmIdFailClosed:
             importlib.reload(_cfg)
             assert _cfg.LABGEN_K8S_VERIFIER_VM_ID == ""
         importlib.reload(_cfg)
+
+
+class TestConfigModuleNsDeleteBackoffFailClosed:
+    """Codex review finding (2026-07-19): LABGEN_NS_DELETE_INITIAL_INTERVAL_S<=0
+    would make LabSessionService._wait_for_namespace_deleted()'s sleep_for
+    permanently 0 and elapsed never advance — a busy-poll that never exits
+    within the intended budget. Must fail at startup, not surface as a hung
+    cleanup call during a learner's live abort/complete."""
+
+    _BASE_ENV = {
+        "PROXMOX_HOST": "x",
+        "PROXMOX_TOKEN_ID": "u@r!t",
+        "PROXMOX_TOKEN_SECRET": "s",
+        "VM_SSH_PASSWORD": "p",
+        "ADMIN_TOKEN": "a" * 33,
+    }
+
+    def test_zero_initial_interval_raises_at_config_load(self) -> None:
+        import backend.config as _cfg
+        bad_env = {**self._BASE_ENV, "LABGEN_NS_DELETE_INITIAL_INTERVAL_S": "0"}
+        try:
+            with patch.dict(os.environ, bad_env, clear=False):
+                with pytest.raises(RuntimeError, match="LABGEN_NS_DELETE_INITIAL_INTERVAL_S"):
+                    importlib.reload(_cfg)
+        finally:
+            importlib.reload(_cfg)
+
+    def test_negative_max_wait_raises_at_config_load(self) -> None:
+        import backend.config as _cfg
+        bad_env = {**self._BASE_ENV, "LABGEN_NS_DELETE_MAX_WAIT_SECONDS": "-1"}
+        try:
+            with patch.dict(os.environ, bad_env, clear=False):
+                with pytest.raises(RuntimeError, match="LABGEN_NS_DELETE_MAX_WAIT_SECONDS"):
+                    importlib.reload(_cfg)
+        finally:
+            importlib.reload(_cfg)
+
+    def test_backoff_factor_of_one_raises_at_config_load(self) -> None:
+        """A factor of exactly 1.0 would mean the interval never grows —
+        harmless in itself (still bounded by max_wait_seconds), but signals
+        a config that doesn't do what its name says, so reject it too."""
+        import backend.config as _cfg
+        bad_env = {**self._BASE_ENV, "LABGEN_NS_DELETE_BACKOFF_FACTOR": "1.0"}
+        try:
+            with patch.dict(os.environ, bad_env, clear=False):
+                with pytest.raises(RuntimeError, match="LABGEN_NS_DELETE_BACKOFF_FACTOR"):
+                    importlib.reload(_cfg)
+        finally:
+            importlib.reload(_cfg)
+
+    def test_valid_ns_delete_config_does_not_raise(self) -> None:
+        import backend.config as _cfg
+        env = {
+            **self._BASE_ENV,
+            "LABGEN_NS_DELETE_INITIAL_INTERVAL_S": "1.0",
+            "LABGEN_NS_DELETE_MAX_WAIT_SECONDS": "100.0",
+            "LABGEN_NS_DELETE_BACKOFF_FACTOR": "1.6",
+        }
+        with patch.dict(os.environ, env, clear=False):
+            importlib.reload(_cfg)
+            assert _cfg.LABGEN_NS_DELETE_INITIAL_INTERVAL_S == 1.0
+        importlib.reload(_cfg)

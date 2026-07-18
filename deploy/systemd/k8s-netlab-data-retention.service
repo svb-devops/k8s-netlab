@@ -1,0 +1,10 @@
+[Unit]
+Description=K8S NetLab DataRetentionService cleanup (zombie drafts, orphaned review diffs, audit log rotation)
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/root/k8s-netlab
+ExecStart=/root/k8s-netlab/scripts/run-data-retention-cron.sh
+StandardOutput=journal
+StandardError=journal

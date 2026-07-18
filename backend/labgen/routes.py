@@ -179,8 +179,10 @@ def get_session_service() -> LabSessionService:
                 session_repo=session_repo,
                 draft_repo=draft_repo,
             ),
-            ns_delete_max_retries=config.LABGEN_NS_DELETE_MAX_RETRIES,
-            ns_delete_poll_interval=config.LABGEN_NS_DELETE_POLL_INTERVAL_S,
+            ns_delete_max_wait_seconds=config.LABGEN_NS_DELETE_MAX_WAIT_SECONDS,
+            ns_delete_initial_interval_s=config.LABGEN_NS_DELETE_INITIAL_INTERVAL_S,
+            ns_delete_backoff_factor=config.LABGEN_NS_DELETE_BACKOFF_FACTOR,
+            ns_delete_max_interval_s=config.LABGEN_NS_DELETE_MAX_INTERVAL_S,
             credential_reclaim_exempt_vm_ids=frozenset(
                 str(vmid) for vmid in config.VM_CLEANUP_EXEMPT_IDS
             ),

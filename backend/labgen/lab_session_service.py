@@ -223,8 +223,15 @@ class LabSessionService:
         adapter_selection: Optional["RuntimeAdapterSelectionResult"] = None,
         credential_reclaimer: Optional["VerifierCredentialReclaimer"] = None,
         runtime_precheck: Optional["RuntimePrecheckService"] = None,
-        ns_delete_poll_interval: float = 1.0,
-        ns_delete_max_retries: int = 5,
+        # Class defaults are intentionally small (fast for callers that don't
+        # care, e.g. tests / one-off scripts) — production wiring
+        # (backend/labgen/routes.py::get_session_service) always overrides
+        # these explicitly with the much larger LABGEN_NS_DELETE_* config
+        # values needed for real K3s async namespace deletion.
+        ns_delete_max_wait_seconds: float = 5.0,
+        ns_delete_initial_interval_s: float = 1.0,
+        ns_delete_backoff_factor: float = 1.6,
+        ns_delete_max_interval_s: float = 5.0,
         credential_reclaim_exempt_vm_ids: frozenset = frozenset(),
         linux_adapter: Optional["LinuxRuntimeAdapter"] = None,
         linux_learner_enabled_lab_ids: frozenset = frozenset(),
@@ -241,8 +248,10 @@ class LabSessionService:
         self._adapter_selection = adapter_selection
         self._credential_reclaimer = credential_reclaimer
         self._runtime_precheck = runtime_precheck
-        self._ns_delete_poll_interval = ns_delete_poll_interval
-        self._ns_delete_max_retries = ns_delete_max_retries
+        self._ns_delete_max_wait_seconds = ns_delete_max_wait_seconds
+        self._ns_delete_initial_interval_s = ns_delete_initial_interval_s
+        self._ns_delete_backoff_factor = ns_delete_backoff_factor
+        self._ns_delete_max_interval_s = ns_delete_max_interval_s
         self._credential_reclaim_exempt_vm_ids = credential_reclaim_exempt_vm_ids
         self._linux_adapter = linux_adapter
         self._linux_learner_enabled_lab_ids = linux_learner_enabled_lab_ids
@@ -824,6 +833,35 @@ class LabSessionService:
         )
         return session
 
+    def _wait_for_namespace_deleted(self, namespace: str) -> bool:
+        """Poll is_namespace_deleted() with exponential backoff (capped) until
+        confirmed deleted or the total wait budget is exhausted.
+
+        Capped backoff (rather than unbounded growth) keeps checks happening
+        regularly near the end of the budget instead of one giant final sleep
+        that could overshoot — the check right after the cap is reached still
+        lands within a bounded distance of when the namespace actually
+        finishes deleting.
+        """
+        import time as _time
+
+        # Defense-in-depth floor: config.py fails fast at startup if
+        # LABGEN_NS_DELETE_INITIAL_INTERVAL_S <= 0, but a caller constructing
+        # LabSessionService directly (tests, scripts) could still pass 0 —
+        # a zero/negative interval would make sleep_for permanently 0,
+        # elapsed would never advance, and this loop would busy-poll forever.
+        elapsed = 0.0
+        interval = max(self._ns_delete_initial_interval_s, 0.01)
+        while True:
+            if self._ns_lifecycle.is_namespace_deleted(namespace):
+                return True
+            if elapsed >= self._ns_delete_max_wait_seconds:
+                return False
+            sleep_for = min(interval, self._ns_delete_max_wait_seconds - elapsed)
+            _time.sleep(sleep_for)
+            elapsed += sleep_for
+            interval = min(interval * self._ns_delete_backoff_factor, self._ns_delete_max_interval_s)
+
     def _do_cleanup(self, session: LabSessionState) -> LabSessionState:
         # Linux learner sessions: always route by sentinel vm_id, never by draft state.
         # Anchoring on vm_id prevents draft mutations from rerouting K8s sessions.
@@ -851,15 +889,15 @@ class LabSessionService:
         if session.namespace is not None:
             deleted = False
             try:
-                if self._ns_lifecycle.delete_namespace(session.namespace):
-                    # K3s namespace deletion is async — retry until gone or retries exhausted
-                    for attempt in range(self._ns_delete_max_retries):
-                        if self._ns_lifecycle.is_namespace_deleted(session.namespace):
-                            deleted = True
-                            break
-                        if attempt < self._ns_delete_max_retries - 1:
-                            import time
-                            time.sleep(self._ns_delete_poll_interval)
+                # Idempotent pre-check: if the namespace is already gone (e.g. a
+                # prior abort/cleanup attempt's delete request already completed,
+                # or this is a retry after a process restart), skip re-issuing
+                # the delete request entirely rather than treating "nothing left
+                # to delete" as a failure.
+                if self._ns_lifecycle.is_namespace_deleted(session.namespace):
+                    deleted = True
+                elif self._ns_lifecycle.delete_namespace(session.namespace):
+                    deleted = self._wait_for_namespace_deleted(session.namespace)
             except Exception:
                 deleted = False
             if not deleted:

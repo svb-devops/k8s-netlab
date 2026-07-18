@@ -359,6 +359,14 @@ class StubNamespaceLifecycleAdapter(NamespaceLifecyclePort):
         self.created: list[str] = []
         self.deleted: list[str] = []
         self.rolebindings_created: list[str] = []
+        # Tracks whether is_namespace_deleted() should report True for a given
+        # namespace — only set once delete_namespace() has actually been
+        # called for it, so callers that check is_namespace_deleted() before
+        # ever requesting deletion (e.g. LabSessionService's idempotent
+        # already-gone pre-check) see the correct "not deleted yet" answer
+        # instead of this stub's deleted_after_delete default regardless of
+        # whether a delete was ever requested.
+        self._namespace_deletion_state: dict[str, bool] = {}
 
     def create_namespace(self, namespace: str) -> bool:
         if self.create_succeeds:
@@ -371,10 +379,11 @@ class StubNamespaceLifecycleAdapter(NamespaceLifecyclePort):
     def delete_namespace(self, namespace: str) -> bool:
         if self.delete_succeeds:
             self.deleted.append(namespace)
+            self._namespace_deletion_state[namespace] = self.deleted_after_delete
         return self.delete_succeeds
 
     def is_namespace_deleted(self, namespace: str) -> bool:
-        return self.deleted_after_delete
+        return self._namespace_deletion_state.get(namespace, False)
 
     def is_namespace_stuck_terminating(self, namespace: str, threshold_seconds: int = 300) -> bool:
         return namespace in self.stuck_terminating_namespaces

@@ -1,0 +1,16 @@
+[Unit]
+Description=K8S NetLab full-state backup (data JSON + Directus Postgres/uploads/extensions)
+After=network.target docker.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/root/k8s-netlab
+ExecStart=/root/k8s-netlab/scripts/backup-full-state.sh
+StandardOutput=journal
+StandardError=journal
+
+# backup-full-state.sh already takes its own non-blocking flock
+# (/var/lock/k8s-netlab-backup-full-state.lock) and exits 1 immediately if
+# another run is in progress, so no additional systemd-level locking is
+# needed here.

@@ -185,8 +185,7 @@ def build_services(
         vm_tracker=vm_tracker,
         ns_lifecycle=ns_lifecycle,
         image_resolver=image_resolver,
-        ns_delete_poll_interval=2.0,   # K3s async deletion can take 10-20s
-        ns_delete_max_retries=15,      # up to 30s total wait
+        ns_delete_max_wait_seconds=100.0,   # K3s async deletion can take 10-30s+
     )
 
     verifier_svc = VerifierService(

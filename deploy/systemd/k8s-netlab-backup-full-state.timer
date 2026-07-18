@@ -1,0 +1,18 @@
+[Unit]
+Description=Daily timer for K8S NetLab full-state backup
+
+[Timer]
+# Matches the previous cron schedule (30 3 * * *), staggered 30min after the
+# lighter daily data-only backup (see backup-data.sh, still cron-scheduled —
+# out of scope for this migration).
+OnCalendar=*-*-* 03:30:00
+# Host is not 24x7 (~8h/day uptime) — if the scheduled time is missed because
+# the host was off, run once on next boot instead of silently skipping until
+# the next matching OnCalendar time.
+Persistent=true
+# Avoid every timer on the host firing at exactly the same wall-clock second
+# after a boot-triggered catch-up.
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

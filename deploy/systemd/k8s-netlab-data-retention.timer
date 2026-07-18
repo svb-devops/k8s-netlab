@@ -1,0 +1,15 @@
+[Unit]
+Description=Weekly timer for K8S NetLab DataRetentionService cleanup
+
+[Timer]
+# Weekly (not daily) — this is an archival operation, not a lightweight
+# consistency check; zombie drafts have a 30-day TTL, so weekly is frequent
+# enough to keep zombie_draft_count/lab_review_diffs.json from growing
+# unbounded without running an archival pass more often than needed.
+OnCalendar=Sun *-*-* 04:00:00
+# Host is not 24x7 — catch up on next boot if the scheduled run was missed.
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
