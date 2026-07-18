@@ -4,6 +4,10 @@
 
 `documentation_only` —— 本文档不改变任何代码行为、不开放任何访问权限。目的是把已经产出的三个 lab（CrashLoopBackOff、Service 无 Endpoints、ImagePullBackOff）放进一个明确的系列结构里，为后续排期提供依据。
 
+## 2026-07-18 更新（Pod Pending Minimal Publish — Phase 1 系列正式收官）
+
+CEO/CTO 决策正式发布 Pod Pending，作为《Kubernetes 高频故障排查实战系列》第六篇，发布完成后正式收口 Phase 1。Directus 新建正式 article（`pod-pending-events-not-logs`，`status=published`，公开可访问 200，正文取自 `POD_PENDING_OFFICIAL_ARTICLE_FINAL_DRAFT_v1.0.md` 去除内部 `internal_preview_version` 预览尾注），`lab_id=dcddf681-f906-491c-b126-efee40f3621c` 同步加入 `LABGEN_ENABLED_LAB_IDS`/`LABGEN_AUTO_VM_PROVISION_LAB_IDS`，`cta_enabled=true`，无 invite 限制，访问模型与前五篇完全一致。发布前确认了 Pod Pending 发布阻塞修复（终端重连输出丢失 + session TTL 30/90 环境变量覆盖漂移，commit `0962703`）已部署生效：`session_ttl_minutes=90`、`ops_smoke_check.sh` 新增的 TTL drift 检查通过。前五篇已发布文章（CrashLoopBackOff/Service No Endpoints/ImagePullBackOff/ConfigMap/DNS Service Discovery）"系列文章"段落补齐指向 Pod Pending 的链接，Pod Pending 文章本身已含指向前五篇的链接（源自草稿），6 个 slug 全部实测 API+页面 200，无死链。发布后用全新注册、非 admin、无预分配 VM 的账号（`pp-publish-e2e-01`）走完整公开路径验证：文章 → CTA → Start Lab → 自动 provisioning → `LAB_ACTIVE` → 5/5 步骤全部通过（含终端重连后命令回显/输出正常渲染的实测验证）→ cleanup → `LAB_CLOSED` → `cleanup_verified=true`。全系列状态确认：6 个 lab 全部 `is_startable=true`，6 篇文章全部 `published`，6 个 CTA 与各自 lab 一一对应，health 全程 healthy，`active_sessions=0`/`provisioning_jobs=0`/`tainted_vms=0`，无新增错误日志。测试账号 VM 已随 session 结束正常清理。本次任务范围严格限定于 Pod Pending 发布 + 系列收官确认，未顺便修复 abort cleanup retry budget、未处理 zombie drafts/lab_review_diffs 积压、未开启新系列/Phase 2/Growth，均按 backlog 单独记录。详见 `PHASE1_KUBERNETES_SERIES_CLOSURE_v1.0.md`。
+
 ## 2026-07-18 更新（Second Wave Sprint #3 — Pod Pending）
 
 Pod Pending 已完成生产：`lab_id=dcddf681-f906-491c-b126-efee40f3621c`，`publish_status=published`（internal soft launch，未加入 `LABGEN_ENABLED_LAB_IDS`/`LABGEN_AUTO_VM_PROVISION_LAB_IDS`），StaticValidator 23 项检查全部通过。两轮独立的真实 K3s rehearsal（VM 401，`session_id=f70473e3-...`/`04303ff8-...`）全部 5 步通过，`cleanup_verified=true`，namespace 均确认真实回收。场景聚焦"Deployment 配置了一个集群里不存在的 nodeSelector"，用非交互式 `kubectl patch`（merge 类型注入、json 类型 remove 移除）代替 `kubectl edit`，不改动任何真实 Node label/taint，不涉及 PVC/StorageClass/多节点。真实集群实测确认：`kubectl patch` 注入 nodeSelector 后触发新 ReplicaSet，新 Pod 停留在 `Pending`（同一 label 下与仍在 `Running` 的旧 Pod 短暂共存）；`status.conditions` 里 `PodScheduled=False`/`reason=Unschedulable`，message 明确提到 `didn't match Pod's node affinity/selector`；移除 nodeSelector 后原 ReplicaSet 直接缩容回 1（不产生第三个 ReplicaSet），`rollout status` 成功。
@@ -58,7 +62,7 @@ runtime_scope: 单命名空间、single K3s runtime（不涉及多 VM / 多节�
 | 3 | ImagePullBackOff | 已发布（internal soft launch，未对外） |
 | 4 | ConfigMap 修改后不生效 | 已正式公开发布 |
 | 5 | DNS 服务发现失败 | 已正式公开发布 |
-| 6 | Pod Pending | 已发布（internal soft launch，未对外） |
+| 6 | Pod Pending | 已正式公开发布 |
 
 ## first_wave（优先生产顺序，与已完成的 lab 保持连续）
 
@@ -72,7 +76,7 @@ first_wave 全部完成，下一步排期进入 second_wave。
 
 4. ConfigMap 修改后不生效（已完成 —— Second Wave 第一个"配置类"故障，与 First Wave 三个"Pod 状态类"故障互补，验证了"没有报错但行为不符合预期"这类新的判断分支；新增 configmap_value_equals/deployment_restart_triggered/deployment_restart_not_triggered 三个 verifier，为未来同类"配置生效时机"主题打下可复用基础）
 5. DNS 服务发现失败（已正式公开发布 —— Second Wave 第二个主题，与前四个"workload/配置类"故障互补，覆盖"namespace 隔离导致的服务发现失败"这一新判断分支；新增 pod_succeeded/pod_log_contains 两个 verifier，为未来"无法用 kubectl exec 观察、需要读日志/终止状态判断"的场景打下可复用基础；发现并修复了 verifier ClusterRole 权限缺口的 BLOCKER 和一个独立的前端终端粘贴 bug，对整个系列都有参考价值）
-6. Pod Pending（已完成生产、internal soft launch —— Second Wave 第三个主题，与前五个主题互补，覆盖"调度阶段失败、容器从未创建"这一新判断分支；新增 pod_phase_equals/pod_scheduling_unschedulable 两个 verifier，均只需既有 pods RBAC、未新增权限缺口）
+6. Pod Pending（已正式公开发布 —— Second Wave 第三个主题，与前五个主题互补，覆盖"调度阶段失败、容器从未创建"这一新判断分支；新增 pod_phase_equals/pod_scheduling_unschedulable 两个 verifier，均只需既有 pods RBAC、未新增权限缺口。Phase 1《Kubernetes 高频故障排查实战系列》至此六篇全部正式公开发布，系列正式收官，详见 `PHASE1_KUBERNETES_SERIES_CLOSURE_v1.0.md`）
 
 ## deferred（明确排除在 Phase 1 之外）
 
