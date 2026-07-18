@@ -233,6 +233,7 @@ def get_verifier_service() -> VerifierService:
             session_repo=get_session_repository(),
             credential_store=VerifierCredentialStore(config.LABGEN_VERIFIER_CREDENTIAL_ROOT),
             k8s_client_factory=K8sVerifierClientFactory,
+            verifier_vm_id=config.LABGEN_K8S_VERIFIER_VM_ID or None,
         )
     return _verifier_svc
 

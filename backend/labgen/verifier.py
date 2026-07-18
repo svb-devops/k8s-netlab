@@ -186,10 +186,21 @@ class VerifierService:
         session_repo: "LabSessionRepository",
         credential_store: VerifierCredentialStore,
         k8s_client_factory: Callable[[str], K8sVerifierClientPort],
+        verifier_vm_id: Optional[str] = None,
     ) -> None:
         self._session_repo = session_repo
         self._credential_store = credential_store
         self._k8s_client_factory = k8s_client_factory
+        # K8s-domain sessions all run their kubectl terminal against the shared
+        # platform cluster (LABGEN_K8S_PLATFORM_KUBECONFIG_PATH is a single global
+        # config value — see lab_kubectl_ws.py — not looked up per session.vm_id).
+        # session.vm_id is a per-student quota-bookkeeping number from the legacy
+        # VM pool and is NOT where K8s commands actually run, so verifier
+        # credentials must not be looked up by it either. When set, this pins
+        # credential lookup to the shared platform VM instead. None preserves the
+        # legacy per-session-vm_id lookup (needed for tests and any future
+        # non-shared-cluster runtime).
+        self._verifier_vm_id = verifier_vm_id
 
     def check(self, session_id: str, template: VerifyTemplate) -> VerifyResult:
         def _fail(reason: FailureReason, detail: str = "") -> VerifyResult:
@@ -229,10 +240,11 @@ class VerifierService:
                 f"type={template.type.value}",
             )
 
-        if not self._credential_store.exists(session.vm_id):
-            return _fail(FailureReason.VERIFIER_CREDENTIAL_MISSING, f"vm_id={session.vm_id}")
+        credential_vm_id = self._verifier_vm_id or session.vm_id
+        if not self._credential_store.exists(credential_vm_id):
+            return _fail(FailureReason.VERIFIER_CREDENTIAL_MISSING, f"vm_id={credential_vm_id}")
 
-        kubeconfig, _ = self._credential_store.load(session.vm_id)
+        kubeconfig, _ = self._credential_store.load(credential_vm_id)
         client = self._k8s_client_factory(kubeconfig)
         passed = self._dispatch(client, resolved_ns, template)
         detail = self._make_detail(template.type, template.name or "", passed)

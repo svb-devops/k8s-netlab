@@ -312,6 +312,32 @@ LABGEN_VERIFIER_CREDENTIAL_ROOT: str = (
     os.getenv("LABGEN_VERIFIER_CREDENTIAL_ROOT") or "creds/vm_creds"
 )
 
+# K8s-domain verify checks always run against the shared platform K3s cluster
+# (see LABGEN_K8S_PLATFORM_KUBECONFIG_PATH — the learner terminal is wired the
+# same way, ignoring session.vm_id entirely). session.vm_id is a per-student
+# quota-bookkeeping field from the legacy VM pool (500-599) and is NOT where
+# K8s commands actually run; only the shared platform VM(s) have verifier
+# credentials provisioned (see scripts/provision_verifier_credentials.py).
+# Looking up verifier credentials by session.vm_id therefore fails with
+# credential_missing for any session whose vm_id isn't one of those shared
+# VMs — this env var pins the verifier credential lookup to the shared
+# platform VM instead, decoupling it from the student's own quota VM number.
+# Empty string (default) preserves the old per-session-vm_id lookup, which
+# is the correct behavior for any future non-shared-cluster K8s runtime.
+LABGEN_K8S_VERIFIER_VM_ID: str = os.getenv("LABGEN_K8S_VERIFIER_VM_ID", "")
+if LABGEN_K8S_VERIFIER_VM_ID and not LABGEN_K8S_VERIFIER_VM_ID.isdigit():
+    # Fail fast at startup, not at runtime inside a learner's verify check.
+    # VerifierCredentialStore._vm_dir() validates vm_id against the same
+    # numeric-only rule (verifier_credentials.py::_validate_vm_id) and raises
+    # an uncaught ValueError if it doesn't match — surfacing as a 500 on
+    # every K8s-domain verify check instead of the intended structured
+    # credential_missing failure. Catching the misconfiguration here instead
+    # means the service refuses to start rather than silently breaking every
+    # learner's session in production.
+    raise RuntimeError(
+        f"LABGEN_K8S_VERIFIER_VM_ID must be numeric (or empty), got {LABGEN_K8S_VERIFIER_VM_ID!r}"
+    )
+
 # Lab session TTL in minutes.  Sessions active beyond this threshold are eligible
 # for expiry by VMExpiryService (admin-triggered or cron).
 # Default 30 minutes; must be a positive integer in production.

@@ -344,6 +344,78 @@ class TestVerifierServiceGuards:
 
 
 # ===========================================================================
+# VerifierService — verifier_vm_id pin (shared platform cluster)
+#
+# Regression: K8s-domain sessions always run their kubectl terminal against
+# the shared platform K3s cluster (LABGEN_K8S_PLATFORM_KUBECONFIG_PATH is a
+# single global config value, not looked up per session.vm_id — see
+# lab_kubectl_ws.py). But VerifierService.check() looked up credentials by
+# session.vm_id, which is the student's own per-quota VM number (e.g. "500"
+# from the legacy 500-599 pool) — a number that never has its own verifier
+# credentials provisioned (only the shared platform VM(s) do). Any session
+# whose vm_id isn't one of those shared VMs would always fail verify with
+# credential_missing, even though the learner's own kubectl commands were
+# genuinely succeeding against the real cluster. This went undetected
+# because the "no VM assigned" precheck used to block brand-new users
+# before they ever reached a verify call; P0 Reader Path Repair's
+# auto-provisioning let new users past that gate for the first time,
+# exposing this pre-existing gap.
+# ===========================================================================
+
+
+class TestVerifierServicePinnedVmId:
+    def setup_method(self) -> None:
+        self._tmp = tempfile.mkdtemp()
+
+    def test_pinned_vm_id_used_instead_of_session_vm_id(self) -> None:
+        """A session with vm_id="500" (student's own quota VM, no credentials
+        provisioned) must still succeed when verifier_vm_id="401" (the shared
+        platform VM) is configured — credentials are looked up by the pinned
+        value, not session.vm_id."""
+        store = _make_store(Path(self._tmp), vm_id="401")
+        s = _active_session(vm_id="500")
+        svc = VerifierService(
+            session_repo=_FakeSessionRepo({s.session_id: s}),
+            credential_store=store,
+            k8s_client_factory=lambda _kc: FakeK8sVerifierClient(),
+            verifier_vm_id="401",
+        )
+        result = svc.check(s.session_id, _make_template())
+        assert result.passed
+        assert result.error_code is None
+
+    def test_without_pin_falls_back_to_session_vm_id(self) -> None:
+        """Backward compatible default: verifier_vm_id=None (or omitted)
+        preserves the original per-session-vm_id lookup behavior."""
+        store = _make_store(Path(self._tmp), vm_id="501")
+        s = _active_session(vm_id="501")
+        svc = VerifierService(
+            session_repo=_FakeSessionRepo({s.session_id: s}),
+            credential_store=store,
+            k8s_client_factory=lambda _kc: FakeK8sVerifierClient(),
+        )
+        result = svc.check(s.session_id, _make_template())
+        assert result.passed
+
+    def test_pin_set_but_session_vm_id_differs_still_fails_closed_if_pin_missing(self) -> None:
+        """If the pinned VM itself has no credentials (misconfiguration),
+        this must fail closed with credential_missing referencing the pinned
+        id, not silently fall back to session.vm_id."""
+        empty_store = VerifierCredentialStore(base_dir=Path(self._tmp) / "empty")
+        s = _active_session(vm_id="500")
+        svc = VerifierService(
+            session_repo=_FakeSessionRepo({s.session_id: s}),
+            credential_store=empty_store,
+            k8s_client_factory=lambda _kc: FakeK8sVerifierClient(),
+            verifier_vm_id="401",
+        )
+        result = svc.check(s.session_id, _make_template())
+        assert not result.passed
+        assert result.error_code == "credential_missing"
+        assert "401" in result.detail
+
+
+# ===========================================================================
 # VerifierService — namespace resolution
 # ===========================================================================
 

@@ -489,3 +489,46 @@ class TestConfigModuleTTLFailClosed:
             importlib.reload(_cfg)
             assert _cfg.LABGEN_VERIFIER_CREDENTIAL_ROOT == "creds/vm_creds"
         importlib.reload(_cfg)
+
+
+class TestConfigModuleVerifierVmIdFailClosed:
+    """LABGEN_K8S_VERIFIER_VM_ID misconfigured as non-numeric must fail at
+    startup (RuntimeError), not surface as an uncaught ValueError deep inside
+    VerifierCredentialStore during a learner's live verify check (500 instead
+    of the intended structured credential_missing failure)."""
+
+    _BASE_ENV = {
+        "PROXMOX_HOST": "x",
+        "PROXMOX_TOKEN_ID": "u@r!t",
+        "PROXMOX_TOKEN_SECRET": "s",
+        "VM_SSH_PASSWORD": "p",
+        "ADMIN_TOKEN": "a" * 33,
+    }
+
+    def test_non_numeric_verifier_vm_id_raises_at_config_load(self) -> None:
+        import backend.config as _cfg
+        bad_env = {**self._BASE_ENV, "LABGEN_K8S_VERIFIER_VM_ID": "not-a-vm-id"}
+        good_env = {**self._BASE_ENV, "LABGEN_K8S_VERIFIER_VM_ID": ""}
+        try:
+            with patch.dict(os.environ, bad_env, clear=False):
+                with pytest.raises(RuntimeError, match="LABGEN_K8S_VERIFIER_VM_ID"):
+                    importlib.reload(_cfg)
+        finally:
+            with patch.dict(os.environ, good_env, clear=False):
+                importlib.reload(_cfg)
+
+    def test_numeric_verifier_vm_id_does_not_raise(self) -> None:
+        import backend.config as _cfg
+        env = {**self._BASE_ENV, "LABGEN_K8S_VERIFIER_VM_ID": "401"}
+        with patch.dict(os.environ, env, clear=False):
+            importlib.reload(_cfg)
+            assert _cfg.LABGEN_K8S_VERIFIER_VM_ID == "401"
+        importlib.reload(_cfg)
+
+    def test_empty_verifier_vm_id_does_not_raise(self) -> None:
+        import backend.config as _cfg
+        env = {**self._BASE_ENV, "LABGEN_K8S_VERIFIER_VM_ID": ""}
+        with patch.dict(os.environ, env, clear=False):
+            importlib.reload(_cfg)
+            assert _cfg.LABGEN_K8S_VERIFIER_VM_ID == ""
+        importlib.reload(_cfg)
