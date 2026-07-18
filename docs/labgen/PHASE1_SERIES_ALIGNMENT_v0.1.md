@@ -4,6 +4,10 @@
 
 `documentation_only` —— 本文档不改变任何代码行为、不开放任何访问权限。目的是把已经产出的三个 lab（CrashLoopBackOff、Service 无 Endpoints、ImagePullBackOff）放进一个明确的系列结构里，为后续排期提供依据。
 
+## 2026-07-18 更新（Second Wave #2 Minimal Publish — DNS Service Discovery 正式公开发布）
+
+DNS Service Discovery 正式面向公开读者发布：Directus article `dns-service-discovery-namespace-fqdn`（id=8，`status=published`，公开可访问 200），`lab_id=39b87766-a7eb-460d-a8d3-ac5a31319d4a` 已加入 `LABGEN_ENABLED_LAB_IDS`/`LABGEN_AUTO_VM_PROVISION_LAB_IDS`，`cta_enabled=true`，CTA 正确指向该 lab，未加任何 invite 限制（访问模型与其余四篇完全一致）。这是《Kubernetes 高频故障排查实战系列》正式发布的第五篇。发布后用一个全新注册、非 admin、无预分配 VM 的账号（`dns-e2e-fresh-01`）走完整公开路径验证：文章 → CTA → Start Lab → 自动 provisioning → `LAB_ACTIVE` → 4 步全部通过（`kubectl logs` 实测确认 `SHORT_NAME_FAILED_AS_EXPECTED`/`SERVICE_FQDN_RESOLVED`）→ cleanup → `LAB_CLOSED` → `cleanup_verified=true`；同时确认生产环境实际提供的终端前端文件与已测试提交的源码逐字节一致，验证了上一轮"命令粘贴换行符"前端 bug 修复在发布后的公开路径上持续生效。五篇已发布文章互相补齐了系列导航链接（本文新增反向链接到前四篇，前四篇也补充了指向本文的链接），全部 5 个链接实测 200，无死链。测试账号与 VM 已清理，五个系列 lab 均 `is_startable=true`，health 全程 healthy。详见 `DNS_MINIMAL_PUBLISH_RESULT_v0.1.md`。
+
 ## 2026-07-18 更新（DNS Service Discovery Owner Dogfood 完成）
 
 Owner 用真实非 admin 账号（`owner-test-01`）亲自完成了完整 dogfood：临时开启访问（allowlist + 命名邀请）、`publish_status` 补齐为 `published`（此前遗留为 `draft`，已修复）、Start Lab 自动 provisioning、4 步全部通过（`kubectl logs` 实测确认 `SHORT_NAME_FAILED_AS_EXPECTED`/`SERVICE_FQDN_RESOLVED` 两个标记）、`LAB_CLOSED`+`cleanup_verified=true`、namespace 真实回收。过程中 Owner 报告了一次"命令输入闪一下无输出"，排查后定位为与 ConfigMap 那次 verifier vm_id BLOCKER 完全无关的独立前端 bug（`labgen-kubectl-terminal.js` 粘贴以裸 LF 结尾的命令时静默丢弃、不发送），已修复并补齐回归测试，Owner 在同一次会话里验证了修复后命令可以正常执行。测试结束后已恢复 baseline（allowlist/invite 全部回滚，`owner-test-01` 重新验证为 `LAB_NOT_ENABLED`）。详见 commit `5359364`。
@@ -45,7 +49,7 @@ runtime_scope: 单命名空间、single K3s runtime（不涉及多 VM / 多节�
 | 2 | Service 没有 Endpoints（selector 与 labels 不匹配） | 已发布（internal soft launch，未对外） |
 | 3 | ImagePullBackOff | 已发布（internal soft launch，未对外） |
 | 4 | ConfigMap 修改后不生效 | 已正式公开发布 |
-| 5 | DNS 服务发现失败 | 已发布（internal soft launch，未对外） |
+| 5 | DNS 服务发现失败 | 已正式公开发布 |
 | 6 | Pod Pending | 未生产 |
 
 ## first_wave（优先生产顺序，与已完成的 lab 保持连续）
@@ -59,8 +63,8 @@ first_wave 全部完成，下一步排期进入 second_wave。
 ## second_wave
 
 4. ConfigMap 修改后不生效（已完成 —— Second Wave 第一个"配置类"故障，与 First Wave 三个"Pod 状态类"故障互补，验证了"没有报错但行为不符合预期"这类新的判断分支；新增 configmap_value_equals/deployment_restart_triggered/deployment_restart_not_triggered 三个 verifier，为未来同类"配置生效时机"主题打下可复用基础）
-5. DNS 服务发现失败（已完成生产、internal soft launch —— Second Wave 第二个主题，与前四个"workload/配置类"故障互补，覆盖"namespace 隔离导致的服务发现失败"这一新判断分支；新增 pod_succeeded/pod_log_contains 两个 verifier，为未来"无法用 kubectl exec 观察、需要读日志/终止状态判断"的场景打下可复用基础；发现并修复了 verifier ClusterRole 权限缺口的 BLOCKER，对整个系列的只读 verifier 类型扩展都有参考价值）
-6. Pod Pending
+5. DNS 服务发现失败（已正式公开发布 —— Second Wave 第二个主题，与前四个"workload/配置类"故障互补，覆盖"namespace 隔离导致的服务发现失败"这一新判断分支；新增 pod_succeeded/pod_log_contains 两个 verifier，为未来"无法用 kubectl exec 观察、需要读日志/终止状态判断"的场景打下可复用基础；发现并修复了 verifier ClusterRole 权限缺口的 BLOCKER 和一个独立的前端终端粘贴 bug，对整个系列都有参考价值）
+6. Pod Pending（本轮未启动）
 
 ## deferred（明确排除在 Phase 1 之外）
 
