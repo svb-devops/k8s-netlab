@@ -4,6 +4,10 @@
 
 `documentation_only` —— 本文档不改变任何代码行为、不开放任何访问权限。目的是把已经产出的三个 lab（CrashLoopBackOff、Service 无 Endpoints、ImagePullBackOff）放进一个明确的系列结构里，为后续排期提供依据。
 
+## 2026-07-18 更新（DNS Service Discovery Owner Dogfood 完成）
+
+Owner 用真实非 admin 账号（`owner-test-01`）亲自完成了完整 dogfood：临时开启访问（allowlist + 命名邀请）、`publish_status` 补齐为 `published`（此前遗留为 `draft`，已修复）、Start Lab 自动 provisioning、4 步全部通过（`kubectl logs` 实测确认 `SHORT_NAME_FAILED_AS_EXPECTED`/`SERVICE_FQDN_RESOLVED` 两个标记）、`LAB_CLOSED`+`cleanup_verified=true`、namespace 真实回收。过程中 Owner 报告了一次"命令输入闪一下无输出"，排查后定位为与 ConfigMap 那次 verifier vm_id BLOCKER 完全无关的独立前端 bug（`labgen-kubectl-terminal.js` 粘贴以裸 LF 结尾的命令时静默丢弃、不发送），已修复并补齐回归测试，Owner 在同一次会话里验证了修复后命令可以正常执行。测试结束后已恢复 baseline（allowlist/invite 全部回滚，`owner-test-01` 重新验证为 `LAB_NOT_ENABLED`）。详见 commit `5359364`。
+
 ## 2026-07-18 更新（Second Wave Sprint #2 — DNS Service Discovery）
 
 DNS 服务发现失败已完成生产：`lab_id=39b87766-a7eb-460d-a8d3-ac5a31319d4a`，`publish_status=draft`（internal soft launch，未加入 `LABGEN_ENABLED_LAB_IDS`/`LABGEN_AUTO_VM_PROVISION_LAB_IDS`），StaticValidator 22 项检查全部通过。两轮独立的真实 K3s rehearsal（VM 401，`session_id=a405bfe3-...`/`7751e825-...`）全部 4 步通过，`cleanup_verified=true`，namespace 均确认真实回收。
