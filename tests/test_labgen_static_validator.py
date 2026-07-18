@@ -1019,3 +1019,71 @@ class TestVerifyConfigmapValueEqualsFields:
         assert "verify.type_implemented" in _passed_ids(results)
         assert "verify.configmap_value_equals_fields" in _passed_ids(results)
         assert "verify.type_implemented" not in _failed_ids(results)
+
+
+class TestVerifyPodLogContainsFields:
+    """DNS Service Discovery lab (Second Wave #2): pod_log_contains reads
+    VerifyTemplate.log_contains, Optional on the schema since only this type
+    uses it. A draft missing it would pass schema validation but silently
+    always fail at rehearsal (dispatch fails closed on log_contains=None —
+    see verifier.py — rather than comparing against "")."""
+
+    def test_pass_when_log_contains_present(self):
+        draft = _draft(steps=[_step(verify=[
+            _vt(type=VerifyType.POD_LOG_CONTAINS, name="dns-check",
+                log_contains="SERVICE_FQDN_RESOLVED"),
+        ])])
+        results = validator.validate(draft)
+        assert "verify.pod_log_contains_fields" in _passed_ids(results)
+
+    def test_fail_when_log_contains_missing(self):
+        draft = _draft(steps=[_step(verify=[
+            _vt(type=VerifyType.POD_LOG_CONTAINS, name="dns-check"),
+        ])])
+        results = validator.validate(draft)
+        assert "verify.pod_log_contains_fields" in _failed_ids(results)
+        assert _blocking_levels(results, "verify.pod_log_contains_fields") == [BlockingLevel.PUBLISH_BLOCKING]
+
+    def test_other_types_unaffected(self):
+        draft = _draft(steps=[_step(verify=[_vt(type=VerifyType.POD_RUNNING)])])
+        results = validator.validate(draft)
+        assert "verify.pod_log_contains_fields" in _passed_ids(results)
+
+
+class TestVerifyPodPhaseEqualsFields:
+    """Pod Pending lab (Second Wave #3): pod_phase_equals reads
+    VerifyTemplate.expected_phase, Optional on the schema since only this
+    type uses it. A draft missing it would pass schema validation but
+    silently always fail at rehearsal (dispatch fails closed on
+    expected_phase=None — see verifier.py)."""
+
+    def test_pass_when_expected_phase_present(self):
+        draft = _draft(steps=[_step(verify=[
+            _vt(type=VerifyType.POD_PHASE_EQUALS, name="demo", expected_phase="Pending"),
+        ])])
+        results = validator.validate(draft)
+        assert "verify.pod_phase_equals_fields" in _passed_ids(results)
+
+    def test_fail_when_expected_phase_missing(self):
+        draft = _draft(steps=[_step(verify=[
+            _vt(type=VerifyType.POD_PHASE_EQUALS, name="demo"),
+        ])])
+        results = validator.validate(draft)
+        assert "verify.pod_phase_equals_fields" in _failed_ids(results)
+        assert _blocking_levels(results, "verify.pod_phase_equals_fields") == [BlockingLevel.PUBLISH_BLOCKING]
+
+    def test_other_types_unaffected(self):
+        draft = _draft(steps=[_step(verify=[_vt(type=VerifyType.POD_RUNNING)])])
+        results = validator.validate(draft)
+        assert "verify.pod_phase_equals_fields" in _passed_ids(results)
+
+    def test_pod_scheduling_unschedulable_needs_no_extra_fields(self):
+        """message_contains is genuinely optional for pod_scheduling_unschedulable
+        (unlike expected_phase for pod_phase_equals) — must validate cleanly
+        with zero extra setup."""
+        draft = _draft(steps=[_step(verify=[
+            _vt(type=VerifyType.POD_SCHEDULING_UNSCHEDULABLE, name="demo"),
+        ])])
+        results = validator.validate(draft)
+        assert "verify.type_implemented" in _passed_ids(results)
+        assert "verify.pod_phase_equals_fields" in _passed_ids(results)

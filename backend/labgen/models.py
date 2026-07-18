@@ -58,6 +58,8 @@ class VerifyType(str, Enum):
     DEPLOYMENT_RESTART_NOT_TRIGGERED = "deployment_restart_not_triggered"
     POD_SUCCEEDED = "pod_succeeded"
     POD_LOG_CONTAINS = "pod_log_contains"
+    POD_PHASE_EQUALS = "pod_phase_equals"
+    POD_SCHEDULING_UNSCHEDULABLE = "pod_scheduling_unschedulable"
 
 
 class LinuxVerifyType(str, Enum):
@@ -208,6 +210,17 @@ class VerifyTemplate(SchemaVersionedModel):
     # pod's log output. Required for that type (checked by
     # StaticValidator.verify.pod_log_contains_fields), unused otherwise.
     log_contains: Optional[str] = None
+    # Only used by POD_PHASE_EQUALS: the pod phase to match (e.g. "Pending",
+    # "Running", "Succeeded"). Required for that type (checked by
+    # StaticValidator.verify.pod_phase_equals_fields), unused otherwise.
+    expected_phase: Optional[str] = None
+    # Only used by POD_SCHEDULING_UNSCHEDULABLE: optional substring that must
+    # appear in the PodScheduled condition's message (e.g. to confirm the
+    # unschedulable reason is specifically a node selector mismatch, not
+    # resource pressure or a taint). Unlike config_key/expected_phase, this
+    # is genuinely optional for this type — omitting it just checks
+    # PodScheduled=False/reason=Unschedulable without inspecting message text.
+    message_contains: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

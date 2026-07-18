@@ -100,6 +100,8 @@ def _make_template(
     cluster_scope: bool = False,
     label_selector: Optional[str] = None,
     log_contains: Optional[str] = None,
+    expected_phase: Optional[str] = None,
+    message_contains: Optional[str] = None,
 ) -> VerifyTemplate:
     return VerifyTemplate(
         verify_id=verify_id,
@@ -109,6 +111,8 @@ def _make_template(
         cluster_scope=cluster_scope,
         label_selector=label_selector,
         log_contains=log_contains,
+        expected_phase=expected_phase,
+        message_contains=message_contains,
     )
 
 
@@ -243,6 +247,20 @@ class TestFakeK8sVerifierClient:
         )
         assert c.pod_log_contains("lab-ns", "dns-check", "SERVICE_FQDN_RESOLVED") is False
         assert c.pod_log_contains("lab-ns", "dns-check", "OTHER_MARKER") is True
+
+    def test_per_key_pod_phase_equals(self) -> None:
+        c = FakeK8sVerifierClient(
+            responses={("pod_phase_equals", "lab-ns", "demo", "Pending"): False},
+        )
+        assert c.pod_phase_equals("lab-ns", "demo", "Pending") is False
+        assert c.pod_phase_equals("lab-ns", "demo", "Running") is True
+
+    def test_per_key_pod_scheduling_unschedulable(self) -> None:
+        c = FakeK8sVerifierClient(
+            responses={("pod_scheduling_unschedulable", "lab-ns", "demo", "node affinity/selector"): False},
+        )
+        assert c.pod_scheduling_unschedulable("lab-ns", "demo", message_contains="node affinity/selector") is False
+        assert c.pod_scheduling_unschedulable("lab-ns", "demo", message_contains="other") is True
 
 
 # ===========================================================================
@@ -618,6 +636,65 @@ class TestVerifierServiceDispatch:
         )
         assert not result.passed
 
+    def test_pod_phase_equals_true(self) -> None:
+        result = self._svc(FakeK8sVerifierClient(default=True)).check(
+            self._session.session_id,
+            _make_template(vtype=VerifyType.POD_PHASE_EQUALS, name="demo", expected_phase="Pending"),
+        )
+        assert result.passed
+        assert result.verify_type == "pod_phase_equals"
+
+    def test_pod_phase_equals_false(self) -> None:
+        result = self._svc(
+            FakeK8sVerifierClient({("pod_phase_equals", "lab-test-ns", "demo", "Pending"): False})
+        ).check(
+            self._session.session_id,
+            _make_template(vtype=VerifyType.POD_PHASE_EQUALS, name="demo", expected_phase="Pending"),
+        )
+        assert not result.passed
+
+    def test_pod_phase_equals_missing_expected_phase_fails_closed(self) -> None:
+        result = self._svc(FakeK8sVerifierClient(default=True)).check(
+            self._session.session_id,
+            _make_template(vtype=VerifyType.POD_PHASE_EQUALS, name="demo", expected_phase=None),
+        )
+        assert not result.passed
+
+    def test_pod_scheduling_unschedulable_true(self) -> None:
+        result = self._svc(FakeK8sVerifierClient(default=True)).check(
+            self._session.session_id,
+            _make_template(
+                vtype=VerifyType.POD_SCHEDULING_UNSCHEDULABLE,
+                name="demo",
+                message_contains="node affinity/selector",
+            ),
+        )
+        assert result.passed
+        assert result.verify_type == "pod_scheduling_unschedulable"
+
+    def test_pod_scheduling_unschedulable_false(self) -> None:
+        result = self._svc(
+            FakeK8sVerifierClient(
+                {("pod_scheduling_unschedulable", "lab-test-ns", "demo", "node affinity/selector"): False}
+            )
+        ).check(
+            self._session.session_id,
+            _make_template(
+                vtype=VerifyType.POD_SCHEDULING_UNSCHEDULABLE,
+                name="demo",
+                message_contains="node affinity/selector",
+            ),
+        )
+        assert not result.passed
+
+    def test_pod_scheduling_unschedulable_without_message_contains(self) -> None:
+        # message_contains is genuinely optional for this type.
+        result = self._svc(FakeK8sVerifierClient(default=True)).check(
+            self._session.session_id,
+            _make_template(vtype=VerifyType.POD_SCHEDULING_UNSCHEDULABLE, name="demo"),
+        )
+        assert result.passed
+
     def test_pod_log_contains_missing_log_contains_fails_closed(self) -> None:
         # Regression: log_contains=None must not be dispatched as "" — an empty
         # substring is contained in every string, so falling back to "" would
@@ -824,9 +901,12 @@ class TestSupportedTypesSet:
         # + 3 for ConfigMap-not-effective (configmap_value_equals,
         # deployment_restart_triggered, deployment_restart_not_triggered)
         # + 2 for DNS Service Discovery (pod_succeeded, pod_log_contains)
-        assert len(_SUPPORTED_TYPES) == 14
+        # + 2 for Pod Pending (pod_phase_equals, pod_scheduling_unschedulable)
+        assert len(_SUPPORTED_TYPES) == 16
         assert VerifyType.POD_SUCCEEDED in _SUPPORTED_TYPES
         assert VerifyType.POD_LOG_CONTAINS in _SUPPORTED_TYPES
+        assert VerifyType.POD_PHASE_EQUALS in _SUPPORTED_TYPES
+        assert VerifyType.POD_SCHEDULING_UNSCHEDULABLE in _SUPPORTED_TYPES
         assert VerifyType.DEPLOYMENT_UNAVAILABLE in _SUPPORTED_TYPES
         assert VerifyType.NAMESPACE_NOT_EXISTS in _SUPPORTED_TYPES
         assert VerifyType.SERVICE_HAS_ENDPOINTS in _SUPPORTED_TYPES

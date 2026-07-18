@@ -96,6 +96,24 @@ class K8sVerifierClientPort(ABC):
         label_selector: Optional[str] = None,
     ) -> bool: ...
 
+    @abstractmethod
+    def pod_phase_equals(
+        self,
+        namespace: str,
+        name: str,
+        expected_phase: str,
+        label_selector: Optional[str] = None,
+    ) -> bool: ...
+
+    @abstractmethod
+    def pod_scheduling_unschedulable(
+        self,
+        namespace: str,
+        name: str,
+        label_selector: Optional[str] = None,
+        message_contains: Optional[str] = None,
+    ) -> bool: ...
+
 
 # ---------------------------------------------------------------------------
 # Fake client (tests only)
@@ -174,6 +192,24 @@ class FakeK8sVerifierClient(K8sVerifierClientPort):
     ) -> bool:
         return self._get(("pod_log_contains", namespace, name, contains))
 
+    def pod_phase_equals(
+        self,
+        namespace: str,
+        name: str,
+        expected_phase: str,
+        label_selector: Optional[str] = None,
+    ) -> bool:
+        return self._get(("pod_phase_equals", namespace, name, expected_phase))
+
+    def pod_scheduling_unschedulable(
+        self,
+        namespace: str,
+        name: str,
+        label_selector: Optional[str] = None,
+        message_contains: Optional[str] = None,
+    ) -> bool:
+        return self._get(("pod_scheduling_unschedulable", namespace, name, message_contains))
+
 
 # ---------------------------------------------------------------------------
 # Supported verify types
@@ -194,6 +230,8 @@ _SUPPORTED_TYPES: frozenset[VerifyType] = frozenset({
     VerifyType.DEPLOYMENT_RESTART_NOT_TRIGGERED,
     VerifyType.POD_SUCCEEDED,
     VerifyType.POD_LOG_CONTAINS,
+    VerifyType.POD_PHASE_EQUALS,
+    VerifyType.POD_SCHEDULING_UNSCHEDULABLE,
 })
 
 _NS_SENTINEL = "{{lab_namespace}}"
@@ -398,6 +436,21 @@ class VerifierService:
                 else f'Pod "{name}" logs do not yet contain the expected output. '
                 f"Check with: kubectl logs {name}"
             )
+        if vtype == VerifyType.POD_PHASE_EQUALS:
+            return (
+                f'Pod "{name}" is in the expected phase.'
+                if passed
+                else f'Pod "{name}" is not yet in the expected phase. '
+                "Check with: kubectl get pods -o wide"
+            )
+        if vtype == VerifyType.POD_SCHEDULING_UNSCHEDULABLE:
+            return (
+                f'Pod "{name}" is confirmed unschedulable — the scheduler could not '
+                "place it on any node, matching this step's expected failure mode."
+                if passed
+                else f'Pod "{name}" is not (yet) confirmed unschedulable. '
+                f"Check with: kubectl describe pod -l app={name}"
+            )
         return ""
 
     @staticmethod
@@ -447,5 +500,17 @@ class VerifierService:
                 return False
             return client.pod_log_contains(
                 namespace, name, template.log_contains, template.label_selector
+            )
+        if vtype == VerifyType.POD_PHASE_EQUALS:
+            if template.expected_phase is None:
+                # Fail closed — same reasoning as POD_LOG_CONTAINS above: no
+                # phase string has a safe "match everything" fallback value.
+                return False
+            return client.pod_phase_equals(
+                namespace, name, template.expected_phase, template.label_selector
+            )
+        if vtype == VerifyType.POD_SCHEDULING_UNSCHEDULABLE:
+            return client.pod_scheduling_unschedulable(
+                namespace, name, template.label_selector, template.message_contains
             )
         raise AssertionError(f"_dispatch called for unsupported type {vtype!r}")  # pragma: no cover

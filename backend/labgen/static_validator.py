@@ -247,6 +247,7 @@ class StaticValidator:
         results.extend(self._check_verify_no_secret_value(draft))
         results.extend(self._check_verify_configmap_value_equals_fields(draft))
         results.extend(self._check_verify_pod_log_contains_fields(draft))
+        results.extend(self._check_verify_pod_phase_equals_fields(draft))
         results.extend(self._check_cleanup_declared(draft))
         results.extend(self._check_cluster_scoped_cleanup_declared(draft))
         results.extend(self._check_helm_no_generation(draft))
@@ -604,6 +605,26 @@ class StaticValidator:
                         "log_contains — this step would always fail at rehearsal.",
                     ))
         return failures or [_pass("verify.pod_log_contains_fields", "steps[*].verify[*]")]
+
+    def _check_verify_pod_phase_equals_fields(self, draft: LabDraft) -> list[ValidatorResult]:
+        """pod_phase_equals reads VerifyTemplate.expected_phase — Optional on the
+        schema (only this type uses it), so a draft missing it would pass
+        schema validation but silently always fail at rehearsal (no phase
+        string equals None)."""
+        failures = []
+        for i, step in enumerate(draft.steps):
+            for j, vt in enumerate(step.verify):
+                if vt.type != VerifyType.POD_PHASE_EQUALS:
+                    continue
+                if vt.expected_phase is None:
+                    failures.append(_fail(
+                        "verify.pod_phase_equals_fields",
+                        BlockingLevel.PUBLISH_BLOCKING,
+                        f"steps[{i}].verify[{j}]",
+                        f"Verify '{vt.verify_id}' is type pod_phase_equals but is missing "
+                        "expected_phase — this step would always fail at rehearsal.",
+                    ))
+        return failures or [_pass("verify.pod_phase_equals_fields", "steps[*].verify[*]")]
 
     # ------------------------------------------------------------------
     # Cleanup checks  (§10: cleanup.*, cluster_scoped.*)

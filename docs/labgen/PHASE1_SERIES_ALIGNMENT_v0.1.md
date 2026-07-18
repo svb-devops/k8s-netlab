@@ -4,6 +4,14 @@
 
 `documentation_only` —— 本文档不改变任何代码行为、不开放任何访问权限。目的是把已经产出的三个 lab（CrashLoopBackOff、Service 无 Endpoints、ImagePullBackOff）放进一个明确的系列结构里，为后续排期提供依据。
 
+## 2026-07-18 更新（Second Wave Sprint #3 — Pod Pending）
+
+Pod Pending 已完成生产：`lab_id=dcddf681-f906-491c-b126-efee40f3621c`，`publish_status=published`（internal soft launch，未加入 `LABGEN_ENABLED_LAB_IDS`/`LABGEN_AUTO_VM_PROVISION_LAB_IDS`），StaticValidator 23 项检查全部通过。两轮独立的真实 K3s rehearsal（VM 401，`session_id=f70473e3-...`/`04303ff8-...`）全部 5 步通过，`cleanup_verified=true`，namespace 均确认真实回收。场景聚焦"Deployment 配置了一个集群里不存在的 nodeSelector"，用非交互式 `kubectl patch`（merge 类型注入、json 类型 remove 移除）代替 `kubectl edit`，不改动任何真实 Node label/taint，不涉及 PVC/StorageClass/多节点。真实集群实测确认：`kubectl patch` 注入 nodeSelector 后触发新 ReplicaSet，新 Pod 停留在 `Pending`（同一 label 下与仍在 `Running` 的旧 Pod 短暂共存）；`status.conditions` 里 `PodScheduled=False`/`reason=Unschedulable`，message 明确提到 `didn't match Pod's node affinity/selector`；移除 nodeSelector 后原 ReplicaSet 直接缩容回 1（不产生第三个 ReplicaSet），`rollout status` 成功。
+
+新增两个可复用只读 verifier：`pod_phase_equals`（检查任意匹配 Pod 是否处于指定 phase，与既有 `pod_running`/`pod_succeeded` 保持一致的"任一匹配即算"语义——同一 label selector 下新旧 Pod 共存时必须挑对目标）、`pod_scheduling_unschedulable`（检查 `PodScheduled` condition 而非 Events 文本，因为 Events 有 TTL 会过期、condition 是当前状态的权威来源；`message_contains` 为可选参数，用于进一步确认失败原因具体是 node selector 不匹配）。两个类型均只需要既有 `pods:get/list/watch` 权限，未触发任何新的 verifier RBAC 缺口（对照 DNS Sprint 那次 `pods/log` 权限缺口的教训，本次生产前已确认无需新增 ClusterRole 权限）。同时补齐了 DNS Sprint 遗留的一处测试缺口：`pod_log_contains_fields` 此前没有专门的 static_validator 回归测试，本轮一并补上。
+
+Official article draft 已撰写（`docs/labgen/articles/POD_PENDING_OFFICIAL_ARTICLE_FINAL_DRAFT_v1.0.md`），`article_status=ready_to_publish_draft`，未发布、未公开、未加入 CTA。按计划本轮只做到 internal soft launch + owner dogfood 就绪，不发布、不公开。至此《Kubernetes 高频故障排查实战系列》后备主题全部完成生产（六个主题：CrashLoopBackOff/Service No Endpoints/ImagePullBackOff/ConfigMap/DNS Service Discovery/Pod Pending），Phase 1 designed scope 内暂无下一个待生产的新主题。
+
 ## 2026-07-18 更新（Second Wave #2 Minimal Publish — DNS Service Discovery 正式公开发布）
 
 DNS Service Discovery 正式面向公开读者发布：Directus article `dns-service-discovery-namespace-fqdn`（id=8，`status=published`，公开可访问 200），`lab_id=39b87766-a7eb-460d-a8d3-ac5a31319d4a` 已加入 `LABGEN_ENABLED_LAB_IDS`/`LABGEN_AUTO_VM_PROVISION_LAB_IDS`，`cta_enabled=true`，CTA 正确指向该 lab，未加任何 invite 限制（访问模型与其余四篇完全一致）。这是《Kubernetes 高频故障排查实战系列》正式发布的第五篇。发布后用一个全新注册、非 admin、无预分配 VM 的账号（`dns-e2e-fresh-01`）走完整公开路径验证：文章 → CTA → Start Lab → 自动 provisioning → `LAB_ACTIVE` → 4 步全部通过（`kubectl logs` 实测确认 `SHORT_NAME_FAILED_AS_EXPECTED`/`SERVICE_FQDN_RESOLVED`）→ cleanup → `LAB_CLOSED` → `cleanup_verified=true`；同时确认生产环境实际提供的终端前端文件与已测试提交的源码逐字节一致，验证了上一轮"命令粘贴换行符"前端 bug 修复在发布后的公开路径上持续生效。五篇已发布文章互相补齐了系列导航链接（本文新增反向链接到前四篇，前四篇也补充了指向本文的链接），全部 5 个链接实测 200，无死链。测试账号与 VM 已清理，五个系列 lab 均 `is_startable=true`，health 全程 healthy。详见 `DNS_MINIMAL_PUBLISH_RESULT_v0.1.md`。
@@ -50,7 +58,7 @@ runtime_scope: 单命名空间、single K3s runtime（不涉及多 VM / 多节�
 | 3 | ImagePullBackOff | 已发布（internal soft launch，未对外） |
 | 4 | ConfigMap 修改后不生效 | 已正式公开发布 |
 | 5 | DNS 服务发现失败 | 已正式公开发布 |
-| 6 | Pod Pending | 未生产 |
+| 6 | Pod Pending | 已发布（internal soft launch，未对外） |
 
 ## first_wave（优先生产顺序，与已完成的 lab 保持连续）
 
@@ -64,7 +72,7 @@ first_wave 全部完成，下一步排期进入 second_wave。
 
 4. ConfigMap 修改后不生效（已完成 —— Second Wave 第一个"配置类"故障，与 First Wave 三个"Pod 状态类"故障互补，验证了"没有报错但行为不符合预期"这类新的判断分支；新增 configmap_value_equals/deployment_restart_triggered/deployment_restart_not_triggered 三个 verifier，为未来同类"配置生效时机"主题打下可复用基础）
 5. DNS 服务发现失败（已正式公开发布 —— Second Wave 第二个主题，与前四个"workload/配置类"故障互补，覆盖"namespace 隔离导致的服务发现失败"这一新判断分支；新增 pod_succeeded/pod_log_contains 两个 verifier，为未来"无法用 kubectl exec 观察、需要读日志/终止状态判断"的场景打下可复用基础；发现并修复了 verifier ClusterRole 权限缺口的 BLOCKER 和一个独立的前端终端粘贴 bug，对整个系列都有参考价值）
-6. Pod Pending（本轮未启动）
+6. Pod Pending（已完成生产、internal soft launch —— Second Wave 第三个主题，与前五个主题互补，覆盖"调度阶段失败、容器从未创建"这一新判断分支；新增 pod_phase_equals/pod_scheduling_unschedulable 两个 verifier，均只需既有 pods RBAC、未新增权限缺口）
 
 ## deferred（明确排除在 Phase 1 之外）
 

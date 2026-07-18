@@ -894,6 +894,171 @@ class TestPodLogContains:
 
 
 # ---------------------------------------------------------------------------
+# pod_phase_equals
+# ---------------------------------------------------------------------------
+
+
+class TestPodPhaseEquals:
+    def test_returns_true_when_phase_matches_by_name(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_pod.return_value = _mock_pod_list("Pending")
+        assert _adapter(core, MagicMock()).pod_phase_equals("lab-ns", "demo", "Pending") is True
+        core.list_namespaced_pod.assert_called_once_with(
+            "lab-ns", field_selector="metadata.name=demo"
+        )
+
+    def test_returns_false_when_phase_does_not_match(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_pod.return_value = _mock_pod_list("Running")
+        assert _adapter(core, MagicMock()).pod_phase_equals("lab-ns", "demo", "Pending") is False
+
+    def test_returns_false_on_empty_list(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_pod.return_value = _mock_pod_list()
+        assert _adapter(core, MagicMock()).pod_phase_equals("lab-ns", "demo", "Pending") is False
+
+    def test_label_selector_true_if_any_pod_matches(self) -> None:
+        # Regression-by-design: label_selector can match multiple pods (e.g.
+        # an old Running pod alongside a new Pending one after a rollout) —
+        # must check across all matches, same "any" semantics as pod_running.
+        core = MagicMock()
+        pod_list = MagicMock()
+        pod_list.items = [_mock_pod("Running"), _mock_pod("Pending")]
+        core.list_namespaced_pod.return_value = pod_list
+        assert _adapter(core, MagicMock()).pod_phase_equals(
+            "lab-ns", "any", "Pending", label_selector="app=demo"
+        ) is True
+        core.list_namespaced_pod.assert_called_once_with(
+            "lab-ns", label_selector="app=demo"
+        )
+
+    def test_label_selector_false_if_no_pod_matches(self) -> None:
+        core = MagicMock()
+        pod_list = MagicMock()
+        pod_list.items = [_mock_pod("Running"), _mock_pod("Running")]
+        core.list_namespaced_pod.return_value = pod_list
+        assert _adapter(core, MagicMock()).pod_phase_equals(
+            "lab-ns", "any", "Pending", label_selector="app=demo"
+        ) is False
+
+    def test_returns_false_on_404(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_pod.side_effect = _api_404()
+        assert _adapter(core, MagicMock()).pod_phase_equals("lab-ns", "demo", "Pending") is False
+
+    def test_propagates_non_404(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_pod.side_effect = _api_500()
+        with pytest.raises(ApiException):
+            _adapter(core, MagicMock()).pod_phase_equals("lab-ns", "demo", "Pending")
+
+
+# ---------------------------------------------------------------------------
+# pod_scheduling_unschedulable
+# ---------------------------------------------------------------------------
+
+
+def _mock_pod_scheduled_condition(status: str, reason: str = "", message: str = "") -> MagicMock:
+    cond = MagicMock()
+    cond.type = "PodScheduled"
+    cond.status = status
+    cond.reason = reason
+    cond.message = message
+    pod = MagicMock()
+    pod.status = MagicMock()
+    pod.status.conditions = [cond]
+    return pod
+
+
+class TestPodSchedulingUnschedulable:
+    def test_returns_true_when_unschedulable(self) -> None:
+        core = MagicMock()
+        pod_list = MagicMock()
+        pod_list.items = [_mock_pod_scheduled_condition(
+            "False", "Unschedulable", "0/1 nodes are available: 1 node(s) didn't match Pod's node affinity/selector."
+        )]
+        core.list_namespaced_pod.return_value = pod_list
+        assert _adapter(core, MagicMock()).pod_scheduling_unschedulable("lab-ns", "demo") is True
+
+    def test_returns_false_when_scheduled_condition_true(self) -> None:
+        core = MagicMock()
+        pod_list = MagicMock()
+        pod_list.items = [_mock_pod_scheduled_condition("True")]
+        core.list_namespaced_pod.return_value = pod_list
+        assert _adapter(core, MagicMock()).pod_scheduling_unschedulable("lab-ns", "demo") is False
+
+    def test_returns_false_when_reason_is_not_unschedulable(self) -> None:
+        core = MagicMock()
+        pod_list = MagicMock()
+        pod_list.items = [_mock_pod_scheduled_condition("False", "SchedulerError", "some other reason")]
+        core.list_namespaced_pod.return_value = pod_list
+        assert _adapter(core, MagicMock()).pod_scheduling_unschedulable("lab-ns", "demo") is False
+
+    def test_returns_false_when_no_pod_scheduled_condition_present(self) -> None:
+        core = MagicMock()
+        pod = MagicMock()
+        pod.status = MagicMock()
+        pod.status.conditions = []
+        pod_list = MagicMock()
+        pod_list.items = [pod]
+        core.list_namespaced_pod.return_value = pod_list
+        assert _adapter(core, MagicMock()).pod_scheduling_unschedulable("lab-ns", "demo") is False
+
+    def test_returns_false_on_empty_pod_list(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_pod.return_value = _mock_pod_list()
+        assert _adapter(core, MagicMock()).pod_scheduling_unschedulable("lab-ns", "demo") is False
+
+    def test_message_contains_true_when_substring_present(self) -> None:
+        core = MagicMock()
+        pod_list = MagicMock()
+        pod_list.items = [_mock_pod_scheduled_condition(
+            "False", "Unschedulable", "0/1 nodes are available: 1 node(s) didn't match Pod's node affinity/selector."
+        )]
+        core.list_namespaced_pod.return_value = pod_list
+        result = _adapter(core, MagicMock()).pod_scheduling_unschedulable(
+            "lab-ns", "demo", message_contains="node affinity/selector"
+        )
+        assert result is True
+
+    def test_message_contains_false_when_substring_absent(self) -> None:
+        core = MagicMock()
+        pod_list = MagicMock()
+        pod_list.items = [_mock_pod_scheduled_condition("False", "Unschedulable", "insufficient cpu")]
+        core.list_namespaced_pod.return_value = pod_list
+        result = _adapter(core, MagicMock()).pod_scheduling_unschedulable(
+            "lab-ns", "demo", message_contains="node affinity/selector"
+        )
+        assert result is False
+
+    def test_label_selector_true_if_any_matching_pod_unschedulable(self) -> None:
+        core = MagicMock()
+        running_pod = _mock_pod_scheduled_condition("True")
+        unschedulable_pod = _mock_pod_scheduled_condition("False", "Unschedulable", "didn't match")
+        pod_list = MagicMock()
+        pod_list.items = [running_pod, unschedulable_pod]
+        core.list_namespaced_pod.return_value = pod_list
+        result = _adapter(core, MagicMock()).pod_scheduling_unschedulable(
+            "lab-ns", "ignored", label_selector="app=demo"
+        )
+        assert result is True
+        core.list_namespaced_pod.assert_called_once_with(
+            "lab-ns", label_selector="app=demo"
+        )
+
+    def test_returns_false_on_404(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_pod.side_effect = _api_404()
+        assert _adapter(core, MagicMock()).pod_scheduling_unschedulable("lab-ns", "demo") is False
+
+    def test_propagates_non_404(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_pod.side_effect = _api_500()
+        with pytest.raises(ApiException):
+            _adapter(core, MagicMock()).pod_scheduling_unschedulable("lab-ns", "demo")
+
+
+# ---------------------------------------------------------------------------
 # KubernetesApiFactory — smoke test (no real K8s connection)
 # ---------------------------------------------------------------------------
 

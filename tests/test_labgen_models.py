@@ -121,6 +121,7 @@ class TestVerifyType:
             "configmap_value_equals", "deployment_restart_triggered",
             "deployment_restart_not_triggered",
             "pod_succeeded", "pod_log_contains",
+            "pod_phase_equals", "pod_scheduling_unschedulable",
         }
         actual = {v.value for v in VerifyType}
         assert actual == expected

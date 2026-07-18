@@ -402,6 +402,68 @@ class K8sVerifierClientAdapter(K8sVerifierClientPort):
                 return False
             raise
 
+    def pod_phase_equals(
+        self,
+        namespace: str,
+        name: str,
+        expected_phase: str,
+        label_selector: Optional[str] = None,
+    ) -> bool:
+        """Return True if any matched pod's phase equals expected_phase.
+
+        Uses list_namespaced_pod (list, not get) — same RBAC footprint as
+        pod_running. "Any match" semantics: a label selector can match both
+        an old pod (e.g. still Running) and a newly created one (e.g.
+        Pending after a rollout triggered by a bad nodeSelector) — must find
+        the one that actually matches, not just inspect the first list item.
+        """
+        try:
+            pods = self._find_pods(namespace, name, label_selector)
+            return any(p.status is not None and p.status.phase == expected_phase for p in pods)
+        except ApiException as exc:
+            if exc.status == 404:
+                return False
+            raise
+
+    def pod_scheduling_unschedulable(
+        self,
+        namespace: str,
+        name: str,
+        label_selector: Optional[str] = None,
+        message_contains: Optional[str] = None,
+    ) -> bool:
+        """Return True if any matched pod has a PodScheduled condition with
+        status=False and reason=Unschedulable (optionally also requiring its
+        message to contain `message_contains`, e.g. to confirm the failure
+        is specifically a node selector/affinity mismatch rather than
+        resource pressure or a taint).
+
+        Pod conditions (not Events) are the source of truth here: Events
+        have a TTL and can expire, while status.conditions reflects current
+        state and is read via the same list_namespaced_pod call already used
+        elsewhere — no extra RBAC needed beyond what pod_running/pod_phase_equals
+        already require.
+        """
+        try:
+            pods = self._find_pods(namespace, name, label_selector)
+            for pod in pods:
+                conditions = pod.status.conditions if pod.status else None
+                if not conditions:
+                    continue
+                for cond in conditions:
+                    if cond.type != "PodScheduled" or cond.status != "False":
+                        continue
+                    if cond.reason != "Unschedulable":
+                        continue
+                    if message_contains is not None and message_contains not in (cond.message or ""):
+                        continue
+                    return True
+            return False
+        except ApiException as exc:
+            if exc.status == 404:
+                return False
+            raise
+
 
 # ---------------------------------------------------------------------------
 # K8sVerifierClientFactory  (module-level factory function for routes.py)
