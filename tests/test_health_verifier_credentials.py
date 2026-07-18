@@ -200,6 +200,22 @@ class TestHealthEndpointBackwardCompat:
         assert "failed_terminal_session_count" in sessions
         assert "tainted_vm_count" in sessions
         assert "warnings" in sessions
+        assert "session_ttl_minutes" in sessions
+
+    def test_health_session_ttl_minutes_matches_config(self, client: TestClient) -> None:
+        # Regression: 2026-07-18 incident — a drop-in EnvironmentFile
+        # (/etc/labgen/home_lab_mvp.env) silently shadowed the intended
+        # 90-minute LABGEN_LAB_SESSION_TTL_MINUTES with a stale 30, causing
+        # real learner sessions to be force-timed-out early. This field lets
+        # ops eyeball the *effective* runtime value against the deployed
+        # env file without SSH-ing in to read /proc/<pid>/environ.
+        from backend import config
+        data = client.get("/api/health").json()
+        assert data["sessions"]["session_ttl_minutes"] == config.LABGEN_LAB_SESSION_TTL_MINUTES
+
+    def test_health_session_ttl_minutes_is_int(self, client: TestClient) -> None:
+        data = client.get("/api/health").json()
+        assert isinstance(data["sessions"]["session_ttl_minutes"], int)
 
     def test_health_sessions_counts_are_ints(self, client: TestClient) -> None:
         data = client.get("/api/health").json()

@@ -475,3 +475,35 @@ class TestEdgeCases:
 
     def test_default_ttl_is_30_minutes(self):
         assert DEFAULT_SESSION_TTL_MINUTES == 30
+
+
+class TestGetExpiryServiceWiring:
+    """Pod Pending release stabilization (2026-07-18): pins that the real
+    production entry point (backend.labgen.routes.get_expiry_service)
+    actually threads config.LABGEN_LAB_SESSION_TTL_MINUTES into
+    VMExpiryService, rather than silently falling back to
+    DEFAULT_SESSION_TTL_MINUTES (30). The class default alone is correct and
+    intentional for direct instantiation (e.g. tests, or any future caller
+    that doesn't have a configured value) — this test guards the *wiring*,
+    which is the part that would let a real deployment silently regress to
+    a 30-minute TTL instead of the intended production value if someone
+    edited get_expiry_service() to drop the session_ttl_minutes= kwarg.
+
+    The 2026-07-18 incident itself was not a wiring bug (get_expiry_service
+    was already correctly wired) — it was a drop-in EnvironmentFile
+    (/etc/labgen/home_lab_mvp.env) shadowing config.LABGEN_LAB_SESSION_TTL_MINUTES
+    at the OS/systemd level, which no unit test can observe. This test
+    exists so that if the wiring itself ever regresses too, it's caught here
+    instead of only in production.
+    """
+
+    def test_expiry_service_uses_configured_ttl_not_class_default(self, monkeypatch):
+        import backend.labgen.routes as routes_module
+
+        monkeypatch.setattr(routes_module, "_expiry_svc", None)
+        monkeypatch.setattr("backend.config.LABGEN_LAB_SESSION_TTL_MINUTES", 90)
+
+        svc = routes_module.get_expiry_service()
+
+        assert svc._ttl == 90
+        assert svc._ttl != DEFAULT_SESSION_TTL_MINUTES

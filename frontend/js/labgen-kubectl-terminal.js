@@ -35,14 +35,41 @@ export class LabKubectlTerminal {
         this._namespace = '';
         this._active = false;
         this._resizeHandler = null;
+        this._connecting = false;
+        this._settleTimer = null;
     }
 
-    /** Connect to the lab kubectl WebSocket and mount xterm.js. */
-    connect() {
-        if (this._ws) return;
+    /**
+     * Connect to the lab kubectl WebSocket and mount xterm.js.
+     *
+     * @param {number} settleDelayMs - If the caller is about to trigger a
+     *   layout change that resizes this terminal's container (e.g. the
+     *   drawer auto-opening on first activation), pass the transition
+     *   duration here. The terminal is opened and fitted immediately (so
+     *   its DOM exists and is visible), but the WebSocket — and therefore
+     *   any data that could be written to the buffer — is not opened until
+     *   after this delay and one more settling fit(). This closes a real
+     *   bug: fitAddon.fit()'s resize()-triggered reflow can silently
+     *   corrupt/lose buffer content written before it runs (see the
+     *   existing comment on fit() below for the general gotcha; this is
+     *   the specific case where content already exists when a *second*,
+     *   later fit() — from a delayed drawer-open transition — fires).
+     *   Reproduced 2026-07-18: after every reconnect (idle-timeout +
+     *   reopen, or a plain page reload) the ready banner + first command's
+     *   echo/output were written while the terminal was still sized for
+     *   the pre-drawer-open (wide) layout; the drawer's ~260ms-delayed
+     *   refit then silently wiped them. Delaying WS-open until after that
+     *   refit means there is nothing in the buffer yet for it to corrupt.
+     */
+    connect(settleDelayMs = 0) {
+        if (this._ws || this._connecting) return;
+        this._connecting = true;
 
         const container = document.getElementById(this._containerId);
-        if (!container) return;
+        if (!container) {
+            this._connecting = false;
+            return;
+        }
 
         this._terminal = new Terminal({
             cursorBlink: true,
@@ -72,32 +99,64 @@ export class LabKubectlTerminal {
         this._resizeHandler = () => this.fit();
         window.addEventListener('resize', this._resizeHandler);
 
-        // Connect WebSocket
-        const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        this._ws = new WebSocket(`${proto}//${window.location.host}/ws/lab-kubectl/${this._sessionId}`);
+        const openSocket = () => {
+            this._settleTimer = null;
+            // disconnect() may have run while this deferred open was pending
+            // (e.g. the session ended before the drawer transition settled) —
+            // this._terminal is nulled out by disconnect(), so bail rather
+            // than operate on torn-down state.
+            if (!this._terminal) {
+                this._connecting = false;
+                return;
+            }
 
-        this._ws.onopen = () => {
-            this._active = true;
+            // Settle fit AFTER any pending layout transition (e.g. drawer
+            // auto-open) has had time to finish, and BEFORE any data can
+            // arrive — this is the one fit() call allowed to happen once
+            // the buffer already has content (via the window resize
+            // listener above, for genuine user-driven resizes).
+            this.fit();
+
+            const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            this._ws = new WebSocket(`${proto}//${window.location.host}/ws/lab-kubectl/${this._sessionId}`);
+
+            this._ws.onopen = () => {
+                this._active = true;
+            };
+
+            this._ws.onmessage = (ev) => this._handleMessage(ev);
+
+            this._ws.onerror = () => {
+                this._writeLine('\x1b[31mWebSocket connection error.\x1b[0m');
+            };
+
+            this._ws.onclose = () => {
+                this._active = false;
+                this._writeLine('\x1b[33m\r\n--- Terminal disconnected ---\x1b[0m');
+            };
+
+            // Handle keyboard input
+            this._terminal.onData((data) => this._handleInput(data));
+
+            this._connecting = false;
         };
 
-        this._ws.onmessage = (ev) => this._handleMessage(ev);
-
-        this._ws.onerror = () => {
-            this._writeLine('\x1b[31mWebSocket connection error.\x1b[0m');
-        };
-
-        this._ws.onclose = () => {
-            this._active = false;
-            this._writeLine('\x1b[33m\r\n--- Terminal disconnected ---\x1b[0m');
-        };
-
-        // Handle keyboard input
-        this._terminal.onData((data) => this._handleInput(data));
+        if (settleDelayMs > 0) {
+            this._settleTimer = setTimeout(openSocket, settleDelayMs);
+        } else {
+            openSocket();
+        }
     }
 
     /** Disconnect and dispose of all resources. */
     disconnect() {
         this._active = false;
+        this._connecting = false;
+
+        if (this._settleTimer) {
+            clearTimeout(this._settleTimer);
+            this._settleTimer = null;
+        }
 
         if (this._resizeHandler) {
             window.removeEventListener('resize', this._resizeHandler);

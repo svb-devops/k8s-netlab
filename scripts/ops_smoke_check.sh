@@ -136,7 +136,28 @@ else
     check "Cloudflare Tunnel (cloudflared) running" fail "run: systemctl status cloudflared"
 fi
 
-# 11. mypy zero errors
+# 11. LABGEN_LAB_SESSION_TTL_MINUTES not shadowed by a drop-in EnvironmentFile
+# 2026-07-18 incident: /etc/labgen/home_lab_mvp.env redeclared this var with a
+# stale value (30), and systemd's EnvironmentFile merge order let it silently
+# win over the main .env's intended value (90) — real learner sessions were
+# force-timed-out early, which then let the legacy 30-min VM-age auto-cleanup
+# delete VMs still mid-session. This check catches the same class of drift
+# for ANY key by comparing the value declared in .env against what the
+# running process actually has in its environment.
+DECLARED_TTL=$(grep -E '^LABGEN_LAB_SESSION_TTL_MINUTES=' "$PROJECT_ROOT/.env" 2>/dev/null | tail -1 | cut -d= -f2 || true)
+MAIN_PID=$(systemctl show -p MainPID k8s-netlab --value 2>/dev/null || true)
+if [ -n "$DECLARED_TTL" ] && [ -n "$MAIN_PID" ] && [ "$MAIN_PID" != "0" ] && [ -r "/proc/$MAIN_PID/environ" ]; then
+    EFFECTIVE_TTL=$(tr '\0' '\n' < "/proc/$MAIN_PID/environ" | grep -E '^LABGEN_LAB_SESSION_TTL_MINUTES=' | cut -d= -f2 || true)
+    if [ "$EFFECTIVE_TTL" = "$DECLARED_TTL" ]; then
+        check "LABGEN_LAB_SESSION_TTL_MINUTES effective=declared (${DECLARED_TTL}min)" pass
+    else
+        check "LABGEN_LAB_SESSION_TTL_MINUTES effective=declared" fail ".env declares ${DECLARED_TTL}min but running process has ${EFFECTIVE_TTL:-<unset>}min — check for a drop-in EnvironmentFile override (e.g. /etc/labgen/home_lab_mvp.env)"
+    fi
+else
+    info "Could not compare declared vs effective LABGEN_LAB_SESSION_TTL_MINUTES (service not running or .env missing) — skipping"
+fi
+
+# 12. mypy zero errors
 VENV_PYTHON="$PROJECT_ROOT/venv/bin/python3"
 if [ -f "$VENV_PYTHON" ]; then
     MYPY_OUT=$("$VENV_PYTHON" -m mypy backend/ --ignore-missing-imports 2>&1 || true)

@@ -518,6 +518,7 @@ def _check_labgen_session_health() -> Dict[str, Any]:
             "tainted_vm_count": tainted_count,
             "lab_review_diffs_size_mb": diffs_size_mb,
             "zombie_draft_count": zombie_count,
+            "session_ttl_minutes": config.LABGEN_LAB_SESSION_TTL_MINUTES,
             "warnings": warnings,
         }
     except Exception as exc:

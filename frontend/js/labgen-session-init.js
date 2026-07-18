@@ -279,8 +279,18 @@ function _syncTerminal(snapshot) {
         terminalPanel.classList.add('flex');
 
         if (!_terminal) {
+            // Decide up front whether this activation is about to auto-open the
+            // drawer (see block below) — if so, the terminal must not open its
+            // WebSocket (and therefore must not write anything) until that
+            // transition has settled, or the drawer's delayed refit silently
+            // corrupts/loses whatever was already written. See the connect()
+            // docstring in labgen-kubectl-terminal.js for the full bug history.
+            const willAutoOpenDrawer = !_hasAutoOpenedDrawer
+                && !_drawerOpen
+                && window.innerWidth >= DESKTOP_DRAWER_BREAKPOINT_PX;
+
             _terminal = new LabKubectlTerminal(_sessionId, 'kubectl-terminal-container');
-            _terminal.connect();
+            _terminal.connect(willAutoOpenDrawer ? DRAWER_TRANSITION_MS + 10 : 0);
             _wasActive = true;
         }
 
