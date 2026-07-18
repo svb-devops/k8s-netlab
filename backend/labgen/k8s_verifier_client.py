@@ -22,7 +22,7 @@ from kubernetes.config.kube_config import KubeConfigLoader
 from backend.labgen.verifier import K8sVerifierClientPort
 
 if TYPE_CHECKING:
-    from kubernetes.client import CoreV1Api, AppsV1Api
+    from kubernetes.client import CoreV1Api, AppsV1Api, V1Pod
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +337,70 @@ class K8sVerifierClientAdapter(K8sVerifierClientPort):
         if present is None:
             return False
         return not present
+
+    def _find_pods(
+        self, namespace: str, name: str, label_selector: Optional[str]
+    ) -> "list[V1Pod]":
+        """Shared lookup: return all matching pod objects (possibly empty).
+
+        Mirrors pod_running's field_selector/label_selector convention: when
+        label_selector is given, lists by label (does not require pod to be
+        named `name`); otherwise lists by exact metadata.name. A label
+        selector can match more than one pod (e.g. an old pod still
+        terminating alongside a freshly restarted one) — callers must check
+        across all matches, not arbitrarily inspect only the first.
+        """
+        if label_selector:
+            result = self._core.list_namespaced_pod(namespace, label_selector=label_selector)
+        else:
+            result = self._core.list_namespaced_pod(
+                namespace, field_selector=f"metadata.name={name}"
+            )
+        return list(result.items)
+
+    def pod_succeeded(
+        self, namespace: str, name: str, label_selector: Optional[str] = None
+    ) -> bool:
+        """Return True if any matched pod's phase is Succeeded.
+
+        Uses list_namespaced_pod (list, not get) — same RBAC footprint as
+        pod_running. Used to confirm a one-shot diagnostic Pod (e.g. a DNS
+        lookup probe) ran to completion, without requiring `kubectl exec`.
+        """
+        try:
+            pods = self._find_pods(namespace, name, label_selector)
+            return any(p.status is not None and p.status.phase == "Succeeded" for p in pods)
+        except ApiException as exc:
+            if exc.status == 404:
+                return False
+            raise
+
+    def pod_log_contains(
+        self,
+        namespace: str,
+        name: str,
+        contains: str,
+        label_selector: Optional[str] = None,
+    ) -> bool:
+        """Return True if any matched pod's log output contains `contains`.
+
+        Uses read_namespaced_pod_log — a log read, not `kubectl exec` (no
+        interactive session, no arbitrary command execution inside the
+        container). This is the sanctioned way to observe a diagnostic Pod's
+        stdout (e.g. nslookup output) when exec is banned for both learner
+        and verifier.
+        """
+        try:
+            pods = self._find_pods(namespace, name, label_selector)
+            for pod in pods:
+                log = self._core.read_namespaced_pod_log(pod.metadata.name, namespace)
+                if contains in (log or ""):
+                    return True
+            return False
+        except ApiException as exc:
+            if exc.status == 404:
+                return False
+            raise
 
 
 # ---------------------------------------------------------------------------

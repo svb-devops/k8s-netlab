@@ -706,6 +706,194 @@ class TestDeploymentRestartNotTriggered:
 
 
 # ---------------------------------------------------------------------------
+# pod_succeeded
+# ---------------------------------------------------------------------------
+
+
+class TestPodSucceeded:
+    def test_returns_true_when_pod_succeeded_by_name(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_pod.return_value = _mock_pod_list("Succeeded")
+        assert _adapter(core, MagicMock()).pod_succeeded("lab-ns", "dns-check") is True
+        core.list_namespaced_pod.assert_called_once_with(
+            "lab-ns", field_selector="metadata.name=dns-check"
+        )
+
+    def test_returns_false_when_pod_running(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_pod.return_value = _mock_pod_list("Running")
+        assert _adapter(core, MagicMock()).pod_succeeded("lab-ns", "dns-check") is False
+
+    def test_returns_false_when_pod_failed(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_pod.return_value = _mock_pod_list("Failed")
+        assert _adapter(core, MagicMock()).pod_succeeded("lab-ns", "dns-check") is False
+
+    def test_returns_false_on_empty_list(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_pod.return_value = _mock_pod_list()
+        assert _adapter(core, MagicMock()).pod_succeeded("lab-ns", "missing") is False
+
+    def test_uses_label_selector_when_provided(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_pod.return_value = _mock_pod_list("Succeeded")
+        adapter = _adapter(core, MagicMock())
+        assert adapter.pod_succeeded("lab-ns", "ignored", label_selector="job-name=dns-check") is True
+        core.list_namespaced_pod.assert_called_once_with(
+            "lab-ns", label_selector="job-name=dns-check"
+        )
+
+    def test_returns_false_on_404(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_pod.side_effect = _api_404()
+        assert _adapter(core, MagicMock()).pod_succeeded("lab-ns", "dns-check") is False
+
+    def test_propagates_non_404(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_pod.side_effect = _api_500()
+        with pytest.raises(ApiException):
+            _adapter(core, MagicMock()).pod_succeeded("lab-ns", "dns-check")
+
+    def test_label_selector_true_if_any_pod_succeeded(self) -> None:
+        # Regression: label_selector can match multiple pods (e.g. an old pod
+        # still terminating alongside a new one). Must match pod_running's
+        # "any match" semantics, not arbitrarily inspect the first list item.
+        core = MagicMock()
+        pod_list = MagicMock()
+        pod_list.items = [_mock_pod("Running"), _mock_pod("Succeeded")]
+        core.list_namespaced_pod.return_value = pod_list
+        assert _adapter(core, MagicMock()).pod_succeeded(
+            "lab-ns", "any", label_selector="job-name=dns-check"
+        ) is True
+
+    def test_label_selector_false_if_no_pod_succeeded(self) -> None:
+        core = MagicMock()
+        pod_list = MagicMock()
+        pod_list.items = [_mock_pod("Running"), _mock_pod("Pending")]
+        core.list_namespaced_pod.return_value = pod_list
+        assert _adapter(core, MagicMock()).pod_succeeded(
+            "lab-ns", "any", label_selector="job-name=dns-check"
+        ) is False
+
+
+# ---------------------------------------------------------------------------
+# pod_log_contains
+# ---------------------------------------------------------------------------
+
+
+def _mock_pod_named(name: str) -> MagicMock:
+    pod = MagicMock()
+    pod.metadata = MagicMock()
+    pod.metadata.name = name
+    return pod
+
+
+class TestPodLogContains:
+    def test_returns_true_when_substring_present(self) -> None:
+        core = MagicMock()
+        pod_list = MagicMock()
+        pod_list.items = [_mock_pod_named("dns-check-abc")]
+        core.list_namespaced_pod.return_value = pod_list
+        core.read_namespaced_pod_log.return_value = "some\nSERVICE_FQDN_RESOLVED\nmore"
+        result = _adapter(core, MagicMock()).pod_log_contains(
+            "lab-ns", "dns-check", "SERVICE_FQDN_RESOLVED"
+        )
+        assert result is True
+        core.read_namespaced_pod_log.assert_called_once_with("dns-check-abc", "lab-ns")
+
+    def test_returns_false_when_substring_absent(self) -> None:
+        core = MagicMock()
+        pod_list = MagicMock()
+        pod_list.items = [_mock_pod_named("dns-check-abc")]
+        core.list_namespaced_pod.return_value = pod_list
+        core.read_namespaced_pod_log.return_value = "unrelated output"
+        result = _adapter(core, MagicMock()).pod_log_contains(
+            "lab-ns", "dns-check", "SERVICE_FQDN_RESOLVED"
+        )
+        assert result is False
+
+    def test_returns_false_when_pod_not_found(self) -> None:
+        core = MagicMock()
+        pod_list = MagicMock()
+        pod_list.items = []
+        core.list_namespaced_pod.return_value = pod_list
+        result = _adapter(core, MagicMock()).pod_log_contains(
+            "lab-ns", "dns-check", "SERVICE_FQDN_RESOLVED"
+        )
+        assert result is False
+        core.read_namespaced_pod_log.assert_not_called()
+
+    def test_uses_label_selector_when_provided(self) -> None:
+        core = MagicMock()
+        pod_list = MagicMock()
+        pod_list.items = [_mock_pod_named("dns-check-xyz")]
+        core.list_namespaced_pod.return_value = pod_list
+        core.read_namespaced_pod_log.return_value = "SERVICE_FQDN_RESOLVED"
+        result = _adapter(core, MagicMock()).pod_log_contains(
+            "lab-ns", "ignored", "SERVICE_FQDN_RESOLVED", label_selector="job-name=dns-check"
+        )
+        assert result is True
+        core.list_namespaced_pod.assert_called_once_with(
+            "lab-ns", label_selector="job-name=dns-check"
+        )
+
+    def test_label_selector_true_if_any_matching_pod_log_contains(self) -> None:
+        # Regression: label_selector can match multiple pods (e.g. old pod still
+        # terminating alongside new one after a restart). Must check across all
+        # matched pods, not arbitrarily inspect only the first list item.
+        core = MagicMock()
+        pod_list = MagicMock()
+        pod_list.items = [_mock_pod_named("dns-check-old"), _mock_pod_named("dns-check-new")]
+        core.list_namespaced_pod.return_value = pod_list
+        core.read_namespaced_pod_log.side_effect = [
+            "unrelated output",
+            "SERVICE_FQDN_RESOLVED",
+        ]
+        result = _adapter(core, MagicMock()).pod_log_contains(
+            "lab-ns", "ignored", "SERVICE_FQDN_RESOLVED", label_selector="app=dns-check"
+        )
+        assert result is True
+
+    def test_label_selector_false_if_no_matching_pod_log_contains(self) -> None:
+        core = MagicMock()
+        pod_list = MagicMock()
+        pod_list.items = [_mock_pod_named("dns-check-old"), _mock_pod_named("dns-check-new")]
+        core.list_namespaced_pod.return_value = pod_list
+        core.read_namespaced_pod_log.side_effect = ["unrelated a", "unrelated b"]
+        result = _adapter(core, MagicMock()).pod_log_contains(
+            "lab-ns", "ignored", "SERVICE_FQDN_RESOLVED", label_selector="app=dns-check"
+        )
+        assert result is False
+
+    def test_never_calls_exec(self) -> None:
+        core = MagicMock()
+        pod_list = MagicMock()
+        pod_list.items = [_mock_pod_named("dns-check-abc")]
+        core.list_namespaced_pod.return_value = pod_list
+        core.read_namespaced_pod_log.return_value = "SERVICE_FQDN_RESOLVED"
+        _adapter(core, MagicMock()).pod_log_contains("lab-ns", "dns-check", "SERVICE_FQDN_RESOLVED")
+        assert not hasattr(core, "connect_get_namespaced_pod_exec") or (
+            not core.connect_get_namespaced_pod_exec.called
+        )
+
+    def test_returns_false_on_404(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_pod.side_effect = _api_404()
+        result = _adapter(core, MagicMock()).pod_log_contains(
+            "lab-ns", "dns-check", "SERVICE_FQDN_RESOLVED"
+        )
+        assert result is False
+
+    def test_propagates_non_404(self) -> None:
+        core = MagicMock()
+        core.list_namespaced_pod.side_effect = _api_500()
+        with pytest.raises(ApiException):
+            _adapter(core, MagicMock()).pod_log_contains(
+                "lab-ns", "dns-check", "SERVICE_FQDN_RESOLVED"
+            )
+
+
+# ---------------------------------------------------------------------------
 # KubernetesApiFactory — smoke test (no real K8s connection)
 # ---------------------------------------------------------------------------
 

@@ -246,6 +246,7 @@ class StaticValidator:
         results.extend(self._check_verify_type_implemented(draft))
         results.extend(self._check_verify_no_secret_value(draft))
         results.extend(self._check_verify_configmap_value_equals_fields(draft))
+        results.extend(self._check_verify_pod_log_contains_fields(draft))
         results.extend(self._check_cleanup_declared(draft))
         results.extend(self._check_cluster_scoped_cleanup_declared(draft))
         results.extend(self._check_helm_no_generation(draft))
@@ -583,6 +584,26 @@ class StaticValidator:
                         "config_key and/or expected_value — this step would always fail at rehearsal.",
                     ))
         return failures or [_pass("verify.configmap_value_equals_fields", "steps[*].verify[*]")]
+
+    def _check_verify_pod_log_contains_fields(self, draft: LabDraft) -> list[ValidatorResult]:
+        """pod_log_contains reads VerifyTemplate.log_contains — Optional on the
+        schema (only this type uses it), so a draft missing it would pass
+        schema validation but silently always fail at rehearsal (comparing
+        against "" instead of the intended marker string)."""
+        failures = []
+        for i, step in enumerate(draft.steps):
+            for j, vt in enumerate(step.verify):
+                if vt.type != VerifyType.POD_LOG_CONTAINS:
+                    continue
+                if vt.log_contains is None:
+                    failures.append(_fail(
+                        "verify.pod_log_contains_fields",
+                        BlockingLevel.PUBLISH_BLOCKING,
+                        f"steps[{i}].verify[{j}]",
+                        f"Verify '{vt.verify_id}' is type pod_log_contains but is missing "
+                        "log_contains — this step would always fail at rehearsal.",
+                    ))
+        return failures or [_pass("verify.pod_log_contains_fields", "steps[*].verify[*]")]
 
     # ------------------------------------------------------------------
     # Cleanup checks  (§10: cleanup.*, cluster_scoped.*)

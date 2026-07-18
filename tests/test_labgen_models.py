@@ -120,6 +120,7 @@ class TestVerifyType:
             "node_ready", "pvc_bound", "job_completed",
             "configmap_value_equals", "deployment_restart_triggered",
             "deployment_restart_not_triggered",
+            "pod_succeeded", "pod_log_contains",
         }
         actual = {v.value for v in VerifyType}
         assert actual == expected

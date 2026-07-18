@@ -323,16 +323,33 @@ def _parse_cluster_role_rules(manifest: str) -> list[dict]:
 
 
 class TestClusterRoleManifestGuardrail:
-    """Regression guard: _CLUSTER_ROLE_MANIFEST must never grant 'get'."""
+    """Regression guard: _CLUSTER_ROLE_MANIFEST must never grant 'get' —
+    except pods/log, which has no list-based equivalent (there is no way to
+    read a Pod's log output other than the get-verbed pods/log subresource;
+    see K8sVerifierClientAdapter.pod_log_contains / DNS Service Discovery
+    lab, which needs it to observe a diagnostic Pod's output without
+    kubectl exec)."""
 
-    def test_no_get_verb_in_any_rule(self):
+    def test_no_get_verb_in_any_rule_except_pods_log(self):
         rules = _parse_cluster_role_rules(_CLUSTER_ROLE_MANIFEST)
         for rule in rules:
+            if rule.get("resources") == ["pods/log"]:
+                continue
             assert "get" not in rule.get("verbs", []), (
                 f"ClusterRole rule grants 'get' on {rule.get('resources')}: "
                 "verifier uses list+field_selector only — 'get' is unnecessary "
                 "and violates least-privilege"
             )
+
+    def test_pods_log_grants_get_only(self):
+        rules = _parse_cluster_role_rules(_CLUSTER_ROLE_MANIFEST)
+        for rule in rules:
+            if "pods/log" in rule.get("resources", []):
+                assert set(rule.get("verbs", [])) == {"get"}, (
+                    "pods/log must grant exactly {'get'} — no list/watch equivalent exists"
+                )
+                return
+        raise AssertionError("pods/log resource not found in any ClusterRole rule")
 
     def test_namespaces_not_in_core_rule(self):
         rules = _parse_cluster_role_rules(_CLUSTER_ROLE_MANIFEST)

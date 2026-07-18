@@ -282,15 +282,27 @@ class TestPlatformVerifierInitializerEnsureIdentity:
         assert "get" not in (apps_rule.verbs or [])
 
     def test_cluster_role_no_get_verb_on_core_resources(self, store: VerifierCredentialStore) -> None:
-        # All verifier methods use list+field_selector; 'get' is not needed anywhere.
+        # All verifier methods use list+field_selector, except pods/log — there is no
+        # list-based equivalent for reading a Pod's log output (used by
+        # K8sVerifierClientAdapter.pod_log_contains for the DNS Service Discovery lab).
         init, factory = self._make(store)
         init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
         cr_arg = factory.rbac.create_cluster_role.call_args[0][0]
         for rule in cr_arg.rules:
+            if (rule.resources or []) == ["pods/log"]:
+                continue
             assert "get" not in (rule.verbs or []), (
                 f"ClusterRole rule grants 'get' on {rule.resources}: "
                 "verifier uses list+field_selector only"
             )
+
+    def test_cluster_role_pods_log_grants_get_only(self, store: VerifierCredentialStore) -> None:
+        init, factory = self._make(store)
+        init.ensure_verifier_identity("401", _PLATFORM_KUBECONFIG)
+        cr_arg = factory.rbac.create_cluster_role.call_args[0][0]
+        rule = next((r for r in cr_arg.rules if "pods/log" in (r.resources or [])), None)
+        assert rule is not None, "pods/log resource not found in any ClusterRole rule"
+        assert set(rule.verbs or []) == {"get"}
 
     def test_cluster_role_no_namespaces_resource(self, store: VerifierCredentialStore) -> None:
         # namespace_exists uses list_namespaced_config_map; namespaces cluster-resource unneeded.

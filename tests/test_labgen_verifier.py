@@ -99,6 +99,7 @@ def _make_template(
     name: str = "placeholder",
     cluster_scope: bool = False,
     label_selector: Optional[str] = None,
+    log_contains: Optional[str] = None,
 ) -> VerifyTemplate:
     return VerifyTemplate(
         verify_id=verify_id,
@@ -107,6 +108,7 @@ def _make_template(
         name=name,
         cluster_scope=cluster_scope,
         label_selector=label_selector,
+        log_contains=log_contains,
     )
 
 
@@ -227,6 +229,20 @@ class TestFakeK8sVerifierClient:
 
     def test_is_k8s_client_port_subclass(self) -> None:
         assert issubclass(FakeK8sVerifierClient, K8sVerifierClientPort)
+
+    def test_per_key_pod_succeeded(self) -> None:
+        c = FakeK8sVerifierClient(
+            responses={("pod_succeeded", "lab-ns", "dns-check"): False},
+        )
+        assert c.pod_succeeded("lab-ns", "dns-check") is False
+        assert c.pod_succeeded("lab-ns", "other-pod") is True
+
+    def test_per_key_pod_log_contains(self) -> None:
+        c = FakeK8sVerifierClient(
+            responses={("pod_log_contains", "lab-ns", "dns-check", "SERVICE_FQDN_RESOLVED"): False},
+        )
+        assert c.pod_log_contains("lab-ns", "dns-check", "SERVICE_FQDN_RESOLVED") is False
+        assert c.pod_log_contains("lab-ns", "dns-check", "OTHER_MARKER") is True
 
 
 # ===========================================================================
@@ -558,6 +574,64 @@ class TestVerifierServiceDispatch:
         )
         assert result.passed
 
+    def test_pod_succeeded_true(self) -> None:
+        result = self._svc(FakeK8sVerifierClient(default=True)).check(
+            self._session.session_id,
+            _make_template(vtype=VerifyType.POD_SUCCEEDED, name="dns-check"),
+        )
+        assert result.passed
+        assert result.verify_type == "pod_succeeded"
+
+    def test_pod_succeeded_false(self) -> None:
+        result = self._svc(
+            FakeK8sVerifierClient({("pod_succeeded", "lab-test-ns", "dns-check"): False})
+        ).check(
+            self._session.session_id,
+            _make_template(vtype=VerifyType.POD_SUCCEEDED, name="dns-check"),
+        )
+        assert not result.passed
+
+    def test_pod_log_contains_true(self) -> None:
+        result = self._svc(FakeK8sVerifierClient(default=True)).check(
+            self._session.session_id,
+            _make_template(
+                vtype=VerifyType.POD_LOG_CONTAINS,
+                name="dns-check",
+                log_contains="SERVICE_FQDN_RESOLVED",
+            ),
+        )
+        assert result.passed
+        assert result.verify_type == "pod_log_contains"
+
+    def test_pod_log_contains_false(self) -> None:
+        result = self._svc(
+            FakeK8sVerifierClient(
+                {("pod_log_contains", "lab-test-ns", "dns-check", "SERVICE_FQDN_RESOLVED"): False}
+            )
+        ).check(
+            self._session.session_id,
+            _make_template(
+                vtype=VerifyType.POD_LOG_CONTAINS,
+                name="dns-check",
+                log_contains="SERVICE_FQDN_RESOLVED",
+            ),
+        )
+        assert not result.passed
+
+    def test_pod_log_contains_missing_log_contains_fails_closed(self) -> None:
+        # Regression: log_contains=None must not be dispatched as "" — an empty
+        # substring is contained in every string, so falling back to "" would
+        # make this verify type silently always pass instead of always fail.
+        result = self._svc(FakeK8sVerifierClient(default=True)).check(
+            self._session.session_id,
+            _make_template(
+                vtype=VerifyType.POD_LOG_CONTAINS,
+                name="dns-check",
+                log_contains=None,
+            ),
+        )
+        assert not result.passed
+
 
 # ===========================================================================
 # VerifierService — result fields
@@ -749,7 +823,10 @@ class TestSupportedTypesSet:
         # 6 original + 2 for CrashLoopBackOff/cleanup + 1 for service_has_endpoints
         # + 3 for ConfigMap-not-effective (configmap_value_equals,
         # deployment_restart_triggered, deployment_restart_not_triggered)
-        assert len(_SUPPORTED_TYPES) == 12
+        # + 2 for DNS Service Discovery (pod_succeeded, pod_log_contains)
+        assert len(_SUPPORTED_TYPES) == 14
+        assert VerifyType.POD_SUCCEEDED in _SUPPORTED_TYPES
+        assert VerifyType.POD_LOG_CONTAINS in _SUPPORTED_TYPES
         assert VerifyType.DEPLOYMENT_UNAVAILABLE in _SUPPORTED_TYPES
         assert VerifyType.NAMESPACE_NOT_EXISTS in _SUPPORTED_TYPES
         assert VerifyType.SERVICE_HAS_ENDPOINTS in _SUPPORTED_TYPES

@@ -82,6 +82,20 @@ class K8sVerifierClientPort(ABC):
     @abstractmethod
     def deployment_restart_not_triggered(self, namespace: str, name: str) -> bool: ...
 
+    @abstractmethod
+    def pod_succeeded(
+        self, namespace: str, name: str, label_selector: Optional[str] = None
+    ) -> bool: ...
+
+    @abstractmethod
+    def pod_log_contains(
+        self,
+        namespace: str,
+        name: str,
+        contains: str,
+        label_selector: Optional[str] = None,
+    ) -> bool: ...
+
 
 # ---------------------------------------------------------------------------
 # Fake client (tests only)
@@ -146,6 +160,20 @@ class FakeK8sVerifierClient(K8sVerifierClientPort):
     def deployment_restart_not_triggered(self, namespace: str, name: str) -> bool:
         return self._get(("deployment_restart_not_triggered", namespace, name))
 
+    def pod_succeeded(
+        self, namespace: str, name: str, label_selector: Optional[str] = None
+    ) -> bool:
+        return self._get(("pod_succeeded", namespace, name))
+
+    def pod_log_contains(
+        self,
+        namespace: str,
+        name: str,
+        contains: str,
+        label_selector: Optional[str] = None,
+    ) -> bool:
+        return self._get(("pod_log_contains", namespace, name, contains))
+
 
 # ---------------------------------------------------------------------------
 # Supported verify types
@@ -164,6 +192,8 @@ _SUPPORTED_TYPES: frozenset[VerifyType] = frozenset({
     VerifyType.CONFIGMAP_VALUE_EQUALS,
     VerifyType.DEPLOYMENT_RESTART_TRIGGERED,
     VerifyType.DEPLOYMENT_RESTART_NOT_TRIGGERED,
+    VerifyType.POD_SUCCEEDED,
+    VerifyType.POD_LOG_CONTAINS,
 })
 
 _NS_SENTINEL = "{{lab_namespace}}"
@@ -354,6 +384,20 @@ class VerifierService:
                 else f'Deployment "{name}" has not been restarted yet. '
                 f"Run: kubectl rollout restart deployment/{name}"
             )
+        if vtype == VerifyType.POD_SUCCEEDED:
+            return (
+                f'Pod "{name}" completed successfully in your namespace.'
+                if passed
+                else f'Pod "{name}" has not completed successfully yet. '
+                "Check its status with: kubectl get pods"
+            )
+        if vtype == VerifyType.POD_LOG_CONTAINS:
+            return (
+                f'Pod "{name}" produced the expected diagnostic output.'
+                if passed
+                else f'Pod "{name}" logs do not yet contain the expected output. '
+                f"Check with: kubectl logs {name}"
+            )
         return ""
 
     @staticmethod
@@ -390,4 +434,18 @@ class VerifierService:
             return client.deployment_restart_triggered(namespace, name)
         if vtype == VerifyType.DEPLOYMENT_RESTART_NOT_TRIGGERED:
             return client.deployment_restart_not_triggered(namespace, name)
+        if vtype == VerifyType.POD_SUCCEEDED:
+            return client.pod_succeeded(namespace, name, template.label_selector)
+        if vtype == VerifyType.POD_LOG_CONTAINS:
+            if template.log_contains is None:
+                # Fail closed: an empty substring is contained in every string,
+                # so falling back to "" would make this verify type silently
+                # always pass instead of always fail (StaticValidator blocks
+                # publishing a draft missing this field, but dispatch must not
+                # depend on that gate alone — see verifier_credentials BLOCKER
+                # history for why defense-in-depth here matters).
+                return False
+            return client.pod_log_contains(
+                namespace, name, template.log_contains, template.label_selector
+            )
         raise AssertionError(f"_dispatch called for unsupported type {vtype!r}")  # pragma: no cover

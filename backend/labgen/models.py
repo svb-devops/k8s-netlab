@@ -56,6 +56,8 @@ class VerifyType(str, Enum):
     CONFIGMAP_VALUE_EQUALS = "configmap_value_equals"
     DEPLOYMENT_RESTART_TRIGGERED = "deployment_restart_triggered"
     DEPLOYMENT_RESTART_NOT_TRIGGERED = "deployment_restart_not_triggered"
+    POD_SUCCEEDED = "pod_succeeded"
+    POD_LOG_CONTAINS = "pod_log_contains"
 
 
 class LinuxVerifyType(str, Enum):
@@ -202,6 +204,10 @@ class VerifyTemplate(SchemaVersionedModel):
     # StaticValidator.verify.configmap_value_equals_fields), unused otherwise.
     config_key: Optional[str] = None
     expected_value: Optional[str] = None
+    # Only used by POD_LOG_CONTAINS: substring that must appear in the matched
+    # pod's log output. Required for that type (checked by
+    # StaticValidator.verify.pod_log_contains_fields), unused otherwise.
+    log_contains: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
