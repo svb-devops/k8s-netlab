@@ -206,11 +206,27 @@ export class LabKubectlTerminal {
     _handleInput(data) {
         if (!this._active || !this._ws || this._ws.readyState !== WebSocket.OPEN) return;
 
+        let prevWasCR = false;
         for (const ch of data) {
             const code = ch.charCodeAt(0);
 
-            if (code === 13) {
-                // Enter — send command
+            if (code === 10 && prevWasCR) {
+                // The LF half of a CRLF pair — already handled by the
+                // preceding CR below. Skip entirely so it isn't treated as a
+                // second independent Enter (which would print an extra blank
+                // line/prompt right after the command was sent).
+                prevWasCR = false;
+                continue;
+            }
+            prevWasCR = code === 13;
+
+            if (code === 13 || code === 10) {
+                // Enter — send command. Also treat a bare LF (10) as Enter:
+                // pasted text (e.g. copied from a lab step's suggested-command
+                // <code> block) commonly ends in a bare "\n", not "\r\n" — if
+                // only CR were recognized, that trailing LF would silently
+                // fall through to "ignore other control characters" below,
+                // leaving the command echoed on screen but never sent.
                 this._write('\r\n');
                 const cmd = this._inputBuffer.trim();
                 this._inputBuffer = '';
