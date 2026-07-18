@@ -132,6 +132,32 @@
     transform: translateX(0);
 }
 
+/* index.html's #doc-drawer: desktop = resizable sidebar that pushes the
+   terminal (lives inside .lab-panel's flex row, see index.html markup) so
+   opening it never covers the terminal; mobile falls back to the shared
+   .doc-drawer fixed-overlay behavior above (not enough width for two
+   columns) via the media query below. ID selector intentionally
+   out-specificities the shared .doc-drawer class so labgen-session.html's
+   own #lab-drawer (same shared class, different desktop treatment) is
+   unaffected. */
+#doc-drawer {
+    position: static;
+    flex-shrink: 0;
+    width: 0;
+    max-width: 92vw;
+    height: auto;
+    box-shadow: none;
+    border-right: 1px solid #e5e7eb;
+    transform: none;
+    transition: width 0.25s ease-in-out;
+}
+#doc-drawer.drawer-open {
+    width: 380px;
+}
+#doc-drawer-backdrop {
+    display: none;
+}
+
 /* Backdrop */
 .drawer-backdrop {
     position: fixed;
@@ -170,6 +196,26 @@
     .lab-panel { height: calc(100vh - 140px); min-height: 480px; }
     /* Drawer full-width on mobile */
     .doc-drawer { width: 100vw; max-width: 100vw; }
+    /* #doc-drawer: revert to the shared fixed-overlay behavior on mobile —
+       not enough width to push the terminal into a usable sidebar. */
+    #doc-drawer {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        width: 100vw;
+        max-width: 100vw;
+        box-shadow: 4px 0 32px rgba(0, 0, 0, 0.18);
+        border-right: none;
+        transform: translateX(-100%);
+    }
+    #doc-drawer.drawer-open {
+        width: 100vw;
+        transform: translateX(0);
+    }
+    #doc-drawer-backdrop {
+        display: block;
+    }
 }
 
 /* ── Dark DevOps theme overrides ──────────────────────────────────────────

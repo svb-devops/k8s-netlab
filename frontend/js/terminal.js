@@ -177,11 +177,20 @@ class TerminalManager {
 
     /**
      * Re-fit terminal to container size.
-     * Called by drawer.js after drawer open/close transition ends.
+     * Called by drawer.js after drawer open/close transition ends — now a
+     * real resize since #doc-drawer pushes the terminal column on desktop
+     * instead of overlaying it (see app.css). fitAddon.fit()'s reflow does
+     * not itself re-scroll the viewport to follow the cursor: if the reflow
+     * increases the number of buffer rows needed (e.g. a long line wraps
+     * onto more lines at a narrower width), the current line can end up
+     * above the visible viewport — reads as output having disappeared, even
+     * though it's still in the buffer. Known xterm.js + fit-addon gotcha
+     * (already fixed the same way in labgen-kubectl-terminal.js's fit()).
      */
     fit() {
         if (this.fitAddon) {
             this.fitAddon.fit();
+            if (this.terminal) this.terminal.scrollToBottom();
         }
     }
 }
