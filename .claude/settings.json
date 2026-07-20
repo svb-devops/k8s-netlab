@@ -41,7 +41,14 @@
       "Bash(curl -sf http://localhost:8000/api/health)",
       "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); u=d.get\\('data',{}\\); print\\('first_name:', u.get\\('first_name'\\)\\); print\\('email:', u.get\\('email'\\)\\)\")",
       "Skill(plan-eng-review)",
-      "Skill(plan-eng-review:*)"
+      "Skill(plan-eng-review:*)",
+      "Bash(git commit -m ' *)",
+      "Bash(sort -k6,7)",
+      "Bash(python3)",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" \"https://lab.cloudnetops.tech/api/articles/art-linux-files-permissions-001\")",
+      "WebSearch",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(len\\(d['articles']\\)\\)\")"
     ],
     "deny": [
       "Bash(qm destroy*)",

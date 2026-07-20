@@ -402,8 +402,26 @@ Every subsequent Article-to-Lab task must verify:
 | **Linux Domain Proof Design Gate** | ✅ **COMPLETE** | `LINUX_DOMAIN_PROOF_DESIGN_GATE_v0.1.md` — LINUX_DOMAIN_PROOF_DESIGN_READY_WITH_NOTES; 5 BLOCKER couplings identified and enumerated; recommended runtime: container sandbox; recommended first lab: Linux Files and Permissions Basics |
 | **Linux Domain Contract Schema Extension** | ✅ **COMPLETE** | `LINUX_DOMAIN_CONTRACT_SCHEMA_EXTENSION_RESULT_v0.1.md` — LINUX_DOMAIN_CONTRACT_SCHEMA_READY_WITH_NOTES；LabDomainType / LinuxVerifyType / LinuxVerifyTemplate / LinuxSandboxPolicy / CleanupLinuxWorkspace；StaticValidator Linux 路径；H-01+H-02 修复；60 tests；publish 仍 blocked（runtime pending） |
 | **Linux Runtime Adapter Spike** | ✅ **COMPLETE** | `LINUX_RUNTIME_ADAPTER_SPIKE_RESULT_v0.1.md` — LINUX_RUNTIME_ADAPTER_SPIKE_READY_WITH_NOTES；LinuxWorkspaceManager / LinuxCommandExecutor / LinuxCleanupAdapter / LinuxRuntimeAdapter；NamespaceAdapterKind.LINUX；LinuxContainerLifecycleAdapter 骨架；M-01+L-01+L-02+L-03 全修；88 tests；K8s 零回归；learner 不可见；publish 仍 blocked |
-| Linux Domain Proof (full, through Trusted Reader) | ⬜ NEXT | Task 3: Verifier Adapter Spike |
-| Docker Domain Proof | ⬜ PENDING | After Linux domain proof |
+| Linux Domain Proof (full, through Trusted Reader) | ✅ **COMPLETE** | `LINUX_TRUSTED_READER_PILOT_RESULT_v0.1.md` (G-51) — 1 external reader, 4/4 steps, cleanup_verified=True; owner onsite attestation "非常顺利" (`LINUX_PILOT_FEEDBACK_ATTESTATION_AND_SHUTDOWN_RESULT_v0.1.md`, G-54) |
+| Docker Domain Proof | ⬜ PENDING | Not started — Linux Growth-First Track (below) is the current priority, not Docker |
+
+### 16.1 K8s Phase 1
+
+**Status: `COMPLETE / FROZEN_MAINTENANCE`** — 6/6 troubleshooting articles published, series closed (`PHASE1_KUBERNETES_SERIES_CLOSURE_v1.0.md`). No new K8s topics planned; maintenance-only (bug fixes, infra hardening) going forward.
+
+### 16.2 Linux Growth-First Track
+
+**Status: `FOUNDATION_READY`** (as of 2026-07-20, `LINUX_GROWTH_FIRST_TRACK_FOUNDATION_v0.1` handoff — see `docs/labgen/linux/`)
+
+| Item | Status |
+|---|---|
+| Second real-external-reader test as a publish gate | **`REMOVED_AS_BLOCKING_GATE`** — superseded by the new default publish gate in `LINUX_TRACK_CONTRACT_v0.1.md` §E.2 (article+lab verified together replaces "two readers") |
+| Existing Linux lab (`6c439064`, "Linux Files and Permissions Basics") final classification | `upgrade_and_include` — reusable runtime/verifier/cleanup infrastructure is sound; needs a real public article + CTA before it counts as a growth-funnel asset (`LINUX_EXISTING_ASSET_AUDIT_v0.1.md`) |
+| Topic Radar | 10 candidates scored, 2 P0 (`docs/labgen/linux/LINUX_GROWTH_FIRST_TOPIC_RADAR_v0.1.md`) |
+| Series Plan | 7 entries (Order 0 upgrade + Orders 1-6 new), 4 topics explicitly deferred pending future runtime investment (`docs/labgen/linux/LINUX_GROWTH_SERIES_PLAN_v0.1.md`) |
+| Track Contract | Runtime/fault-injection/verifier/cleanup/publish-order/funnel-instrumentation boundaries defined (`docs/labgen/linux/LINUX_TRACK_CONTRACT_v0.1.md`) |
+| First Golden Topic | Selected: `linux-chmod-permission-denied-despite-correct-mode` — zero platform gap, highest Radar score (`docs/labgen/linux/FIRST_GOLDEN_TOPIC_DECISION_v0.1.md`) |
+| Next Sprint scope | Production of the First Golden Topic ONLY (Lab Design Brief → Contract → build → rehearsal → smoke → dogfood → article → publish). No other Series Plan order starts until this one ships. |
 
 The pipeline design (`ARTICLE_TO_LAB_PIPELINE_DESIGN_GATE_v0.1.md`) is the canonical reference for the Article-to-Lab platform architecture. All subsequent implementation must follow that design and must not harden into K8s-only.
 
