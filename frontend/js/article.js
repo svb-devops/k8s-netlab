@@ -1,3 +1,5 @@
+import { renderNavAuth } from '/js/nav-auth.js';
+
 const slug = new URLSearchParams(location.search).get('slug');
 
 function escapeHtml(s) {
@@ -68,23 +70,7 @@ function _enhanceCodeBlocks(container) {
 let currentUser = null;
 
 async function initAuth() {
-    try {
-        const r = await fetch('/api/auth/me', {credentials:'include'});
-        const nav = document.getElementById('nav-actions');
-        if (r.ok) {
-            const data = await r.json();
-            currentUser = data.username;
-            nav.innerHTML = `
-                <span class="text-devops-muted text-sm font-plex-mono">${escapeHtml(data.username)}</span>
-                <a href="/app" data-lab-nav class="bg-k8s-blue hover:bg-blue-500 text-white text-sm px-4 py-1.5 rounded-lg transition">进入实验室</a>
-            `;
-        } else {
-            nav.innerHTML = `
-                <a href="/login.html" class="text-devops-muted hover:text-devops-text text-sm transition">登录</a>
-                <a href="/login.html" class="bg-k8s-blue hover:bg-blue-500 text-white text-sm px-4 py-1.5 rounded-lg transition">注册</a>
-            `;
-        }
-    } catch (_) {}
+    currentUser = await renderNavAuth('nav-actions', { theme: 'dark' });
 }
 
 function renderCommentForm() {

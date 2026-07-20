@@ -453,15 +453,20 @@ class TestArticleHtmlStaticSafety:
 
     # G-66: MEDIUM-002 fix — header nav must be unified with embedded CTA on article page
     def test_article_js_init_auth_marks_lab_nav_with_stable_data_attribute(self):
-        # initAuth must add data-lab-nav to the "进入实验室" anchor so renderLabCTA
-        # can locate it with a selector that remains stable after href mutation.
-        js = open("/root/k8s-netlab/frontend/js/article.js").read()
-        match = re.search(r'async function initAuth\(\).*?^}', js, re.DOTALL | re.MULTILINE)
-        assert match, "initAuth function not found"
-        fn_body = match.group(0)
-        assert "data-lab-nav" in fn_body, (
-            "initAuth must add data-lab-nav attribute to the lab entry anchor. "
-            "renderLabCTA uses this stable selector instead of the mutable href."
+        # initAuth delegates identity rendering to the shared nav-auth.js module
+        # (frontend/js/nav-auth.js), which must add data-lab-nav to the
+        # "进入实验室" anchor so renderLabCTA can locate it with a selector that
+        # remains stable after href mutation.
+        article_js = open("/root/k8s-netlab/frontend/js/article.js").read()
+        assert "renderNavAuth" in article_js, (
+            "article.js's initAuth must delegate to the shared nav-auth.js "
+            "renderNavAuth() instead of duplicating identity markup inline."
+        )
+        nav_auth_js = open("/root/k8s-netlab/frontend/js/nav-auth.js").read()
+        assert "data-lab-nav" in nav_auth_js, (
+            "nav-auth.js's renderNavAuth must add data-lab-nav attribute to the "
+            "lab entry anchor. renderLabCTA uses this stable selector instead "
+            "of the mutable href."
         )
 
     def test_article_js_header_nav_updated_to_linked_lab_when_cta_loaded(self):

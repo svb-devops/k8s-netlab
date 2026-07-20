@@ -39,7 +39,9 @@
       "Bash(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=8 -o PasswordAuthentication=yes root@172.16.100.90 \"hostname\")",
       "Bash(systemctl restart *)",
       "Bash(curl -sf http://localhost:8000/api/health)",
-      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); u=d.get\\('data',{}\\); print\\('first_name:', u.get\\('first_name'\\)\\); print\\('email:', u.get\\('email'\\)\\)\")"
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); u=d.get\\('data',{}\\); print\\('first_name:', u.get\\('first_name'\\)\\); print\\('email:', u.get\\('email'\\)\\)\")",
+      "Skill(plan-eng-review)",
+      "Skill(plan-eng-review:*)"
     ],
     "deny": [
       "Bash(qm destroy*)",

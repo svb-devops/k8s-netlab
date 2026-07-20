@@ -228,8 +228,12 @@
         <!-- Loading / non-active-state message (shown when terminal not connected) -->
         <div id="session-message-area"
              class="flex-1 flex flex-col items-center justify-center text-devops-muted h-full font-plex">
-            <div class="loading mb-4" style="border-color:#232C3D;border-top-color:#326CE5;"></div>
+            <div id="session-message-spinner" class="loading mb-4" style="border-color:#232C3D;border-top-color:#326CE5;"></div>
             <p id="session-message-text" class="text-sm">正在加载实验环境…</p>
+            <a id="session-cta-network-lab" href="/app"
+               class="hidden mt-6 bg-k8s-blue hover:bg-blue-500 text-white text-sm px-5 py-2 rounded-lg transition">
+                想要更系统的学习？进入网络实验室 →
+            </a>
         </div>
 
         <!-- kubectl terminal panel (shown when LAB_ACTIVE) -->

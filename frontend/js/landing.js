@@ -1,3 +1,5 @@
+import { renderNavAuth } from '/js/nav-auth.js';
+
 const API = '/api/articles';
 
 function escapeHtml(s) {
@@ -11,25 +13,12 @@ function formatDate(iso) {
 }
 
 async function initNav() {
-    try {
-        const r = await fetch('/api/auth/me', {credentials:'include'});
-        const nav = document.getElementById('nav-actions');
+    const username = await renderNavAuth('nav-actions', { theme: 'light' });
+    if (username) {
         const cta = document.getElementById('hero-cta');
-        if (r.ok) {
-            const data = await r.json();
-            nav.innerHTML = `
-                <span class="text-gray-600 text-sm">${escapeHtml(data.username)}</span>
-                <a href="/app" class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-1.5 rounded-lg transition">进入实验室</a>
-            `;
-            cta.href = '/app';
-            cta.textContent = '进入实验室';
-        } else {
-            nav.innerHTML = `
-                <a href="/login.html" class="text-gray-600 hover:text-gray-900 text-sm transition">登录</a>
-                <a href="/login.html" class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-1.5 rounded-lg transition">注册</a>
-            `;
-        }
-    } catch (_) {}
+        cta.href = '/app';
+        cta.textContent = '进入实验室';
+    }
 }
 
 async function loadArticles() {

@@ -30,6 +30,7 @@ const usernameEl      = document.getElementById('session-username');
 
 const messageArea     = document.getElementById('session-message-area');
 const messageTextEl   = document.getElementById('session-message-text');
+const ctaNetworkLabEl = document.getElementById('session-cta-network-lab');
 const terminalPanel   = document.getElementById('kubectl-terminal-panel');
 const nsBadge         = document.getElementById('kubectl-terminal-ns-badge');
 
@@ -321,7 +322,18 @@ function _syncTerminal(snapshot) {
         messageTextEl.className   = snapshot?.session_state === 'LAB_CLEANUP_FAILED'
             ? 'text-red-400 text-sm font-plex'
             : 'text-devops-muted text-sm font-plex';
+        _updateCompletionCta(snapshot?.session_state);
     }
+}
+
+// Reveal a CTA back to the full 网络实验室 (/app) once a LabGen session has
+// actually finished — not on every terminal state, since LAB_ABORTED /
+// LAB_CLEANUP_FAILED are not a "you're ready for more" moment.
+function _updateCompletionCta(sessionState) {
+    if (!ctaNetworkLabEl) return;
+    const isCompleted = sessionState === 'LAB_COMPLETED' || sessionState === 'LAB_CLOSED';
+    ctaNetworkLabEl.classList.toggle('hidden', !isCompleted);
+    if (isCompleted) document.getElementById('session-message-spinner')?.classList.add('hidden');
 }
 
 // ── Action button event listeners ─────────────────────────────────────────────
