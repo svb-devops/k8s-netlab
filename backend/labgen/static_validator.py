@@ -860,6 +860,34 @@ class StaticValidator:
                         "for linux_file_mode_matches",
                     ))
 
+                if lv.type == LinuxVerifyType.LINUX_PATH_ACCESS_CONDITION:
+                    if lv.access_operation != "read_file":
+                        failures.append(_fail(
+                            "linux.verifiers_safe",
+                            BlockingLevel.PUBLISH_BLOCKING,
+                            f"{fp}.access_operation",
+                            f"Verify '{lv.verify_id}': access_operation must be "
+                            "'read_file' for path_access_condition (only supported "
+                            f"value in v1), got {lv.access_operation!r}",
+                        ))
+                    if lv.expected_access is None:
+                        failures.append(_fail(
+                            "linux.verifiers_safe",
+                            BlockingLevel.PUBLISH_BLOCKING,
+                            f"{fp}.expected_access",
+                            f"Verify '{lv.verify_id}': expected_access (bool) is "
+                            "required for path_access_condition",
+                        ))
+                    elif lv.expected_access is False and lv.expected_errno != "EACCES":
+                        failures.append(_fail(
+                            "linux.verifiers_safe",
+                            BlockingLevel.PUBLISH_BLOCKING,
+                            f"{fp}.expected_errno",
+                            f"Verify '{lv.verify_id}': expected_errno must be "
+                            "'EACCES' when expected_access is False (only errno "
+                            f"v1 supports), got {lv.expected_errno!r}",
+                        ))
+
         return failures or [_pass("linux.verifiers_safe", "steps[*].linux_verify")]
 
     def _check_linux_sandbox_safe(self, draft: LabDraft) -> list[ValidatorResult]:

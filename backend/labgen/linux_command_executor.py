@@ -82,6 +82,15 @@ _FORBIDDEN_PATH_PREFIXES: tuple[str, ...] = (
     "/usr", "/bin", "/sbin", "/lib", "/lib64", "/run",
 )
 
+# find's indirect-execution primaries. _check_path_arg() skips any arg
+# starting with "-", so these were never inspected; the "+"-terminated form
+# doesn't even require a ";" arg, so it doesn't trip the shell-metachar
+# check either — it runs an arbitrary command as the runner identity,
+# defeating ALLOWED_COMMANDS/DENIED_COMMANDS entirely.
+_FIND_INDIRECT_EXEC_PRIMARIES: frozenset[str] = frozenset({
+    "-exec", "-execdir", "-ok", "-okdir",
+})
+
 
 # ---------------------------------------------------------------------------
 # Exceptions
@@ -264,7 +273,34 @@ class LinuxCommandExecutor:
                         f"Shell metacharacter '{ch}' detected in argument '{arg}'",
                     )
 
-        # 4. Path argument validation for all args that look like paths.
+        # 4. find's indirect-execution primaries (-exec/-execdir/-ok/-okdir)
+        # would run an arbitrary command as the runner identity; block them
+        # regardless of terminator form (";" or "+"). Checked before path-arg
+        # validation so the specific reason wins over a generic path reject
+        # (e.g. an absolute path following --reference).
+        if cmd == "find":
+            for arg in argv[1:]:
+                if arg in _FIND_INDIRECT_EXEC_PRIMARIES:
+                    return self._reject(
+                        argv,
+                        "find_indirect_execution_denied",
+                        f"find primary '{arg}' allows indirect command execution and is denied",
+                    )
+
+        # 5. chmod --reference=FILE / --reference FILE copies another file's
+        # mode bits, bypassing the numeric-mode-only mental model this
+        # sandbox's labs are built around and letting learners probe
+        # arbitrary paths' permissions indirectly.
+        if cmd == "chmod":
+            for arg in argv[1:]:
+                if arg == "--reference" or arg.startswith("--reference="):
+                    return self._reject(
+                        argv,
+                        "chmod_reference_denied",
+                        "chmod --reference is denied",
+                    )
+
+        # 6. Path argument validation for all args that look like paths.
         for arg in argv[1:]:
             path_reject = self._check_path_arg(arg, workspace_root)
             if path_reject:

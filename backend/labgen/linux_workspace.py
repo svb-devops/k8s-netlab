@@ -223,10 +223,39 @@ class LinuxWorkspaceManager:
     # Filesystem operations — Python-native, no shell.
     # ------------------------------------------------------------------
 
+    def _chown_if_owner_set(self, abs_path: str) -> None:
+        """Chown abs_path to owner_uid/owner_gid when set — mirrors
+        create_session()'s existing chown so paths this (root) API process
+        creates on a learner's behalf are actually owned by the runner
+        identity, not left root-owned. Without this, a real non-root process
+        (the runner) cannot chmod/rechown a path it doesn't own, even though
+        it is confined to its own workspace by resolve_path() containment."""
+        if self._owner_uid is not None and self._owner_gid is not None:
+            os.chown(abs_path, self._owner_uid, self._owner_gid)
+
+    def _chown_tree_up_to_workspace(self, session: WorkspaceSession, abs_path: str) -> None:
+        """Chown abs_path and every directory component between it and the
+        session workspace root (exclusive) — os.makedirs() may have just
+        created several nested levels in one call, and every level needs to
+        end up runner-owned, not just the leaf."""
+        if self._owner_uid is None or self._owner_gid is None:
+            return
+        workspace_real = os.path.realpath(session.workspace_path)
+        current = abs_path
+        while True:
+            self._chown_if_owner_set(current)
+            if current == workspace_real:
+                break
+            parent = os.path.dirname(current)
+            if parent == current:
+                break
+            current = parent
+
     def make_directory(self, session: WorkspaceSession, rel_path: str) -> str:
         """Create directory (mkdir -p equivalent). Returns absolute path."""
         abs_path = self.resolve_path(session, rel_path)
         os.makedirs(abs_path, mode=0o755, exist_ok=True)
+        self._chown_tree_up_to_workspace(session, abs_path)
         return abs_path
 
     def write_file(self, session: WorkspaceSession, rel_path: str, content: str) -> str:
@@ -236,8 +265,10 @@ class LinuxWorkspaceManager:
         if parent and parent != session.workspace_path:
             self.resolve_path(session, os.path.relpath(parent, session.workspace_path))
         os.makedirs(os.path.dirname(abs_path), mode=0o755, exist_ok=True)
+        self._chown_tree_up_to_workspace(session, parent)
         with open(abs_path, "w", encoding="utf-8") as f:
             f.write(content)
+        self._chown_if_owner_set(abs_path)
         return abs_path
 
     def read_file(self, session: WorkspaceSession, rel_path: str, max_bytes: int = 65536) -> str:

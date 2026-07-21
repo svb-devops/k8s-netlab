@@ -256,7 +256,10 @@ def get_step_progression_service() -> StepProgressionService:
         linux_verifier_svc = None
         if linux_adapter is not None:
             from backend.labgen.linux_verifier_client import LinuxVerifierService
-            linux_verifier_svc = LinuxVerifierService(linux_adapter.workspace_manager)
+            linux_verifier_svc = LinuxVerifierService(
+                linux_adapter.workspace_manager,
+                cmd_executor=linux_adapter._cmd_executor,
+            )
         _step_progression_svc = StepProgressionService(
             session_repo=get_session_repository(),
             draft_repo=get_repository(),

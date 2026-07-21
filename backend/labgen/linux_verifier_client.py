@@ -53,7 +53,7 @@ from backend.labgen.linux_workspace import (
 from backend.labgen.models import LinuxVerifyTemplate, LinuxVerifyType, VerifyResult
 
 if TYPE_CHECKING:
-    pass
+    from backend.labgen.linux_command_executor import LinuxCommandExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -265,6 +265,46 @@ class LinuxVerifyClientAdapter:
             return True, ""
         return False, f"expected={expected_mode},actual={actual_mode}"
 
+    def path_access_condition(
+        self, rel_path: str, operation: str, cmd_executor: "LinuxCommandExecutor"
+    ) -> tuple[Optional[bool], str]:
+        """Check REAL kernel-level access to rel_path as the sandbox runner
+        identity (not root, not simulated) via the exact same privilege-dropped
+        LinuxCommandExecutor learner commands run through.
+
+        Returns:
+        - (True, "")            — access succeeded (kernel allowed it).
+        - (False, "eacces")     — access genuinely denied by the kernel (EACCES).
+        - (None, <reason>)      — inconclusive (path missing/symlink/other error);
+                                  caller must fail closed, never treat as a match.
+
+        Caller MUST verify cmd_executor is wired with a non-root runner identity
+        before calling this — this method does not re-check that itself, since
+        that is a fail-closed policy decision the dispatch layer owns.
+        """
+        self._wm.resolve_path(self._ws, rel_path)  # validates traversal/escape
+        original_abs = os.path.join(self._ws.workspace_path, rel_path)
+        try:
+            st = os.lstat(original_abs)
+        except FileNotFoundError:
+            return None, "not_found"
+        except OSError:
+            return None, "stat_error"
+        if stat_module.S_ISLNK(st.st_mode):
+            return None, "symlink_rejected"
+
+        if operation != "read_file":
+            return None, f"unsupported_operation:{operation}"
+
+        result = cmd_executor.execute(["cat", rel_path], self._ws.workspace_path)
+        if result.policy_rejected:
+            return None, f"policy_rejected:{result.rejection_reason}"
+        if result.returncode == 0:
+            return True, ""
+        if "Permission denied" in result.stderr:
+            return False, "eacces"
+        return None, f"unexpected_failure:{result.stderr[:100]}"
+
     def no_residual_files(self) -> tuple[bool, str]:
         """Check that the workspace is removed or contains no files/symlinks.
 
@@ -328,8 +368,19 @@ class LinuxVerifierService:
     Does not execute arbitrary shell commands.
     """
 
-    def __init__(self, workspace_manager: LinuxWorkspaceManager) -> None:
+    def __init__(
+        self,
+        workspace_manager: LinuxWorkspaceManager,
+        cmd_executor: Optional["LinuxCommandExecutor"] = None,
+    ) -> None:
+        """cmd_executor: required only for LINUX_PATH_ACCESS_CONDITION checks —
+        must be a LinuxCommandExecutor wired with a resolved non-root runner
+        identity (runner_uid/runner_gid set, both != 0). If omitted, or if its
+        runner identity is missing/root, path_access_condition checks fail
+        closed rather than silently running the check as root (which would
+        reproduce the exact bug this verifier type exists to catch)."""
         self._wm = workspace_manager
+        self._cmd_executor = cmd_executor
 
     def check(
         self,
@@ -491,6 +542,56 @@ class LinuxVerifierService:
                 return _fail(
                     FailureReason.LINUX_MODE_MISMATCH,
                     f"File '{rel_path}' mode mismatch ({reason}).",
+                )
+
+            if vtype == LinuxVerifyType.LINUX_PATH_ACCESS_CONDITION:
+                runner_uid = getattr(self._cmd_executor, "_runner_uid", None)
+                if self._cmd_executor is None or runner_uid is None or runner_uid == 0:
+                    return _fail(
+                        FailureReason.LINUX_ACCESS_CHECK_REQUIRES_RUNNER,
+                        "path_access_condition requires a resolved non-root "
+                        "runner identity; refusing to check as root.",
+                    )
+                operation = template.access_operation or ""
+                if operation != "read_file":
+                    return _fail(
+                        FailureReason.LINUX_VERIFY_TYPE_NOT_SUPPORTED,
+                        f"Unsupported access_operation '{operation}' for "
+                        "path_access_condition.",
+                    )
+                expected_access = template.expected_access
+                if expected_access is None:
+                    return _fail(
+                        FailureReason.LINUX_VERIFY_TYPE_NOT_SUPPORTED,
+                        "expected_access must be set for path_access_condition.",
+                    )
+                if expected_access is False and template.expected_errno != "EACCES":
+                    return _fail(
+                        FailureReason.LINUX_VERIFY_TYPE_NOT_SUPPORTED,
+                        "expected_errno must be 'EACCES' when expected_access "
+                        "is False.",
+                    )
+                actual, reason = adapter.path_access_condition(
+                    rel_path, operation, self._cmd_executor
+                )
+                if reason == "symlink_rejected":
+                    return _fail(
+                        FailureReason.LINUX_PATH_ESCAPE,
+                        f"Path '{rel_path}' is a symlink and was rejected for safety.",
+                    )
+                if actual is None:
+                    return _fail(
+                        FailureReason.LINUX_ACCESS_CHECK_INCONCLUSIVE,
+                        f"path_access_condition check inconclusive for '{rel_path}' ({reason}).",
+                    )
+                if actual == expected_access:
+                    return _pass(
+                        f"Path '{rel_path}' {operation} access matched expected={expected_access}."
+                    )
+                return _fail(
+                    FailureReason.LINUX_ACCESS_CONDITION_MISMATCH,
+                    f"Path '{rel_path}' {operation} access expected={expected_access} "
+                    f"but actual={actual} ({reason}).",
                 )
 
             if vtype == LinuxVerifyType.LINUX_NO_RESIDUAL_FILES:

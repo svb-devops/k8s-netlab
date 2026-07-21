@@ -54,7 +54,7 @@ implicit in §B's table before this correction and is retracted here.
 | Order | Topic | Priority | Runtime-ready | Binding status | Why this position |
 |---|---|---|---|---|---|
 | — | Linux Files and Permissions Basics (existing) | — | — | **Prerequisite/legacy asset — not in the 6-topic series** (§A.1) | Reusable infra proof point; article/CTA upgrade explicitly deferred, not scheduled |
-| 1 | chmod 明明改对了，为什么还是 Permission Denied ("Golden Topic #1") | P0 | ⚠️ **See feasibility gate — see `LINUX_GOLDEN_TOPIC_1_RUNTIME_BLOCKED` result** | **Bound** | Highest score (8.15) — bound as the series' first production, pending the hard feasibility gate outcome |
+| 1 | chmod 明明改对了，为什么还是 Permission Denied ("Golden Topic #1") | P0 | ✅ **Feasibility gate PASSED** — real EACCES reproduced under the non-root sandbox runner; see `LINUX_SANDBOX_NONROOT_RUNTIME_ACCEPTANCE_v0.1.md` and `LINUX_GOLDEN_LAB_1_READY_FOR_OWNER_DOGFOOD_v0.1.md` | **Bound — lab built, rehearsed, non-admin smoke-tested, `READY_FOR_OWNER_DOGFOOD`** | Highest score (8.15) — first production complete this Sprint, pending Owner dogfood before public exposure |
 | 2 | 团队共享目录里，新文件的属组总是不对 (setgid+sticky) | P0 | ✅ Yes | Provisional (§A.1) | Second-highest score (7.9); resequencing depends on Golden Topic #1's real rehearsal data |
 | 3 | 用 find 做一次最小可行的权限安全审计 | P1 | ✅ Yes | Provisional (§A.1) | Natural "graduation" topic if the permissions arc proceeds |
 | 4 | 日志文件几个 G，怎么在不打开它的情况下找到最近的错误 | P1 | ⚠️ Needs 1 new verifier type | Provisional (§A.1) | Different judgment skill; needs verifier work regardless of Order 1's outcome |

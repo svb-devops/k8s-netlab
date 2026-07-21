@@ -75,6 +75,7 @@ class LinuxVerifyType(str, Enum):
     LINUX_FILE_CONTENT_MATCHES = "linux_file_content_matches"
     LINUX_FILE_MODE_MATCHES = "linux_file_mode_matches"
     LINUX_NO_RESIDUAL_FILES = "linux_no_residual_files"
+    LINUX_PATH_ACCESS_CONDITION = "path_access_condition"
 
 
 class ImageStatus(str, Enum):
@@ -249,6 +250,14 @@ class LinuxVerifyTemplate(SchemaVersionedModel):
     target_path: str
     expected_content: Optional[str] = None   # required for LINUX_FILE_CONTENT_MATCHES
     expected_mode: Optional[str] = None      # required for LINUX_FILE_MODE_MATCHES (e.g. "644", "755")
+    # LINUX_PATH_ACCESS_CONDITION fields — a real kernel-level access check
+    # executed as the non-root sandbox runner identity (never as root; the
+    # runtime fails closed if no runner identity is wired in). access_operation
+    # only supports "read_file" in v1. expected_errno is required and must be
+    # "EACCES" when expected_access is False (the only errno v1 supports).
+    access_operation: Optional[str] = None
+    expected_access: Optional[bool] = None
+    expected_errno: Optional[str] = None
     workspace_relative_only: bool = True     # invariant: always True
     timeout_seconds: int = 10
     max_output_bytes: int = 65536

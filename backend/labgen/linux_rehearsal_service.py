@@ -365,7 +365,10 @@ class LinuxRehearsalService:
                 runner_uid=runner_uid,
                 runner_gid=runner_gid,
             )
-        self._verifier_svc = LinuxVerifierService(self._adapter.workspace_manager)
+        self._verifier_svc = LinuxVerifierService(
+            self._adapter.workspace_manager,
+            cmd_executor=self._adapter._cmd_executor,
+        )
 
     # ------------------------------------------------------------------
     # Precheck

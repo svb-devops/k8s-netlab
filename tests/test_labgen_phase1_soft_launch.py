@@ -1278,6 +1278,30 @@ class TestCommandGenerationConstraints:
         )
         assert "COMMAND GENERATION" in system or "command generation" in system.lower()
 
+    def test_linux_prohibits_find_indirect_execution(self):
+        """Regression: linux_command_executor.py denies find -exec/-execdir/-ok/-okdir
+        (found during Golden Lab #1 security preflight — the "+"-terminated form
+        doesn't trip the shell-metachar check and would run an arbitrary command
+        as the runner identity). The prompt must tell the LLM not to generate these.
+        """
+        from backend.labgen.article_lab_prompt_builder import build_article_to_lab_messages
+
+        system, _ = build_article_to_lab_messages(
+            _LINUX_ARTICLE, article_title="A", target_domain="linux",
+        )
+        for primary in ("-exec", "-execdir", "-ok", "-okdir"):
+            assert primary in system
+
+    def test_linux_prohibits_chmod_reference(self):
+        """Regression: linux_command_executor.py denies chmod --reference (copies
+        another file's mode bits indirectly). Prompt must warn against it."""
+        from backend.labgen.article_lab_prompt_builder import build_article_to_lab_messages
+
+        system, _ = build_article_to_lab_messages(
+            _LINUX_ARTICLE, article_title="A", target_domain="linux",
+        )
+        assert "--reference" in system
+
     def test_only_lists_implemented_verify_types(self):
         """Regression (Service-no-Endpoints lab, Lab-to-Article Sprint Day 1):
         rehearsal discovered that VerifyType.POD_READY is a valid schema enum

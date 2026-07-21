@@ -411,17 +411,19 @@ Every subsequent Article-to-Lab task must verify:
 
 ### 16.2 Linux Growth-First Track
 
-**Status: `FOUNDATION_READY`** (as of 2026-07-20, `LINUX_GROWTH_FIRST_TRACK_FOUNDATION_v0.1` handoff — see `docs/labgen/linux/`)
+**Status: `NONROOT_SANDBOX_READY` / Golden Topic #1: `READY_FOR_OWNER_DOGFOOD`** (as of
+2026-07-20/21 — see `docs/labgen/linux/`)
 
 | Item | Status |
 |---|---|
 | Second real-external-reader test as a publish gate | **`REMOVED_AS_BLOCKING_GATE`** — superseded by the new default publish gate in `LINUX_TRACK_CONTRACT_v0.1.md` §E.2 (article+lab verified together replaces "two readers") |
-| Existing Linux lab (`6c439064`, "Linux Files and Permissions Basics") final classification | `upgrade_and_include` — reusable runtime/verifier/cleanup infrastructure is sound; needs a real public article + CTA before it counts as a growth-funnel asset (`LINUX_EXISTING_ASSET_AUDIT_v0.1.md`) |
+| Existing Linux lab (`6c439064`, "Linux Files and Permissions Basics") final classification | Prerequisite/legacy onboarding asset — not one of the 6 growth topics (`LINUX_GROWTH_SERIES_PLAN_v0.1.md` §A.1); re-validated under the non-root runner, public access restored |
 | Topic Radar | 10 candidates scored, 2 P0 (`docs/labgen/linux/LINUX_GROWTH_FIRST_TOPIC_RADAR_v0.1.md`) |
-| Series Plan | 7 entries (Order 0 upgrade + Orders 1-6 new), 4 topics explicitly deferred pending future runtime investment (`docs/labgen/linux/LINUX_GROWTH_SERIES_PLAN_v0.1.md`) |
+| Series Plan | Order 1 (Golden Topic #1) bound and built this Sprint; Orders 2-6 provisional (`docs/labgen/linux/LINUX_GROWTH_SERIES_PLAN_v0.1.md`) |
 | Track Contract | Runtime/fault-injection/verifier/cleanup/publish-order/funnel-instrumentation boundaries defined (`docs/labgen/linux/LINUX_TRACK_CONTRACT_v0.1.md`) |
-| First Golden Topic | Selected: `linux-chmod-permission-denied-despite-correct-mode` — zero platform gap, highest Radar score (`docs/labgen/linux/FIRST_GOLDEN_TOPIC_DECISION_v0.1.md`) |
-| Next Sprint scope | Production of the First Golden Topic ONLY (Lab Design Brief → Contract → build → rehearsal → smoke → dogfood → article → publish). No other Series Plan order starts until this one ships. |
+| Sandbox privilege separation | Non-root runner (`labgen-linux-runner`, UID/GID 997) resolves the root-execution feasibility gate that previously blocked Golden Topic #1 (`LINUX_SANDBOX_NONROOT_RUNTIME_ACCEPTANCE_v0.1.md`) |
+| Golden Topic #1 | Built, rehearsed (4/4), non-admin smoke-tested (4/4), article drafted (not published) — `READY_FOR_OWNER_DOGFOOD` (`docs/labgen/linux/LINUX_GOLDEN_LAB_1_READY_FOR_OWNER_DOGFOOD_v0.1.md`) |
+| Next Sprint scope | Owner dogfood of Golden Topic #1, then publish decision. No other Series Plan order starts until this one ships. |
 
 The pipeline design (`ARTICLE_TO_LAB_PIPELINE_DESIGN_GATE_v0.1.md`) is the canonical reference for the Article-to-Lab platform architecture. All subsequent implementation must follow that design and must not harden into K8s-only.
 

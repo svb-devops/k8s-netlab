@@ -12,13 +12,21 @@ document or this round.**
 
 This topic was bound as "Golden Topic #1" per a follow-up CEO/CTO brief and taken to
 production planning. **The hard feasibility gate that brief required before any lab
-creation FAILED**: the production executor runs as UID 0 (root), and root bypasses the
-directory execute/traverse permission check this topic's fault model depends on — verified
-empirically, not assumed (see Track Contract §A.1 and
+creation FAILED at first attempt**: the production executor ran as UID 0 (root), and root
+bypasses the directory execute/traverse permission check this topic's fault model depends
+on — verified empirically, not assumed (see Track Contract §A.1 and
 `LINUX_GOLDEN_TOPIC_1_RUNTIME_BLOCKED_v0.1.md` for the full result). Per the brief's own
-explicit instruction, this freezes the Sprint: no lab, no verifier, no article brief were
-created. The topic selection and scoring below stand — the problem is a runtime identity gap,
-not a flaw in the topic choice.
+explicit instruction, that Sprint froze: no lab, no verifier, no article brief were created.
+
+**Update (same date, Sandbox Privilege Separation v0.1)**: the runtime blocker is now
+resolved — a dedicated non-root runner identity (`labgen-linux-runner`, UID/GID 997) was
+installed and wired through the executor, workspace manager, and verifier layers (see
+`LINUX_SANDBOX_NONROOT_RUNTIME_ACCEPTANCE_v0.1.md`). The feasibility gate was re-run and
+**PASSED**: real kernel EACCES reproduced under the non-root identity via the production
+code path. Golden Topic #1's lab has since been built, internally rehearsed (4/4 steps),
+non-admin learner smoke-tested (4/4 steps, genuine non-admin account), and an official-site
+article drafted (not published). See `LINUX_GOLDEN_LAB_1_READY_FOR_OWNER_DOGFOOD_v0.1.md`
+for the full production result. The topic selection and scoring below stand unchanged.
 
 ---
 

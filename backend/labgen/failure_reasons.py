@@ -90,6 +90,9 @@ class FailureReason(str, Enum):
     LINUX_RESIDUAL_FILES_FOUND = "linux.residual_files_found"
     LINUX_VERIFY_TYPE_NOT_SUPPORTED = "linux.verify_type_not_supported"
     LINUX_VERIFIER_NOT_CONFIGURED = "linux.verifier_not_configured"
+    LINUX_ACCESS_CHECK_REQUIRES_RUNNER = "linux.access_check_requires_runner"
+    LINUX_ACCESS_CHECK_INCONCLUSIVE = "linux.access_check_inconclusive"
+    LINUX_ACCESS_CONDITION_MISMATCH = "linux.access_condition_mismatch"
 
     # -- Linux learner session -----------------------------------------------
     LINUX_LEARNER_WORKSPACE_CREATE_FAILED = "linux_learner.workspace_create_failed"

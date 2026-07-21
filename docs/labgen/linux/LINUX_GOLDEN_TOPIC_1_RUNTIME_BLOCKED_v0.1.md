@@ -9,6 +9,11 @@
 the production code path, and the existing lab was re-validated end-to-end under the new
 runner. This document is kept as-is below for the historical failure evidence (not modified) —
 the Golden Topic #1 feasibility gate itself may now be re-run and is expected to pass.
+
+**⚠️ Status update (2026-07-21, same day, Golden Lab #1 Production)**: the feasibility gate
+was re-run and **PASSED**. Golden Topic #1's lab has since been built, internally rehearsed,
+non-admin learner smoke-tested, and drafted into an official-site article — see
+`LINUX_GOLDEN_LAB_1_READY_FOR_OWNER_DOGFOOD_v0.1.md` for the full production result.
 **Executed by**: Claude Code
 **Lab created**: NO
 **Verifier created**: NO

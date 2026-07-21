@@ -159,6 +159,10 @@ at runtime; a lab that violates these will fail for the learner):
    (apt/yum/apk/pip), or any interpreter (python, bash, sh, perl, node).
 3. All paths must be relative to the workspace and stay within it — never use an
    absolute path (starting with /) and never use ".." to escape the workspace.
+4. Never use find's -exec, -execdir, -ok, or -okdir primaries (they run an
+   arbitrary command indirectly and are denied). Never use chmod --reference
+   (copies another file's mode bits indirectly and is denied). Use `find`
+   only to locate paths, and `chmod` only with a plain numeric mode.
 """
 
 _JSON_SCHEMA_SUMMARY = """\
