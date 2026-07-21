@@ -254,6 +254,80 @@ class TestRunLinuxCmd:
         assert "hello labgen" in r3["text"]
 
 
+# ─── B.2 _run_linux_cmd with a privilege-separated (non-root) runner ──────────
+
+class TestRunLinuxCmdWithRunnerIdentity:
+    """Regression: redirect-created files must be chowned to the runner, or a
+    later privileged-runner command (e.g. chmod) on that same file fails with
+    'Operation not permitted' — found live while validating the existing
+    Linux lab under the new non-root runner (see
+    LINUX_SANDBOX_NONROOT_RUNTIME_ACCEPTANCE_v0.1.md). Root cause:
+    _run_linux_cmd's `>` redirect handling wrote via `out_path.write_text()`
+    in the (root) calling process, never through the privilege-dropped
+    executor, leaving the file root-owned while the runner ran everything
+    else."""
+
+    @pytest.fixture
+    def runner_identity(self):
+        from backend.labgen.linux_runner_identity import resolve_runner_identity
+        return resolve_runner_identity("labgen-linux-runner", "labgen-linux-runner")
+
+    @pytest.fixture
+    def adapter_and_session(self, runner_identity):
+        from backend.labgen.linux_runtime_adapter import LinuxRuntimeAdapter
+        adapter = LinuxRuntimeAdapter(
+            enabled=True,
+            sandbox_root=_test_sandbox(),
+            runner_uid=runner_identity.uid,
+            runner_gid=runner_identity.gid,
+        )
+        sid = str(uuid.uuid4())
+        adapter.create_session(sid)
+        spike = adapter.get_session(sid)
+        return adapter, sid, spike.workspace_path
+
+    def _run(self, adapter, sid, workspace, cmd):
+        from backend.labgen.lab_kubectl_ws import _run_linux_cmd
+        return _run_linux_cmd(adapter, sid, workspace, cmd)
+
+    def test_redirect_created_file_owned_by_runner_not_root(
+        self, adapter_and_session, runner_identity
+    ):
+        adapter, sid, ws = adapter_and_session
+        r1 = self._run(adapter, sid, ws, "mkdir -p demo")
+        assert not r1["blocked"]
+
+        r2 = self._run(adapter, sid, ws, "echo 'hello labgen' > demo/message.txt")
+        assert not r2["blocked"]
+        assert r2["exit_code"] == 0
+
+        created = os.stat(Path(ws, "demo", "message.txt"))
+        assert created.st_uid == runner_identity.uid
+        assert created.st_uid != 0
+
+    def test_chmod_after_redirect_succeeds_under_runner_identity(
+        self, adapter_and_session
+    ):
+        """The exact chain that surfaced the bug: mkdir -> echo > file ->
+        chmod that file. Before the fix, chmod failed with 'Operation not
+        permitted' because the redirect-created file was root-owned while
+        chmod itself ran as the (non-owning, non-root) runner."""
+        adapter, sid, ws = adapter_and_session
+        self._run(adapter, sid, ws, "mkdir -p demo")
+        r2 = self._run(adapter, sid, ws, "echo 'hello labgen' > demo/message.txt")
+        assert r2["exit_code"] == 0
+
+        r3 = self._run(adapter, sid, ws, "chmod 600 demo/message.txt")
+        assert not r3["blocked"]
+        assert r3["exit_code"] == 0, (
+            f"chmod failed under runner identity: {r3['text']!r} — "
+            "redirect-created file was likely not chowned to the runner"
+        )
+
+        r4 = self._run(adapter, sid, ws, 'stat -c "%a" demo/message.txt')
+        assert "600" in r4["text"]
+
+
 # ─── C. Linux WS routing ──────────────────────────────────────────────────────
 
 class TestLinuxWsRouting:

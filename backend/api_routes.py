@@ -526,6 +526,57 @@ def _check_labgen_session_health() -> Dict[str, Any]:
         return {"status": "unknown", "error": "health check failed"}
 
 
+def _check_linux_runtime_health() -> Dict[str, Any]:
+    """Report whether the Linux sandbox's unprivileged runner identity is
+    resolved and ready. UID/GID are not secrets — surfaced deliberately so a
+    future misconfiguration (e.g. runner account deleted, or LABGEN_LINUX_RUNNER_USER
+    pointed at a nonexistent account) is visible in health instead of silently
+    disabling the Linux domain.
+    """
+    try:
+        from backend.labgen.routes import (
+            get_linux_runtime_adapter,
+            get_linux_runtime_identity_error,
+        )
+
+        enabled = bool(config.LABGEN_LINUX_LEARNER_ENABLED_LAB_IDS)
+        if not enabled:
+            return {
+                "enabled": False,
+                "runner_user": config.LABGEN_LINUX_RUNNER_USER,
+                "runner_uid": None,
+                "runner_gid": None,
+                "runner_is_root": None,
+                "runner_ready": None,
+            }
+
+        adapter = get_linux_runtime_adapter()
+        if adapter is None:
+            return {
+                "enabled": True,
+                "runner_user": config.LABGEN_LINUX_RUNNER_USER,
+                "runner_uid": None,
+                "runner_gid": None,
+                "runner_is_root": None,
+                "runner_ready": False,
+                "error": get_linux_runtime_identity_error() or "linux_runtime_adapter_unavailable",
+            }
+
+        runner_uid = adapter._cmd_executor._runner_uid
+        runner_gid = adapter._cmd_executor._runner_gid
+        return {
+            "enabled": True,
+            "runner_user": config.LABGEN_LINUX_RUNNER_USER,
+            "runner_uid": runner_uid,
+            "runner_gid": runner_gid,
+            "runner_is_root": runner_uid == 0 if runner_uid is not None else None,
+            "runner_ready": runner_uid is not None and runner_uid != 0,
+        }
+    except Exception as exc:
+        logger.warning("linux_runtime_health check failed: %s", exc)
+        return {"status": "unknown", "error": "health check failed"}
+
+
 _EMAIL_FAILURE_ALERT_THRESHOLD = 3
 
 
@@ -639,6 +690,7 @@ async def api_health_check() -> Dict[str, Any]:
     labgen_health = await loop.run_in_executor(None, _check_verifier_credentials_health)
     session_health = await loop.run_in_executor(None, _check_labgen_session_health)
     email_health = await loop.run_in_executor(None, _check_email_health)
+    linux_runtime_health = await loop.run_in_executor(None, _check_linux_runtime_health)
 
     if not proxmox_ok:
         return {
@@ -648,6 +700,7 @@ async def api_health_check() -> Dict[str, Any]:
             "labgen": labgen_health,
             "sessions": session_health,
             "email": email_health,
+            "linux_runtime": linux_runtime_health,
         }
 
     return {
@@ -656,6 +709,7 @@ async def api_health_check() -> Dict[str, Any]:
         "labgen": labgen_health,
         "sessions": session_health,
         "email": email_health,
+        "linux_runtime": linux_runtime_health,
     }
 
 

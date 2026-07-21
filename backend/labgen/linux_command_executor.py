@@ -142,9 +142,22 @@ class LinuxCommandExecutor:
         self,
         timeout_seconds: int = 10,
         max_output_bytes: int = 65536,
+        runner_uid: int | None = None,
+        runner_gid: int | None = None,
     ) -> None:
+        """
+        runner_uid/runner_gid: if given, every learner command is executed as
+        this UID/GID instead of inheriting the caller's own identity (see
+        backend.labgen.linux_runner_identity.resolve_runner_identity — the
+        production wiring in routes.get_linux_runtime_adapter() always passes
+        a validated, non-root identity here). Left as None only for existing
+        unit tests that exercise the command-policy layer and don't care about
+        real privilege separation.
+        """
         self._timeout = timeout_seconds
         self._max_output_bytes = max_output_bytes
+        self._runner_uid = runner_uid
+        self._runner_gid = runner_gid
 
     def execute(
         self,
@@ -172,6 +185,20 @@ class LinuxCommandExecutor:
             return reject
 
         # Execute — no shell, cwd=workspace_root, minimal env.
+        # user/group/extra_groups/umask are native subprocess.Popen kwargs
+        # (Python 3.9+), implemented in CPython without a Python-level
+        # preexec_fn callback — deliberately avoided here because this method
+        # runs inside a thread-pool executor (backend/labgen/lab_kubectl_ws.py
+        # calls it via run_in_executor), and preexec_fn is documented as
+        # unsafe to combine with multi-threaded callers (fork() only carries
+        # over the calling thread, risking deadlock on any lock another
+        # thread held at fork time).
+        popen_kwargs: dict = {}
+        if self._runner_uid is not None:
+            popen_kwargs["user"] = self._runner_uid
+            popen_kwargs["group"] = self._runner_gid
+            popen_kwargs["extra_groups"] = []
+            popen_kwargs["umask"] = 0o077
         try:
             proc = subprocess.run(
                 argv,
@@ -181,6 +208,7 @@ class LinuxCommandExecutor:
                 timeout=self._timeout,
                 env={"PATH": "/usr/bin:/bin", "HOME": workspace_root},
                 shell=False,
+                **popen_kwargs,
             )
             stdout = proc.stdout[:self._max_output_bytes]
             stderr = proc.stderr[:self._max_output_bytes]

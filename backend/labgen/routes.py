@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -119,6 +120,7 @@ _step_progression_svc: Optional[StepProgressionService] = None
 _audit_repo: Optional[RuntimeAuditRepository] = None
 _preview_svc: Optional[DraftPreviewService] = None
 _linux_runtime_adapter = None  # type: Optional[Any]
+_linux_runtime_identity_error = None  # type: Optional[str]
 
 
 def get_repository() -> LabDraftRepository:
@@ -276,21 +278,73 @@ def get_preview_service() -> DraftPreviewService:
     return _preview_svc
 
 
+def _resolve_linux_runner_identity_or_none():
+    """Resolve the Linux sandbox runner identity, logging and returning None
+    (never raising, never falling back to root) on failure. Sets the module-level
+    _linux_runtime_identity_error to the failure detail so the health check
+    (backend.api_routes._check_linux_runtime_health, via
+    get_linux_runtime_identity_error()) can surface exactly why.
+
+    Shared by every Linux command-execution wiring point (learner runtime,
+    admin rehearsal) so privilege separation applies uniformly — a single
+    misconfigured/missing runner account disables ALL Linux command
+    execution, not just the learner-facing path.
+    """
+    global _linux_runtime_identity_error
+    from backend.labgen.linux_runner_identity import RunnerIdentityError, resolve_runner_identity
+
+    try:
+        identity = resolve_runner_identity(
+            config.LABGEN_LINUX_RUNNER_USER, config.LABGEN_LINUX_RUNNER_GROUP
+        )
+        _linux_runtime_identity_error = None
+        return identity
+    except RunnerIdentityError as exc:
+        _linux_runtime_identity_error = str(exc)
+        logging.getLogger(__name__).error(
+            "labgen.linux_runtime.identity_resolution_failed",
+            extra={"reason": exc.reason, "error": str(exc)},
+        )
+        return None
+
+
 def get_linux_runtime_adapter():
     """Return a singleton LinuxRuntimeAdapter if Linux learner enablement is configured.
 
-    Returns None when LABGEN_LINUX_LEARNER_ENABLED_LAB_IDS is empty (default).
+    Returns None when LABGEN_LINUX_LEARNER_ENABLED_LAB_IDS is empty (default), and
+    ALSO returns None (fail closed) if the unprivileged runner identity
+    (LABGEN_LINUX_RUNNER_USER/GROUP) cannot be resolved and validated — this
+    never falls back to executing learner commands as the (root) API process.
+    See backend.labgen.linux_runner_identity.resolve_runner_identity.
+
     The same adapter instance is shared between LabSessionService and
     StepProgressionService so workspace state persists across HTTP requests.
     """
-    global _linux_runtime_adapter
-    if _linux_runtime_adapter is None and config.LABGEN_LINUX_LEARNER_ENABLED_LAB_IDS:
+    global _linux_runtime_adapter, _linux_runtime_identity_error
+    if (
+        _linux_runtime_adapter is None
+        and _linux_runtime_identity_error is None
+        and config.LABGEN_LINUX_LEARNER_ENABLED_LAB_IDS
+    ):
+        identity = _resolve_linux_runner_identity_or_none()
+        if identity is None:
+            return None
+
         from backend.labgen.linux_runtime_adapter import LinuxRuntimeAdapter
         _linux_runtime_adapter = LinuxRuntimeAdapter(
             enabled=True,
             sandbox_root=config.LABGEN_LINUX_SANDBOX_ROOT,
+            runner_uid=identity.uid,
+            runner_gid=identity.gid,
         )
     return _linux_runtime_adapter
+
+
+def get_linux_runtime_identity_error() -> "Optional[str]":
+    """Expose the last runner-identity resolution failure, if any — used by
+    the health check to surface a clear linux_runtime.runner_ready=false
+    reason instead of a silent None from get_linux_runtime_adapter()."""
+    return _linux_runtime_identity_error
 
 
 def get_catalog_service(
@@ -1965,11 +2019,29 @@ _linux_rehearsal_svc: Optional[LinuxRehearsalService] = None
 
 
 def get_linux_rehearsal_service() -> LinuxRehearsalService:
+    """Fail closed (503) if the unprivileged runner identity cannot be
+    resolved — admin rehearsal must run under the same privilege-separated
+    executor as the learner-facing path, never silently as root just
+    because this is "only" an internal admin tool."""
     global _linux_rehearsal_svc
     if _linux_rehearsal_svc is None:
+        identity = _resolve_linux_runner_identity_or_none()
+        if identity is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Linux sandbox runner identity unavailable — cannot run rehearsal",
+            )
+        from backend.labgen.linux_runtime_adapter import LinuxRuntimeAdapter
+        adapter = LinuxRuntimeAdapter(
+            enabled=True,
+            sandbox_root=config.LABGEN_LINUX_SANDBOX_ROOT,
+            runner_uid=identity.uid,
+            runner_gid=identity.gid,
+        )
         _linux_rehearsal_svc = LinuxRehearsalService(
             session_repo=get_session_repository(),
             draft_repo=get_repository(),
+            adapter=adapter,
         )
     return _linux_rehearsal_svc
 

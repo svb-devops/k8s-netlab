@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -127,6 +128,17 @@ def _run_linux_cmd(
         try:
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(result.stdout)
+            # This write runs as the (root) API process, NOT as the
+            # privilege-separated runner LinuxCommandExecutor executes
+            # learner commands as — without this chown, every `>`-redirected
+            # file would be root-owned, and a later privileged-runner
+            # command (e.g. chmod) on that same file would fail with
+            # "Operation not permitted" (the runner doesn't own it and
+            # isn't root). See LINUX_SANDBOX_NONROOT_RUNTIME_ACCEPTANCE_v0.1.md.
+            runner_uid = linux_adapter._cmd_executor._runner_uid
+            runner_gid = linux_adapter._cmd_executor._runner_gid
+            if runner_uid is not None and runner_gid is not None:
+                os.chown(out_path, runner_uid, runner_gid)
         except OSError as exc:
             return {"blocked": False, "text": f"Write error: {exc}\n", "exit_code": 1, "block_reason": ""}
         return {"blocked": False, "text": result.stderr or "", "exit_code": result.returncode, "block_reason": ""}

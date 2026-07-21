@@ -109,7 +109,12 @@ class LinuxWorkspaceManager:
     - All path resolution goes through resolve_path().
     """
 
-    def __init__(self, sandbox_root: str = _SPIKE_SANDBOX_ROOT) -> None:
+    def __init__(
+        self,
+        sandbox_root: str = _SPIKE_SANDBOX_ROOT,
+        owner_uid: int | None = None,
+        owner_gid: int | None = None,
+    ) -> None:
         # Validate sandbox_root at construction time so that a misconfigured
         # sandbox_root (e.g. /home/user/custom-sandboxes) is rejected immediately,
         # before any session is created.  This catches the depth-2+ forbidden-root
@@ -136,6 +141,15 @@ class LinuxWorkspaceManager:
                         f"or one of the allowed sandbox roots: {sorted(_ALLOWED_SANDBOX_ROOTS)}",
                     )
         self._sandbox_root = sandbox_root
+        # If set, every session workspace directory is chowned to this
+        # UID/GID after creation (see backend.labgen.linux_runner_identity),
+        # so the unprivileged runner process that executes learner commands
+        # can actually read/write inside it — os.makedirs() below creates the
+        # directory as whatever this (root) API process's own UID is, which
+        # would otherwise leave a root:root, mode 0700 directory the runner
+        # cannot enter at all.
+        self._owner_uid = owner_uid
+        self._owner_gid = owner_gid
         self._sessions: dict[str, WorkspaceSession] = {}
 
     # ------------------------------------------------------------------
@@ -151,6 +165,8 @@ class LinuxWorkspaceManager:
         self._validate_workspace_root(workspace_path)
 
         os.makedirs(workspace_path, mode=0o700, exist_ok=False)
+        if self._owner_uid is not None and self._owner_gid is not None:
+            os.chown(workspace_path, self._owner_uid, self._owner_gid)
 
         session = WorkspaceSession(session_id=sid, workspace_path=workspace_path)
         self._sessions[sid] = session

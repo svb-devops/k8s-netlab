@@ -114,12 +114,25 @@ class LinuxRuntimeAdapter:
         sandbox_root: str = "/tmp/labgen-linux-sandboxes",
         timeout_seconds: int = 10,
         max_output_bytes: int = 65536,
+        runner_uid: int | None = None,
+        runner_gid: int | None = None,
     ) -> None:
+        """
+        runner_uid/runner_gid: unprivileged identity every learner command
+        actually executes as (see backend.labgen.linux_runner_identity).
+        Production wiring (routes.get_linux_runtime_adapter()) always
+        resolves and passes a validated, non-root identity. None is only for
+        existing unit tests that don't exercise real privilege separation.
+        """
         self._enabled = enabled
-        self._workspace_mgr = LinuxWorkspaceManager(sandbox_root=sandbox_root)
+        self._workspace_mgr = LinuxWorkspaceManager(
+            sandbox_root=sandbox_root, owner_uid=runner_uid, owner_gid=runner_gid
+        )
         self._cmd_executor = LinuxCommandExecutor(
             timeout_seconds=timeout_seconds,
             max_output_bytes=max_output_bytes,
+            runner_uid=runner_uid,
+            runner_gid=runner_gid,
         )
         self._cleanup_adapter = LinuxCleanupAdapter(sandbox_root=sandbox_root)
         self._sessions: dict[str, LinuxSpikeSessionState] = {}

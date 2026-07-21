@@ -3,6 +3,12 @@
 **Gate**: Linux Golden Lab #1 (chmod 正确位仍 Permission Denied) — Section 二 (硬性可行性 Gate)
 **Final Decision**: `LINUX_GOLDEN_TOPIC_1_RUNTIME_BLOCKED`
 **Date**: 2026-07-20
+**⚠️ Status update (2026-07-21)**: The blocker recorded in this document is **RESOLVED**. See
+`LINUX_SANDBOX_NONROOT_RUNTIME_ACCEPTANCE_v0.1.md` — a dedicated unprivileged system account
+(`labgen-linux-runner`) now executes every Linux sandbox command, real EACCES is confirmed via
+the production code path, and the existing lab was re-validated end-to-end under the new
+runner. This document is kept as-is below for the historical failure evidence (not modified) —
+the Golden Topic #1 feasibility gate itself may now be re-run and is expected to pass.
 **Executed by**: Claude Code
 **Lab created**: NO
 **Verifier created**: NO

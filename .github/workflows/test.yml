@@ -46,5 +46,12 @@ jobs:
         # -lll = only report HIGH severity issues; medium/low are acceptable or nosec-annotated
         run: bandit -r backend/ -lll
 
+      - name: Install Linux sandbox runner account
+        # tests/test_labgen_linux_*.py (privilege separation, security regression)
+        # call resolve_runner_identity() at module import time with no
+        # try/except — without this account, pytest collection itself would
+        # crash and fail every future CI run, not just Linux-domain ones.
+        run: sudo bash scripts/install-labgen-linux-runner.sh
+
       - name: Run tests
         run: pytest tests/ -x -q --tb=short --cov=backend --cov-report=term-missing --cov-fail-under=90

@@ -423,6 +423,17 @@ LABGEN_LINUX_SANDBOX_ROOT: str = os.getenv(
     "LABGEN_LINUX_SANDBOX_ROOT", "/tmp/labgen-linux-sandboxes"
 )
 
+# Unprivileged system account that Linux-domain learner commands actually
+# execute as (see backend.labgen.linux_runner_identity.resolve_runner_identity).
+# Install via scripts/install-labgen-linux-runner.sh. This is a name to
+# resolve, not a UID/GID itself — resolution is deferred to
+# routes.get_linux_runtime_adapter() so importing this module never fails
+# just because the account isn't installed on a given host (e.g. most
+# environments running only the K8s domain, or CI before the install script
+# runs).
+LABGEN_LINUX_RUNNER_USER: str = os.getenv("LABGEN_LINUX_RUNNER_USER", "labgen-linux-runner")
+LABGEN_LINUX_RUNNER_GROUP: str = os.getenv("LABGEN_LINUX_RUNNER_GROUP", "labgen-linux-runner")
+
 # --- LabGen LLM Provider Configuration ---
 # LABGEN_LLM_MODE: high-level mode switch for article-to-lab draft generation.
 #   fake_only        — deterministic template-based generation (default, no LLM, no API keys)

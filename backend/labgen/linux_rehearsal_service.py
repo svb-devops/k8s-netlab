@@ -327,7 +327,12 @@ class LinuxRehearsalService:
     Never publishes. Never modifies learner catalog. Never calls K8s API.
     No LLM calls. No shell=True.
 
-    Pass adapter= to inject a custom adapter in tests.
+    Pass adapter= to inject a custom (already privilege-separated) adapter,
+    e.g. in tests. If adapter is None, runner_uid/runner_gid are REQUIRED —
+    there is deliberately no default path that silently builds a root-running
+    adapter. A caller that wants root execution has no way to get it by
+    omission; it would have to explicitly pass runner_uid=0, which is exactly
+    the kind of change that should be visible in a diff, not a default.
     """
 
     def __init__(
@@ -338,17 +343,27 @@ class LinuxRehearsalService:
         timeout_seconds: int = 10,
         max_output_bytes: int = 65536,
         adapter: Optional[LinuxRuntimeAdapter] = None,
+        runner_uid: Optional[int] = None,
+        runner_gid: Optional[int] = None,
     ) -> None:
         self._session_repo = session_repo
         self._draft_repo = draft_repo
         if adapter is not None:
             self._adapter = adapter
         else:
+            if runner_uid is None or runner_gid is None:
+                raise ValueError(
+                    "LinuxRehearsalService requires either adapter= (pre-built, "
+                    "privilege-separated) or both runner_uid= and runner_gid= — "
+                    "there is no default that runs learner/rehearsal commands as root."
+                )
             self._adapter = LinuxRuntimeAdapter(
                 enabled=True,
                 sandbox_root=sandbox_root,
                 timeout_seconds=timeout_seconds,
                 max_output_bytes=max_output_bytes,
+                runner_uid=runner_uid,
+                runner_gid=runner_gid,
             )
         self._verifier_svc = LinuxVerifierService(self._adapter.workspace_manager)
 
