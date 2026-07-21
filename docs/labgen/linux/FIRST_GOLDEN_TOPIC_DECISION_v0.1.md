@@ -8,6 +8,20 @@ document or this round.**
 
 ---
 
+## A.0 Status Update (2026-07-20, Linux Golden Lab #1 brief)
+
+This topic was bound as "Golden Topic #1" per a follow-up CEO/CTO brief and taken to
+production planning. **The hard feasibility gate that brief required before any lab
+creation FAILED**: the production executor runs as UID 0 (root), and root bypasses the
+directory execute/traverse permission check this topic's fault model depends on — verified
+empirically, not assumed (see Track Contract §A.1 and
+`LINUX_GOLDEN_TOPIC_1_RUNTIME_BLOCKED_v0.1.md` for the full result). Per the brief's own
+explicit instruction, this freezes the Sprint: no lab, no verifier, no article brief were
+created. The topic selection and scoring below stand — the problem is a runtime identity gap,
+not a flaw in the topic choice.
+
+---
+
 ## A. Selected Topic
 
 ```

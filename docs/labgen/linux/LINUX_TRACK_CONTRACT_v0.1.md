@@ -12,6 +12,49 @@ true, not what already is.
 
 ## A. Runtime
 
+### A.1 Runtime Profile split (added 2026-07-20, Linux Golden Lab #1 brief)
+
+This contract's original §A treated "the Linux sandbox" as a single runtime. A follow-up
+CEO/CTO brief correctly required splitting this into two explicit profiles rather than
+implicitly assuming the current sandbox is VM-equivalent:
+
+| Profile | Scope | Status |
+|---|---|---|
+| **Linux Sandbox Profile** | File/directory/permission-only local risk experiments (Orders 1-3, 5-6 of the Series Plan) | Current implementation |
+| **Linux VM Profile** | systemd/port/process/mount/df-du and other real-system experiments | **Not implemented; requires a future, separate infra decision** |
+
+**Critical finding, not assumed — empirically verified this session**: the CEO/CTO brief's own
+description of the Sandbox Profile states "无 root" (no root). **This is not what the current
+implementation actually does.** The production service (`k8s-netlab.service`) runs
+`uvicorn backend.main:app` with `User=root` (confirmed via `systemctl cat` and `ps -eo
+pid,uid,user,cmd`), and `linux_command_executor.py`'s `subprocess.run()` call does not drop
+privileges, set a different UID, or use any privilege-separation mechanism (`setuid`,
+`seccomp`, a dedicated unprivileged worker, containers/cgroups/namespaces — none of these are
+present, and the executor's own docstring already says so: "Process isolation (cgroups,
+seccomp, namespaces) is NOT implemented"). Every learner command, including `cat`/`chmod`/
+`stat`, runs as UID 0.
+
+**Empirical reproduction (this session, in an isolated scratch directory, not the production
+sandbox)**:
+```
+mode 600 (no execute bit) on a directory owned by root, containing report.txt (mode 644)
+subprocess.run(['cat', 'vault/report.txt'], ...) as UID 0
+→ returncode: 0, stdout: 'secret content\n' — NOT blocked.
+```
+This confirms the theoretical DAC_OVERRIDE behavior directly: **root bypasses directory
+execute/traverse permission checks**, which is exactly the mechanism Golden Topic #1's fault
+model depends on. See the Golden Lab #1 Feasibility Gate result
+(`LINUX_GOLDEN_TOPIC_1_RUNTIME_BLOCKED_v0.1.md`) for the full gate outcome and required fix.
+
+**Contract correction**: the Sandbox Profile's "无 root" clause is downgraded from ✅-compliant
+(as this document previously implied by omission) to an **explicit, named gap**. Any future
+Linux lab whose fault model depends on real DAC permission enforcement (not just the existing
+`file_exists`/`file_mode_matches` checks, which only inspect metadata and never depend on the
+executor's own access rights) requires this gap to be closed first — either a dedicated
+unprivileged worker/service account for the executor subprocess, or a per-session
+setuid/user-namespace mechanism. This is a real infra decision, not a code nitpick — it changes
+the security model of the entire Linux runtime, not just one lab.
+
 | Clause | Current reality | Compliance |
 |---|---|---|
 | 每个 learner 使用隔离 VM | ❌ Uses a local sandboxed directory on the API host (`/tmp/labgen-linux-sandboxes/{session_id}/`), not a VM | ⚠️ **NON-COMPLIANT for VM isolation, compliant for the practical effect** — isolation is enforced by application-level path validation + command allowlist, not OS-level VM boundary. This is a real architectural difference from K8s, named honestly in the Existing Asset Audit §C. This contract does not mandate migrating to VMs — that is out of scope for this round — but it records the gap so future readers of this contract don't assume VM-equivalent isolation exists. |

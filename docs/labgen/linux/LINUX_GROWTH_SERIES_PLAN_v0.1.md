@@ -26,17 +26,40 @@ per the brief's own prohibition, **no new lab dev and no new article happens in 
 
 ---
 
-## B. Recommended Production Sequence
+## A.1 Correction (2026-07-20, Linux Golden Lab #1 brief)
 
-| Order | Topic | Priority | Runtime-ready | Why this position |
-|---|---|---|---|---|
-| 0 | Linux Files and Permissions Basics (existing, upgrade) | — | ✅ Yes (just needs article+CTA) | De-risks the funnel mechanics with the least new work; already has 1 external reader pass |
-| 1 | chmod 明明改对了，为什么还是 Permission Denied | P0 | ✅ Yes | Highest score (8.15), zero platform work, and a natural sequel to #0 — same "permissions" judgment family, deepens rather than repeats |
-| 2 | 团队共享目录里，新文件的属组总是不对 (setgid+sticky) | P0 | ✅ Yes | Second-highest score (7.9), zero platform work, extends the permissions family from single-user to multi-user/team scenarios |
-| 3 | 用 find 做一次最小可行的权限安全审计 | P1 | ✅ Yes | Natural "graduation" topic — reader who did #0-2 now has enough judgment to run a real audit; introduces security framing without new runtime needs |
-| 4 | 日志文件几个 G，怎么在不打开它的情况下找到最近的错误 | P1 | ⚠️ Needs 1 new verifier type | First topic with a genuinely different judgment skill (log triage, not permissions) — deliberately placed after the permissions arc to diversify, not homogenize, the series; requires `command_exit_code_equals` or `file_content_contains` to be built (verifier work, not runtime work — in scope for a future Sprint, not this planning round) |
-| 5 | 明明是"文件不存在"，为什么报的是 Permission Denied（dangling symlink） | P2 | ⚠️ Needs `ln` (small executor addition) | Pairs with #6 as a "links" mini-arc; smallest platform gap among the P2s (one command addition, same sandboxing model, no architecture change) |
-| 6 | 用硬链接备份之后，磁盘占用为什么"对不上" | P2 | ⚠️ Needs `ln` (shared gap with #5) | Closes the "links" arc; reuses the same `ln` addition as #5, so the two should be greenlit together if a future Sprint takes on this gap, not separately |
+A follow-up CEO/CTO brief narrowed this plan's scope and corrected its framing before any of
+Orders 1-6 could start production. Both corrections below supersede §A/§B where they conflict.
+
+**Existing lab role, corrected**: `6c439064` ("Linux Files and Permissions Basics") is
+reclassified from "Series Order 0, series proof-of-concept" to **prerequisite / legacy
+onboarding asset — explicitly NOT one of the 6 high-value growth topics, and not scheduled for
+an article/CTA upgrade this round.** §A's framing of it as "de-risking the funnel mechanics
+first" is withdrawn — that framing implied committing article-writing effort to it this round,
+which this correction rules out. Its `upgrade_and_include` classification (Existing Asset
+Audit) stands; only its *sequencing role* changes.
+
+**Series binding, corrected**: only **Order 1 (`linux-chmod-permission-denied-despite-correct-mode`,
+now "Golden Topic #1") is formally bound.** Orders 2-6 (originally: shared-directory
+setgid/sticky bit, find security audit, log triage, dangling symlink, hardlink/inode) are
+marked **provisional** — real rehearsal data from Golden Topic #1, plus a future runtime
+investment decision (see Track Contract §A.1's new Runtime Profile split), may reorder or
+replace them. **This document does not claim a fully bound 6-topic roadmap.** That claim was
+implicit in §B's table before this correction and is retracted here.
+
+---
+
+## B. Recommended Production Sequence (Order 1 bound; Orders 2-6 provisional per §A.1)
+
+| Order | Topic | Priority | Runtime-ready | Binding status | Why this position |
+|---|---|---|---|---|---|
+| — | Linux Files and Permissions Basics (existing) | — | — | **Prerequisite/legacy asset — not in the 6-topic series** (§A.1) | Reusable infra proof point; article/CTA upgrade explicitly deferred, not scheduled |
+| 1 | chmod 明明改对了，为什么还是 Permission Denied ("Golden Topic #1") | P0 | ⚠️ **See feasibility gate — see `LINUX_GOLDEN_TOPIC_1_RUNTIME_BLOCKED` result** | **Bound** | Highest score (8.15) — bound as the series' first production, pending the hard feasibility gate outcome |
+| 2 | 团队共享目录里，新文件的属组总是不对 (setgid+sticky) | P0 | ✅ Yes | Provisional (§A.1) | Second-highest score (7.9); resequencing depends on Golden Topic #1's real rehearsal data |
+| 3 | 用 find 做一次最小可行的权限安全审计 | P1 | ✅ Yes | Provisional (§A.1) | Natural "graduation" topic if the permissions arc proceeds |
+| 4 | 日志文件几个 G，怎么在不打开它的情况下找到最近的错误 | P1 | ⚠️ Needs 1 new verifier type | Provisional (§A.1) | Different judgment skill; needs verifier work regardless of Order 1's outcome |
+| 5 | 明明是"文件不存在"，为什么报的是 Permission Denied（dangling symlink） | P2 | ⚠️ Needs `ln` (small executor addition) | Provisional (§A.1) | Pairs with #6 as a "links" mini-arc |
+| 6 | 用硬链接备份之后，磁盘占用为什么"对不上" | P2 | ⚠️ Needs `ln` (shared gap with #5) | Provisional (§A.1) | Closes the "links" arc |
 
 **This is 7 entries (0-6) covering the "6 高价值主题" target** — Order 0 is the upgrade of what
 already exists, Orders 1-6 are the six new productions the brief asks for.

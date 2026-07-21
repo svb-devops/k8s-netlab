@@ -48,7 +48,10 @@
       "Bash(python3 -c ' *)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" \"https://lab.cloudnetops.tech/api/articles/art-linux-files-permissions-001\")",
       "WebSearch",
-      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(len\\(d['articles']\\)\\)\")"
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(len\\(d['articles']\\)\\)\")",
+      "Bash(ps -eo pid,uid,user,cmd)",
+      "Bash(chmod 644 vault/report.txt)",
+      "Bash(chmod 600 vault)"
     ],
     "deny": [
       "Bash(qm destroy*)",
